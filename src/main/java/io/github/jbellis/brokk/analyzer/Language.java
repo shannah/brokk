@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.analyzer;
 
 import io.github.jbellis.brokk.Project;
+import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.NotNull;
@@ -114,9 +115,7 @@ public interface Language {
                     .ifPresent(rootsToScan::add);
 
             /* ---------- Windows-specific cache roots ---------- */
-            boolean isWindows = System.getProperty("os.name", "").toLowerCase(Locale.ENGLISH).contains("win");
-
-            if (isWindows) {
+            if (Environment.isWindows()) {
                 Optional.ofNullable(System.getenv("LOCALAPPDATA")).ifPresent(localAppData -> {
                     Path lad = Path.of(localAppData);
                     rootsToScan.add(lad.resolve("Coursier").resolve("cache")
@@ -124,6 +123,15 @@ public interface Language {
                     rootsToScan.add(lad.resolve("Gradle").resolve("caches")
                                             .resolve("modules-2").resolve("files-2.1"));
                 });
+            }
+
+            /* ---------- macOS-specific cache roots ---------- */
+            if (Environment.isMacOs()) {
+                // Coursier on macOS defaults to ~/Library/Caches/Coursier/v1/https
+                rootsToScan.add(homePath
+                                        .resolve("Library").resolve("Caches")
+                                        .resolve("Coursier").resolve("v1")
+                                        .resolve("https"));
             }
 
             /* ---------- de-duplicate & scan ---------- */
@@ -180,7 +188,7 @@ public interface Language {
             logger.debug("Scanning for JavaScript dependency candidates in project: {}", project.getRoot());
             var results = new ArrayList<Path>();
             Path nodeModules = project.getRoot().resolve("node_modules");
-            
+
             if (Files.isDirectory(nodeModules)) {
                 logger.debug("Scanning node_modules directory: {}", nodeModules);
                 try (DirectoryStream<Path> ds = Files.newDirectoryStream(nodeModules)) {
@@ -208,7 +216,7 @@ public interface Language {
             } else {
                 logger.debug("node_modules directory not found at: {}", nodeModules);
             }
-            
+
             logger.debug("Found {} JavaScript dependency candidates.", results.size());
             return results;
         }
@@ -314,25 +322,25 @@ public interface Language {
             }
 
             venvs.stream()
-                .map(this::sitePackagesDir)
-                .filter(Files::isDirectory) // Filter out empty paths returned by sitePackagesDir if not found
-                .forEach(dir -> {
-                    logger.debug("Scanning site-packages directory: {}", dir);
-                    try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
-                        for (Path p : ds) {
-                            String name = p.getFileName().toString();
-                            if (name.endsWith(".dist-info") || name.endsWith(".egg-info") || name.startsWith("_")) {
-                                continue;
+                    .map(this::sitePackagesDir)
+                    .filter(Files::isDirectory) // Filter out empty paths returned by sitePackagesDir if not found
+                    .forEach(dir -> {
+                        logger.debug("Scanning site-packages directory: {}", dir);
+                        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
+                            for (Path p : ds) {
+                                String name = p.getFileName().toString();
+                                if (name.endsWith(".dist-info") || name.endsWith(".egg-info") || name.startsWith("_")) {
+                                    continue;
+                                }
+                                if (Files.isDirectory(p)) {
+                                    logger.debug("Found Python dependency candidate: {}", p);
+                                    results.add(p);
+                                }
                             }
-                            if (Files.isDirectory(p)) {
-                                logger.debug("Found Python dependency candidate: {}", p);
-                                results.add(p);
-                            }
+                        } catch (IOException e) {
+                            logger.warn("Error scanning site-packages directory {}: {}", dir, e.getMessage());
                         }
-                    } catch (IOException e) {
-                        logger.warn("Error scanning site-packages directory {}: {}", dir, e.getMessage());
-                    }
-                });
+                    });
             logger.debug("Found {} Python dependency candidates.", results.size());
             return results;
         }
@@ -350,8 +358,8 @@ public interface Language {
             // Check if the path is inside any known virtual environment locations.
             // findVirtualEnvs looks at projectRoot and one level down.
             List<Path> venvPaths = findVirtualEnvs(projectRoot).stream()
-                                                              .map(Path::normalize)
-                                                              .toList();
+                    .map(Path::normalize)
+                    .toList();
             for (Path venvPath : venvPaths) {
                 if (normalizedPathToImport.startsWith(venvPath)) {
                     // Paths inside virtual environments are dependencies, not primary analyzed sources.
@@ -448,10 +456,10 @@ public interface Language {
                                            JAVA,
                                            JAVASCRIPT,
                                            PYTHON,
-            C_CPP,
-            GO,
-            RUST,
-            NONE);
+                                           C_CPP,
+                                           GO,
+                                           RUST,
+                                           NONE);
 
     /**
      * Returns the Language constant corresponding to the given file extension.

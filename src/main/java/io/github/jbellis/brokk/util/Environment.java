@@ -12,6 +12,7 @@ import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.Arrays;
+import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
 import java.util.stream.Stream;
@@ -117,12 +118,12 @@ public class Environment {
     /**
      * Determines if the current operating system is Windows.
      */
-    private static boolean isWindows() {
-        return System.getProperty("os.name").toLowerCase().contains("win");
+    public static boolean isWindows() {
+        return System.getProperty("os.name").toLowerCase(Locale.ENGLISH).contains("win");
     }
 
-    private static boolean isMacOs() {
-        return System.getProperty("os.name").toLowerCase().contains("mac");
+    public static boolean isMacOs() {
+        return System.getProperty("os.name").toLowerCase(Locale.ENGLISH).contains("mac");
     }
 
     /**
