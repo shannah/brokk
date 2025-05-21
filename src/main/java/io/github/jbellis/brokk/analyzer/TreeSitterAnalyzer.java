@@ -504,7 +504,22 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /** Analyzes a single file and extracts declaration information. */
     private FileAnalysisResult analyzeFileDeclarations(ProjectFile file, TSParser localParser) throws IOException {
         log.trace("analyzeFileDeclarations: Parsing file: {}", file);
-        String src = Files.readString(file.absPath(), StandardCharsets.UTF_8);
+
+        // this is needed because especially Visual Studio is adding a UTF8 BOM at the beginning of files
+        // Read as byte array first to preserve exact UTF-8 encoding
+        byte[] fileBytes = Files.readAllBytes(file.absPath());
+        // Strip UTF-8 BOM if present (EF BB BF)
+        if (fileBytes.length >= 3 &&
+            (fileBytes[0] & 0xFF) == 0xEF &&
+            (fileBytes[1] & 0xFF) == 0xBB &&
+            (fileBytes[2] & 0xFF) == 0xBF) {
+            // Create a new array without the BOM
+            byte[] bytesWithoutBom = new byte[fileBytes.length - 3];
+            System.arraycopy(fileBytes, 3, bytesWithoutBom, 0, fileBytes.length - 3);
+            fileBytes = bytesWithoutBom;
+        }
+
+        String src = new String(fileBytes, StandardCharsets.UTF_8);
 
         List<CodeUnit> localTopLevelCUs = new ArrayList<>();
         Map<CodeUnit, List<CodeUnit>> localChildren = new HashMap<>();
@@ -1151,12 +1166,49 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /** Extracts a substring from the source code based on node boundaries. */
     protected String textSlice(TSNode node, String src) {
         if (node == null || node.isNull()) return "";
-        return src.substring(node.getStartByte(), node.getEndByte());
+        
+        // Get the byte array representation of the source 
+        // This may be cached for better performance in a real implementation
+        byte[] bytes;
+        try {
+            bytes = src.getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // Fallback in case of encoding error
+            log.warn("Error getting bytes from source: {}. Falling back to substring (may truncate UTF-8 content)", e.getMessage());
+            return src.substring(Math.min(node.getStartByte(), src.length()), 
+                                Math.min(node.getEndByte(), src.length()));
+        }
+        
+        // Extract using correct byte indexing
+        return textSliceFromBytes(node.getStartByte(), node.getEndByte(), bytes);
     }
 
-     /** Extracts a substring from the source code based on byte offsets. */
+    /** Extracts a substring from the source code based on byte offsets. */
     protected String textSlice(int startByte, int endByte, String src) {
-        return src.substring(startByte, Math.min(endByte, src.length()));
+        // Get the byte array representation of the source
+        byte[] bytes;
+        try {
+            bytes = src.getBytes(StandardCharsets.UTF_8);
+        } catch (Exception e) {
+            // Fallback in case of encoding error
+            log.warn("Error getting bytes from source: {}. Falling back to substring (may truncate UTF-8 content)", e.getMessage());
+            return src.substring(Math.min(startByte, src.length()), 
+                                Math.min(endByte, src.length()));
+        }
+        
+        return textSliceFromBytes(startByte, endByte, bytes);
+    }
+    
+    /** Helper method that correctly extracts UTF-8 byte slice into a String */
+    private String textSliceFromBytes(int startByte, int endByte, byte[] bytes) {
+        if (startByte < 0 || endByte > bytes.length || startByte >= endByte) {
+            log.warn("Invalid byte range [{}, {}] for byte array of length {}",
+                    startByte, endByte, bytes.length);
+            return "";
+        }
+        
+        int len = endByte - startByte;
+        return new String(bytes, startByte, len, StandardCharsets.UTF_8);
     }
 
 

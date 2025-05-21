@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.analyzer;
 
+import io.github.jbellis.brokk.ContextFragment;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.git.IGitRepo;
 import org.junit.jupiter.api.Test;
@@ -329,6 +330,93 @@ public final class TreeSitterAnalyzerTest {
         assertEquals(normalizeSource.apply(expectedNestedMethodSource), normalizeSource.apply(nestedMethodSourceOpt.get()), "NestedMethod source mismatch.");
     }
 
+    @Test
+    void testCSharpInterfaceSkeleton() {
+        TestProject project = createTestProject("testcode-cs", Language.C_SHARP);
+        CSharpAnalyzer analyzer = new CSharpAnalyzer(project);
+        ProjectFile file = new ProjectFile(project.getRoot(), "AssetRegistrySA.cs");
+
+        // Define expected CodeUnits
+        var ifaceCU = CodeUnit.cls(file,
+                                       "ConsumerCentricityPermission.Core.ISA",
+                                       "IAssetRegistrySA");
+
+        var validateCU = CodeUnit.fn(file,
+                                         "ConsumerCentricityPermission.Core.ISA",
+                                         "IAssetRegistrySA.ValidateExistenceAsync");
+        var canConnectCU = CodeUnit.fn(file,
+                                           "ConsumerCentricityPermission.Core.ISA",
+                                           "IAssetRegistrySA.CanConnectAsync");
+        var getDescCU = CodeUnit.fn(file,
+                                         "ConsumerCentricityPermission.Core.ISA",
+                                         "IAssetRegistrySA.GetDeliveryPointDescriptionAsync");
+        var messageCU = CodeUnit.cls(file,
+                                        "ConsumerCentricityPermission.Core.ISA",
+                                        "Message");
+
+
+        // Basic assertions: declarations must be found
+        Set<CodeUnit> declarationsInFile = analyzer.getDeclarationsInFile(file);
+        assertTrue(declarationsInFile.contains(ifaceCU), "Interface CU missing. Found: " + declarationsInFile);
+        assertTrue(declarationsInFile.contains(validateCU), "ValidateExistenceAsync CU missing. Found: " + declarationsInFile);
+        assertTrue(declarationsInFile.contains(canConnectCU), "CanConnectAsync CU missing. Found: " + declarationsInFile);
+        assertTrue(declarationsInFile.contains(getDescCU), "GetDeliveryPointDescriptionAsync CU missing. Found: " + declarationsInFile);
+
+
+        // Skeleton reconstruction
+        var skels = analyzer.getSkeletons(file);
+        assertTrue(skels.containsKey(ifaceCU), "Interface skeleton missing. Keys: " + skels.keySet());
+        // Methods inside interface are not top-level for getSkeletons, their skeletons are part of parent.
+        // So we check their presence via getDeclarationsInFile and their textual form via the parent skeleton.
+
+        // Verify the text of the interface skeleton
+        String expectedIfaceSkeleton = """
+        public interface IAssetRegistrySA {
+          public Task<Message> ValidateExistenceAsync(Guid assetId) { … }
+          public Task<bool> CanConnectAsync() { … }
+          public Task<string> GetDeliveryPointDescriptionAsync(Guid deliveryPointId) { … }
+        }
+        """;
+        assertEquals(normalizeSource.apply(expectedIfaceSkeleton),
+                     normalizeSource.apply(skels.get(ifaceCU)),
+                     "Interface skeleton mismatch.");
+
+        // Verify getSkeleton for the interface FQ name
+        Optional<String> ifaceSkeletonOpt = analyzer.getSkeleton(ifaceCU.fqName());
+        assertTrue(ifaceSkeletonOpt.isPresent(), "Skeleton for IAssetRegistrySA FQ name should be found.");
+        assertEquals(normalizeSource.apply(expectedIfaceSkeleton),
+                     normalizeSource.apply(ifaceSkeletonOpt.get()),
+                     "getSkeleton for IAssetRegistrySA FQ name mismatch.");
+
+        // Create SkeletonFragment and assert its properties
+        var skeletonFragment = new ContextFragment.SkeletonFragment(skels);
+        assertTrue(skeletonFragment.skeletons().containsKey(ifaceCU),
+                   "SkeletonFragment should contain the interface CodeUnit as a key.");
+        assertTrue(skeletonFragment.format().contains(ifaceCU.fqName()),
+                   "SkeletonFragment.format() output should contain the FQDN of the interface. Got: " + skeletonFragment.format());
+        assertEquals("Summary of " + ifaceCU.identifier(), skeletonFragment.description(),
+                     "SkeletonFragment.description() mismatch.");
+
+        // Method source extraction for interface methods
+        Optional<String> validateSourceOpt = analyzer.getMethodSource(validateCU.fqName());
+        assertTrue(validateSourceOpt.isPresent(), "Source for ValidateExistenceAsync should be present.");
+        assertEquals(normalizeSource.apply("public Task<Message> ValidateExistenceAsync(Guid assetId);"),
+                     normalizeSource.apply(validateSourceOpt.get()),
+                     "ValidateExistenceAsync source mismatch.");
+
+        Optional<String> canConnectSourceOpt = analyzer.getMethodSource(canConnectCU.fqName());
+        assertTrue(canConnectSourceOpt.isPresent(), "Source for CanConnectAsync should be present.");
+        assertEquals(normalizeSource.apply("public Task<bool> CanConnectAsync();"),
+                     normalizeSource.apply(canConnectSourceOpt.get()),
+                     "CanConnectAsync source mismatch.");
+
+        Optional<String> getDescSourceOpt = analyzer.getMethodSource(getDescCU.fqName());
+        assertTrue(getDescSourceOpt.isPresent(), "Source for GetDeliveryPointDescriptionAsync should be present.");
+        assertEquals(normalizeSource.apply("public Task<string> GetDeliveryPointDescriptionAsync(Guid deliveryPointId);"),
+                     normalizeSource.apply(getDescSourceOpt.get()),
+                     "GetDeliveryPointDescriptionAsync source mismatch.");
+    }
+
     /* -------------------- JavaScript / JSX -------------------- */
 
     @Test
@@ -497,5 +585,65 @@ public final class TreeSitterAnalyzerTest {
         assertFalse(topConstJsCU.isClass(), "_module_.TOP_CONST_JS CU should not be a class.");
         assertTrue(declarationsInVarsJs.contains(localVarJsCU), "_module_.localVarJs should be in declarations list for Vars.js. Found: " + declarationsInVarsJs);
         assertFalse(localVarJsCU.isClass(), "_module_.localVarJs CU should not be a class.");
+    }
+    
+    @Test
+    void testUtf8ByteOffsetHandling() {
+        // This test verifies proper handling of files with UTF-8 BOM or other multi-byte characters
+        // The issue: TreeSitter returns byte offsets, but String.substring requires char offsets
+        // Without proper handling, names in non-ASCII files get truncated
+        
+        TestProject project = createTestProject("testcode-cs", Language.C_SHARP);
+        CSharpAnalyzer analyzer = new CSharpAnalyzer(project);
+        
+        // GetTerminationRecordByIdHandler.cs contains a UTF-8 BOM
+        ProjectFile bomFile = new ProjectFile(project.getRoot(), "GetTerminationRecordByIdHandler.cs");
+        
+        // Define expected CodeUnits with correct namespaces and class names
+        CodeUnit handlerClass = CodeUnit.cls(
+            bomFile, 
+            "ConsumerCentricityPermission.Core.Business.Handlers.TerminationRecordHandlers.Queries",
+            "GetTerminationRecordByIdHandler"
+        );
+        
+        CodeUnit requestClass = CodeUnit.cls(
+            bomFile, 
+            "ConsumerCentricityPermission.Core.Business.Handlers.TerminationRecordHandlers.Queries",
+            "GetTerminationRecordByIdRequest"
+        );
+        
+        // Main assertions - these would fail if byte/char conversion is wrong
+        // since we'd get "onsumerCentricity..." (missing first 'C') and 
+        // "etTerminationRecordByIdHandler" (missing first 'G')
+        Set<CodeUnit> declarations = analyzer.getDeclarationsInFile(bomFile);
+        
+        assertTrue(
+            declarations.contains(handlerClass),
+            "File should contain class GetTerminationRecordByIdHandler with correct namespace"
+        );
+        
+        assertTrue(
+            declarations.contains(requestClass),
+            "File should contain class GetTerminationRecordByIdRequest with correct namespace"
+        );
+        
+        // Check that the namespace and class name in the full definition are correct
+        Optional<CodeUnit> handlerDefinition = analyzer.getDefinition(handlerClass.fqName());
+        assertTrue(handlerDefinition.isPresent(), "Handler definition should be found");
+        
+        // Without proper byte/char handling, we'd get "onsumerCentricity..." and "etTermination..."
+        assertEquals(
+            "ConsumerCentricityPermission.Core.Business.Handlers.TerminationRecordHandlers.Queries.GetTerminationRecordByIdHandler",
+            handlerDefinition.get().fqName(),
+            "Full qualified name should be correct without truncation"
+        );
+        
+        // Verify skeleton reconstruction works with proper names
+        Optional<String> handlerSkeleton = analyzer.getSkeleton(handlerClass.fqName());
+        assertTrue(handlerSkeleton.isPresent(), "Handler skeleton should be present");
+        assertTrue(
+            handlerSkeleton.get().contains("public class GetTerminationRecordByIdHandler"),
+            "Handler skeleton should contain correct class name"
+        );
     }
 }
