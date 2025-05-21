@@ -292,7 +292,6 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
         for (var message : messages) {
             addNewMessage(message);
         }
-        compactAllMessages(); // do this for better text selection
         revalidate();
         repaint();
         textChangeListeners.forEach(Runnable::run);
