@@ -271,15 +271,13 @@ public class MarkdownOutputPanel extends JPanel implements Scrollable {
             logger.debug("Ignoring setText() request while blocking is enabled");
             return;
         }
-        SwingUtilities.invokeLater(() -> {
-            internalClear();
+        internalClear();
 
-            if (newOutput == null) {
-                return;
-            }
+        if (newOutput == null) {
+            return;
+        }
 
-            setText(newOutput.messages());
-        });
+        setText(newOutput.messages());
     }
 
     // private for changing theme -- parser doesn't need to change
