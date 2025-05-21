@@ -610,15 +610,14 @@ public final class Service {
         }
 
         // gemini and grok-3 support function calling but not parallel calls
-        return location.contains("gemini")
-                || location.contains("grok-3");
+        return location.contains("grok-3");
     }
 
     public boolean supportsParallelCalls(StreamingChatLanguageModel model) {
         // mostly we force models that don't support parallel calls to use our emulation, but o3 does so poorly with that
         // that serial calls is the lesser evil
         var location = model.defaultRequestParameters().modelName();
-        return !location.contains("o3") && !location.contains("o4-mini");
+        return !location.contains("gemini") && !location.contains("o3") && !location.contains("o4-mini");
     }
 
     /**
