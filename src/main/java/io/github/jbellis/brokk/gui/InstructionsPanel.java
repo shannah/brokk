@@ -1273,32 +1273,46 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     private void executeRunCommand(String input) {
         var contextManager = chrome.getContextManager();
-        Environment.ProcessResult result;
+        String actionMessage = "Run: " + input;
+
         try {
             chrome.showOutputSpinner("Executing command...");
-            result = Environment.instance.captureShellCommand(input, contextManager.getRoot());
+            chrome.llmOutput("```bash\n", ChatMessageType.CUSTOM);
+            Environment.instance.runShellCommand(input,
+                                                 contextManager.getRoot(),
+                                                 line -> chrome.llmOutput(line + "\n", ChatMessageType.CUSTOM));
+            chrome.llmOutput("```\n", ChatMessageType.CUSTOM); // Close markdown block on success
+            chrome.systemOutput("Run command complete!");
+        } catch (Environment.SubprocessException e) {
+            chrome.llmOutput("```\n", ChatMessageType.CUSTOM); // Ensure markdown block is closed on error
+            actionMessage = "Run: " + input + " (failed: " + e.getMessage() + ")";
+            chrome.systemOutput("Run command completed with errors -- see Output");
+            logger.warn("Run command '{}' failed: {}", input, e.getMessage(), e);
+            // Display specific error message and output
+            String errorDisplay = """
+                                  **Command Failed:** %s
+                                  ```bash
+                                  %s
+                                  ```
+                                  """.stripIndent().formatted(e.getMessage(), e.getOutput());
+            chrome.llmOutput(errorDisplay, ChatMessageType.CUSTOM);
         } catch (InterruptedException e) {
+            // If interrupted, the ```bash block might be open.
+            // It's tricky to know if llmOutput for closing ``` is safe or needed here.
+            // For now, just log and return, consistent with previous behavior for interruption.
             chrome.systemOutput("Cancelled!");
+            // No action needed for context history on cancellation here
             return;
         } finally {
             chrome.hideOutputSpinner();
         }
-        String output = result.output().isBlank() ? "[operation completed with no output]" : result.output();
-        var wrappedOutput = "```bash\n" + output + "\n```";
-        chrome.llmOutput(wrappedOutput, ChatMessageType.CUSTOM);
 
-        // Add to context history with the output text
-        var action = "Run: " + input;
+        // Add to context history with the action message (which includes success/failure)
+        final String finalActionMessage = actionMessage; // Effectively final for lambda
         contextManager.pushContext(ctx -> {
-            var parsed = new TaskFragment(List.copyOf(chrome.getLlmRawMessages()), action);
-            return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture(action));
+            var parsed = new TaskFragment(List.copyOf(chrome.getLlmRawMessages()), finalActionMessage);
+            return ctx.withParsedOutput(parsed, CompletableFuture.completedFuture(finalActionMessage));
         });
-
-        if (result.error() == null) { // This means exit code 0
-            chrome.systemOutput("Run command complete!");
-        } else {
-            chrome.systemOutput("Run command completed with errors -- see Output.");
-        }
     }
 
     // --- Action Handlers ---

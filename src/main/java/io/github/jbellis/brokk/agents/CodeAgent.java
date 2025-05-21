@@ -11,10 +11,7 @@ import io.github.jbellis.brokk.Llm.StreamingResult;
 import io.github.jbellis.brokk.agents.BuildAgent.BuildDetails;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.git.GitStatus;
-import io.github.jbellis.brokk.gui.mop.stream.blocks.EditBlockHtml;
 import io.github.jbellis.brokk.prompts.CodePrompts;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.LogDescription;
@@ -677,23 +674,27 @@ public class CodeAgent {
         }
 
         io.llmOutput("\nRunning verification command: " + verificationCommand, ChatMessageType.CUSTOM);
-        var result = Environment.instance.captureShellCommand(verificationCommand, cm.getProject().getRoot());
-        logger.debug("Verification command result: {}", result);
-
-        if (result.error() == null) {
+        io.llmOutput("```bash\n", ChatMessageType.CUSTOM);
+        try {
+            var output = Environment.instance.runShellCommand(verificationCommand,
+                                                              cm.getProject().getRoot(),
+                                                              line -> io.llmOutput(line + "\n", ChatMessageType.CUSTOM));
+            logger.debug("Verification command successful. Output: {}", output);
+            io.llmOutput("```\n", ChatMessageType.CUSTOM);
             io.llmOutput("\n## Verification successful", ChatMessageType.CUSTOM);
             return "";
+        } catch (Environment.SubprocessException e) {
+            io.llmOutput("```\n", ChatMessageType.CUSTOM); // Close the markdown block
+            logger.warn("Verification command failed: {} Output: {}", e.getMessage(), e.getOutput(), e);
+            io.llmOutput("""
+                         \n**Verification Failed:** %s
+                         ```bash
+                         %s
+                         ```
+                         """.stripIndent().formatted(e.getMessage(), e.getOutput()), ChatMessageType.CUSTOM);
+            // Add the combined error and output to the history for the next request
+            return e.getMessage() + "\n\n" + e.getOutput();
         }
-
-        // Build failed
-        io.llmOutput("""
-                     \n**Verification Failed:** %s
-                     ```bash
-                     %s
-                     ```
-                     """.stripIndent().formatted(result.error(), result.output()), ChatMessageType.CUSTOM);
-        // Add the combined error and output to the history for the next request
-        return result.error() + "\n\n" + result.output();
     }
 
     /**
