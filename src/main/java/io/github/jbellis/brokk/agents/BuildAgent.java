@@ -350,11 +350,23 @@ public class BuildAgent {
         // Runs asynchronously on the background executor provided by ContextManager
         return CompletableFuture.supplyAsync(() -> {
             // Retrieve build details from the project associated with the ContextManager
-            BuildDetails details = cm.getProject().getBuildDetails();
+            Project project = (Project) cm.getProject();
+            BuildDetails details = project.getBuildDetails();
+
             if (details.equals(BuildDetails.EMPTY)) {
                 logger.warn("No build details available, cannot determine verification command.");
                 return null;
             }
+
+            // Check project setting for test scope
+            Project.CodeAgentTestScope testScope = project.getCodeAgentTestScope();
+            if (testScope == Project.CodeAgentTestScope.ALL) {
+                logger.debug("Code Agent Test Scope is ALL, using testAllCommand: {}", details.testAllCommand());
+                return details.testAllCommand();
+            }
+
+            // Proceed with workspace-specific test determination
+            logger.debug("Code Agent Test Scope is WORKSPACE, determining tests in workspace.");
 
             // Get ProjectFiles from editable and read-only fragments
             Stream<ProjectFile> projectFilesFromEditableOrReadOnly =

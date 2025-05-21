@@ -62,6 +62,8 @@ public class SettingsDialog extends JDialog {
     // Project -> Build tab specific fields
     private JList<String> excludedDirectoriesList;
     private DefaultListModel<String> excludedDirectoriesListModel;
+    private JRadioButton runAllTestsRadio;
+    private JRadioButton runTestsInWorkspaceRadio;
     // Quick Models Tab components
     private JTable quickModelsTable;
     private FavoriteModelsTableModel quickModelsTableModel;
@@ -497,6 +499,38 @@ public class SettingsDialog extends JDialog {
         gbc.weightx = 1.0;
         buildPanel.add(allTestsCommandField, gbc);
 
+        // Code Agent Tests Setting
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.NONE;
+        buildPanel.add(new JLabel("Code Agent Tests:"), gbc);
+
+        runAllTestsRadio = new JRadioButton(Project.CodeAgentTestScope.ALL.toString());
+        runTestsInWorkspaceRadio = new JRadioButton(Project.CodeAgentTestScope.WORKSPACE.toString());
+        var testScopeGroup = new ButtonGroup();
+        testScopeGroup.add(runAllTestsRadio);
+        testScopeGroup.add(runTestsInWorkspaceRadio);
+
+        var currentTestScope = project.getCodeAgentTestScope();
+        if (currentTestScope == Project.CodeAgentTestScope.ALL) {
+            runAllTestsRadio.setSelected(true);
+        } else {
+            runTestsInWorkspaceRadio.setSelected(true); // Default
+        }
+
+        var radioPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0)); // No gaps
+        radioPanel.setOpaque(false); // Make transparent to inherit buildPanel's background
+        radioPanel.add(runAllTestsRadio);
+        radioPanel.add(runTestsInWorkspaceRadio);
+
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        buildPanel.add(radioPanel, gbc);
+
         // Build Instructions
         gbc.gridx = 0;
         gbc.gridy = row;
@@ -533,7 +567,7 @@ public class SettingsDialog extends JDialog {
             excludedDirectoriesListModel.addElement(dir);
         }
         excludedDirectoriesList = new JList<>(excludedDirectoriesListModel);
-        excludedDirectoriesList.setVisibleRowCount(7);
+        excludedDirectoriesList.setVisibleRowCount(5);
         var excludedScrollPane = new JScrollPane(excludedDirectoriesList);
 
         gbc.gridx = 1;
@@ -562,7 +596,7 @@ public class SettingsDialog extends JDialog {
         gbc.insets = new Insets(2, 2, 2, 2); // Reset insets
 
         // Add button action
-        row++;
+        // row is already incremented from excludedScrollPane
         addButton.addActionListener(e -> {
             String newDir = JOptionPane.showInputDialog(SettingsDialog.this,
                                                         "Enter directory to exclude (e.g., target/, build/):",
@@ -593,7 +627,7 @@ public class SettingsDialog extends JDialog {
             }
         });
 
-        row += 2; // Increment row counter, consumed one for list, one for buttons panel
+        row++; // Increment row counter for the buttons panel
 
         // ----- Other Tab -----
         var otherPanel = new JPanel(new GridBagLayout());
@@ -1321,6 +1355,17 @@ public class SettingsDialog extends JDialog {
             var selectedLanguage = (io.github.jbellis.brokk.analyzer.Language) languageComboBox.getSelectedItem();
             if (selectedLanguage != null && selectedLanguage != project.getAnalyzerLanguage()) {
                 project.setAnalyzerLanguage(selectedLanguage); // This might trigger analyzer rebuild
+            }
+
+            // Apply Code Agent Test Scope (from Build Tab)
+            if (runAllTestsRadio != null && runTestsInWorkspaceRadio != null) { // Check initialized
+                Project.CodeAgentTestScope selectedScope = runAllTestsRadio.isSelected()
+                                                             ? Project.CodeAgentTestScope.ALL
+                                                             : Project.CodeAgentTestScope.WORKSPACE;
+                if (selectedScope != project.getCodeAgentTestScope()) {
+                    project.setCodeAgentTestScope(selectedScope);
+                    logger.debug("Applied Code Agent Test Scope: {}", selectedScope);
+                }
             }
 
             // Apply Style Guide

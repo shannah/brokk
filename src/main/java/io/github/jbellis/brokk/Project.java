@@ -47,6 +47,7 @@ public class Project implements IProject, AutoCloseable {
     private static final String ASK_REASONING_KEY = "askReasoning";
     private static final String EDIT_REASONING_KEY = "editReasoning";
     private static final String SEARCH_REASONING_KEY = "searchReasoning";
+    private static final String CODE_AGENT_TEST_SCOPE_KEY = "codeAgentTestScope";
     private static final String COMMIT_MESSAGE_FORMAT_KEY = "commitMessageFormat";
 
     public static final String DEFAULT_COMMIT_MESSAGE_FORMAT = """
@@ -523,6 +524,40 @@ public class Project implements IProject, AutoCloseable {
         }
         saveProjectProperties();
         // Request for analyzer rebuild is now handled by ContextManager after this call
+    }
+
+    public enum CodeAgentTestScope {
+        ALL, WORKSPACE;
+
+        @Override
+        public String toString() {
+            return switch (this) {
+                case ALL -> "Run All Tests";
+                case WORKSPACE -> "Run Tests in Workspace";
+            };
+        }
+
+        public static CodeAgentTestScope fromString(String value, CodeAgentTestScope defaultScope) {
+            if (value == null || value.isBlank()) {
+                return defaultScope;
+            }
+            try {
+                return CodeAgentTestScope.valueOf(value.toUpperCase());
+            } catch (IllegalArgumentException e) {
+                return defaultScope;
+            }
+        }
+    }
+
+    public CodeAgentTestScope getCodeAgentTestScope() {
+        String value = projectProps.getProperty(CODE_AGENT_TEST_SCOPE_KEY);
+        return CodeAgentTestScope.fromString(value, CodeAgentTestScope.WORKSPACE); // Default to WORKSPACE
+    }
+
+    public void setCodeAgentTestScope(CodeAgentTestScope scope) {
+        assert scope != null;
+        projectProps.setProperty(CODE_AGENT_TEST_SCOPE_KEY, scope.name());
+        saveProjectProperties();
     }
 
 
