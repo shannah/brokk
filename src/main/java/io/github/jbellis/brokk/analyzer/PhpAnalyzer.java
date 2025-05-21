@@ -23,7 +23,7 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
             Set.of("class_declaration", "interface_declaration", "trait_declaration"), // classLikeNodeTypes
             Set.of("function_definition", "method_declaration"),                     // functionLikeNodeTypes
             Set.of("property_declaration", "const_declaration"),                     // fieldLikeNodeTypes (capturing the whole declaration)
-            Set.of("attribute_group"),                                               // decoratorNodeTypes (PHP attributes)
+            Set.of("attribute_list"),                                                // decoratorNodeTypes (PHP attributes are grouped in attribute_list)
             "name",                                                                  // identifierFieldName
             "body",                                                                  // bodyFieldName (applies to functions/methods, class body is declaration_list)
             "parameters",                                                            // parametersFieldName
@@ -189,36 +189,23 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
         return "  ";
     }
 
-    private String extractModifiers(TSNode node, String src) {
-        List<String> modifiers = new ArrayList<>();
-        for (int i = 0; i < node.getNamedChildCount(); i++) {
-            TSNode child = node.getNamedChild(i);
+    private String extractModifiers(TSNode methodNode, String src) {
+        StringBuilder sb = new StringBuilder();
+        for (int i = 0; i < methodNode.getChildCount(); i++) {
+            TSNode child = methodNode.getChild(i);
             if (child == null || child.isNull()) continue;
-
             String type = child.getType();
-            if (PHP_SYNTAX_PROFILE.modifierNodeTypes().contains(type)) { // readonly_modifier is now in the set
-                 modifiers.add(textSlice(child, src));
-            } else if ("name".equals(child.getType()) ||
-                       "variable_name".equals(child.getType()) ||
-                       "formal_parameters".equals(child.getType()) ||
-                       NODE_TYPE_COMPOUND_STATEMENT.equals(child.getType()) || // body
-                       "declaration_list".equals(child.getType()) || // class body
-                       "type_declaration".equals(child.getType()) || // return type
-                       "base_clause".equals(child.getType()) || // extends
-                       "interface_clause".equals(child.getType()) || // implements
-                       "use_trait_clause".equals(child.getType()) || // use Trait
-                       "property_element".equals(child.getType()) ||
-                       "const_element".equals(child.getType()) ||
-                       "function".equals(type) || // keyword
-                       "class".equals(type) || // keyword
-                       "interface".equals(type) || // keyword
-                       "trait".equals(type) // keyword
-            ) {
+
+            if (PHP_SYNTAX_PROFILE.decoratorNodeTypes().contains(type)) { // This is an attribute
+                sb.append(textSlice(child, src)).append("\n");
+            } else if (PHP_SYNTAX_PROFILE.modifierNodeTypes().contains(type)) { // This is a keyword modifier
+                sb.append(textSlice(child, src)).append(" ");
+            } else if (type.equals("function")) { // Stop when the 'function' keyword token itself is encountered
                 break;
             }
+            // Other child types (e.g., comments, other anonymous tokens before 'function') are skipped.
         }
-        if (modifiers.isEmpty()) return "";
-        return String.join(" ", modifiers) + " ";
+        return sb.toString();
     }
 
     @Override
@@ -233,7 +220,8 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix,
                                                String functionName, String paramsText, String returnTypeText, String indent) {
-        // Attributes are handled by the base class's buildSignatureString via getPrecedingDecorators.
+        // Attributes that are children of the funcNode (e.g., PHP attributes on methods)
+        // are collected by extractModifiers.
         // exportPrefix and asyncPrefix are "" for PHP. indent is also "" at this stage from base.
         String modifiers = extractModifiers(funcNode, src);
         
