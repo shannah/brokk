@@ -12,7 +12,7 @@ import java.util.Set;
 
 public final class PythonAnalyzer extends TreeSitterAnalyzer {
 
-    private static final TSLanguage PY_LANGUAGE = new TreeSitterPython();
+    // PY_LANGUAGE field removed, createTSLanguage will provide new instances.
     private static final LanguageSyntaxProfile PY_SYNTAX_PROFILE = new LanguageSyntaxProfile(
             Set.of("class_definition"),
             Set.of("function_definition"),
@@ -40,8 +40,8 @@ public final class PythonAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected TSLanguage getTSLanguage() {
-        return PY_LANGUAGE;
+    protected TSLanguage createTSLanguage() {
+        return new TreeSitterPython();
     }
 
     @Override

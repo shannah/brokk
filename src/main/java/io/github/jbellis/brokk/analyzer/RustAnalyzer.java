@@ -1,5 +1,4 @@
 package io.github.jbellis.brokk.analyzer;
-
 import io.github.jbellis.brokk.IProject;
 import org.treesitter.TSLanguage;
 import org.treesitter.TSNode;
@@ -14,7 +13,7 @@ import java.util.Set;
 
 public final class RustAnalyzer extends TreeSitterAnalyzer {
 
-    private static final TSLanguage RS_LANGUAGE = new TreeSitterRust();
+    // RS_LANGUAGE field removed, createTSLanguage will provide new instances.
 
     private static final LanguageSyntaxProfile RS_SYNTAX_PROFILE = new LanguageSyntaxProfile(
             /* classLikeNodeTypes  */ Set.of("impl_item", "trait_item", "struct_item", "enum_item"),
@@ -46,8 +45,8 @@ public final class RustAnalyzer extends TreeSitterAnalyzer {
     /* ---------- TreeSitterAnalyzer hooks ---------- */
 
     @Override
-    protected TSLanguage getTSLanguage() {
-        return RS_LANGUAGE;
+    protected TSLanguage createTSLanguage() {
+        return new TreeSitterRust();
     }
 
     @Override

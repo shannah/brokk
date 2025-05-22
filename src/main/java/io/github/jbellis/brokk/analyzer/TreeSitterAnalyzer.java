@@ -28,8 +28,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     // Native library loading is assumed automatic by the io.github.bonede.tree_sitter library.
 
     /* ---------- instance state ---------- */
-    protected final TSLanguage tsLanguage;
-    private final TSQuery query;
+    private final ThreadLocal<TSLanguage> threadLocalLanguage = ThreadLocal.withInitial(this::createTSLanguage);
+    private final ThreadLocal<TSQuery> query;
     final Map<ProjectFile, List<CodeUnit>> topLevelDeclarations = new ConcurrentHashMap<>(); // package-private for testing
     final Map<CodeUnit, List<CodeUnit>> childrenByParent = new ConcurrentHashMap<>(); // package-private for testing
     final Map<CodeUnit, List<String>> signatures = new ConcurrentHashMap<>(); // package-private for testing
@@ -75,8 +75,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     /* ---------- constructor ---------- */
     protected TreeSitterAnalyzer(IProject project, Set<String> excludedFiles) {
         this.project = project;
-        this.tsLanguage = getTSLanguage(); // Provided by subclass
-        Objects.requireNonNull(tsLanguage, "Tree-sitter TSLanguage must not be null");
+        // tsLanguage field removed, getTSLanguage().get() will provide it via ThreadLocal
 
         this.normalizedExcludedFiles = (excludedFiles != null ? excludedFiles : Collections.<String>emptySet())
                 .stream()
@@ -93,11 +92,16 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.debug("Normalized excluded files: {}", this.normalizedExcludedFiles);
         }
 
-        String rawQueryString = loadResource(getQueryResource());
-        this.query = new TSQuery(tsLanguage, rawQueryString);
+        // Initialize query using a ThreadLocal for thread safety
+        // The supplier will use the appropriate getQueryResource() from the subclass
+        // and getTSLanguage() for the current thread.
+        this.query = ThreadLocal.withInitial(() -> {
+            String rawQueryString = loadResource(getQueryResource());
+            return new TSQuery(getTSLanguage(), rawQueryString);
+        });
 
         // Debug log using SLF4J
-        log.debug("Initializing TreeSitterAnalyzer for language: {}, query: {}",
+        log.debug("Initializing TreeSitterAnalyzer for language: {}, query resource: {}",
                  project.getAnalyzerLanguage(), getQueryResource());
 
 
@@ -119,8 +123,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                     // TSParser is not threadsafe, so we create a parser per thread
                     var localParser = new TSParser();
                     try {
-                        if (!localParser.setLanguage(tsLanguage)) {
-                            log.error("Failed to set language on thread-local TSParser for language {} in file {}", tsLanguage, pf);
+                        if (!localParser.setLanguage(getTSLanguage())) {
+                            log.error("Failed to set language on thread-local TSParser for language {} in file {}", getTSLanguage().getClass().getSimpleName(), pf);
                             return; // Skip this file if parser setup fails
                         }
                         var analysisResult = analyzeFileDeclarations(pf, localParser);
@@ -415,8 +419,16 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
 
 
     /* ---------- abstract hooks ---------- */
-    /** Tree-sitter TSLanguage grammar to use (e.g. {@code new TreeSitterPython()}). */
-    protected abstract TSLanguage getTSLanguage();
+    /** Creates a new TSLanguage instance for the specific language. Called by ThreadLocal initializer. */
+    protected abstract TSLanguage createTSLanguage();
+
+    /**
+     * Provides a thread-safe TSLanguage instance.
+     * @return A TSLanguage instance for the current thread.
+     */
+    protected TSLanguage getTSLanguage() {
+        return threadLocalLanguage.get();
+    }
 
     /** Provides the language-specific syntax profile. */
     protected abstract LanguageSyntaxProfile getLanguageSyntaxProfile();
@@ -543,7 +555,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         Map<TSNode, Map.Entry<String, String>> declarationNodes = new HashMap<>();
 
         TSQueryCursor cursor = new TSQueryCursor();
-        cursor.exec(this.query, rootNode); // Use the query field, execute on root node
+        TSQuery currentThreadQuery = this.query.get(); // Get thread-specific query instance
+        cursor.exec(currentThreadQuery, rootNode);
 
         TSQueryMatch match = new TSQueryMatch(); // Reusable match object
         while (cursor.nextMatch(match)) {
@@ -551,7 +564,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             // Group nodes by capture name for this specific match
             Map<String, TSNode> capturedNodes = new HashMap<>();
             for (TSQueryCapture capture : match.getCaptures()) {
-                String captureName = this.query.getCaptureNameForId(capture.getIndex());
+                String captureName = currentThreadQuery.getCaptureNameForId(capture.getIndex());
                 if (getIgnoredCaptures().contains(captureName)) continue;
 
                 TSNode node = capture.getNode();
@@ -689,7 +702,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 // A more robust way would be to pass `capturedNodes` from the outer loop or re-query for this specific `node`.
 
                 TSNode receiverNode = null;
-                TSNode methodIdentifierNode = null; // This would be `node.getChildByFieldName("name")` for method_declaration
+                // TSNode methodIdentifierNode = null; // This would be `node.getChildByFieldName("name")` for method_declaration
                                                     // or more reliably, the node associated with captureName.replace(".definition", ".name")
                                                     // simpleName is already derived from method.identifier.
 
@@ -697,12 +710,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 // This is a simplified re-querying logic. A more efficient approach might involve
                 // passing the full `capturedNodes` map associated with the `match` that led to this `node`.
                 TSQueryCursor an_cursor = new TSQueryCursor();
-                an_cursor.exec(this.query, node); // Execute query only on the current definition node
+                TSQuery currentThreadQueryForNode = this.query.get(); // Get thread-specific query for this operation
+                an_cursor.exec(currentThreadQueryForNode, node); // Execute query only on the current definition node
                 TSQueryMatch an_match = new TSQueryMatch();
                 Map<String, TSNode> localCaptures = new HashMap<>();
                 if (an_cursor.nextMatch(an_match)) { // Should find one match for the definition node itself
                     for (TSQueryCapture capture : an_match.getCaptures()) {
-                        String capName = this.query.getCaptureNameForId(capture.getIndex());
+                        String capName = currentThreadQueryForNode.getCaptureNameForId(capture.getIndex());
                         localCaptures.put(capName, capture.getNode());
                     }
                 }

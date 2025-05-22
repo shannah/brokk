@@ -11,7 +11,7 @@ import java.util.Collections;
 import java.util.Set;
 
 public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
-    private static final TSLanguage JS_LANGUAGE = new TreeSitterJavascript();
+    // JS_LANGUAGE field removed, createTSLanguage will provide new instances.
     private static final LanguageSyntaxProfile JS_SYNTAX_PROFILE = new LanguageSyntaxProfile(
             Set.of("class_declaration", "class_expression", "class"),
             Set.of("function_declaration", "arrow_function", "method_definition", "function_expression"),
@@ -33,7 +33,10 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     public JavascriptAnalyzer(IProject project, Set<String> excludedFiles) { super(project, excludedFiles); }
     public JavascriptAnalyzer(IProject project) { this(project, Collections.emptySet()); }
 
-    @Override protected TSLanguage getTSLanguage() { return JS_LANGUAGE; }
+    @Override
+    protected TSLanguage createTSLanguage() {
+        return new TreeSitterJavascript();
+    }
 
     @Override protected String getQueryResource() { return "treesitter/javascript.scm"; }
 

@@ -18,7 +18,7 @@ import java.util.Map;
 public final class GoAnalyzer extends TreeSitterAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(GoAnalyzer.class);
 
-    private static final TSLanguage GO_LANGUAGE = new TreeSitterGo();
+    // GO_LANGUAGE field removed, createTSLanguage will provide new instances.
     private static final LanguageSyntaxProfile GO_SYNTAX_PROFILE = new LanguageSyntaxProfile(
             Set.of("type_spec"), // classLikeNodeTypes
             Set.of("function_declaration", "method_declaration"), // functionLikeNodeTypes
@@ -41,20 +41,21 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
             Set.of() // modifierNodeTypes (Go visibility is by capitalization)
     );
 
-    private static final TSQuery PACKAGE_QUERY;
-
-    static {
-        TSQuery query = null;
-        try {
-            query = new TSQuery(GO_LANGUAGE, "(package_clause (package_identifier) @name)");
-        } catch (RuntimeException e) {
-            log.error("Failed to compile PACKAGE_QUERY for GoAnalyzer", e);
-        }
-        PACKAGE_QUERY = query;
-    }
+    private final ThreadLocal<TSQuery> packageQuery;
 
     public GoAnalyzer(IProject project, Set<String> excludedFiles) {
         super(project, excludedFiles);
+        // Initialize the ThreadLocal for the package query.
+        // getTSLanguage() is safe to call here and will provide a thread-specific TSLanguage.
+        this.packageQuery = ThreadLocal.withInitial(() -> {
+            try {
+                return new TSQuery(getTSLanguage(), "(package_clause (package_identifier) @name)");
+            } catch (RuntimeException e) {
+                // Log and rethrow to indicate a critical setup error for this thread's query.
+                log.error("Failed to compile packageQuery for GoAnalyzer ThreadLocal", e);
+                throw e;
+            }
+        });
     }
 
     public GoAnalyzer(IProject project) {
@@ -62,8 +63,8 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected TSLanguage getTSLanguage() {
-        return GO_LANGUAGE;
+    protected TSLanguage createTSLanguage() {
+        return new TreeSitterGo();
     }
 
     @Override
@@ -78,20 +79,35 @@ public final class GoAnalyzer extends TreeSitterAnalyzer {
 
     @Override
     protected String determinePackageName(ProjectFile file, TSNode definitionNode, TSNode rootNode, String src) {
-        if (PACKAGE_QUERY == null) {
-            log.error("GoAnalyzer.PACKAGE_QUERY is null. Cannot determine package name for file {}.", file);
+        TSQuery currentPackageQuery;
+        if (this.packageQuery != null) { // Check if GoAnalyzer constructor has initialized the ThreadLocal field
+            currentPackageQuery = this.packageQuery.get();
+        } else {
+            // This block executes if determinePackageName is called during TreeSitterAnalyzer's constructor,
+            // before this.packageQuery (ThreadLocal) is initialized in GoAnalyzer's constructor.
+            log.trace("GoAnalyzer.determinePackageName: packageQuery ThreadLocal is null, creating temporary query for file {}", file);
+            try {
+                currentPackageQuery = new TSQuery(getTSLanguage(), "(package_clause (package_identifier) @name)");
+            } catch (RuntimeException e) {
+                log.error("Failed to compile temporary package query for GoAnalyzer in determinePackageName for file {}: {}", file, e.getMessage(), e);
+                return ""; // Cannot proceed without the query
+            }
+        }
+
+        if (currentPackageQuery == null) {
+             log.error("GoAnalyzer.packageQuery (currentPackageQuery) is unexpectedly null for file {}. Cannot determine package name.", file);
             return "";
         }
 
         TSQueryCursor cursor = new TSQueryCursor();
         try {
-            cursor.exec(PACKAGE_QUERY, rootNode);
+            cursor.exec(currentPackageQuery, rootNode);
             TSQueryMatch match = new TSQueryMatch(); // Reusable match object
 
             if (cursor.nextMatch(match)) { // Assuming only one package declaration per Go file
                 for (TSQueryCapture capture : match.getCaptures()) {
                     // The query "(package_clause (package_identifier) @name)" captures the package_identifier node with name "name"
-                    if ("name".equals(PACKAGE_QUERY.getCaptureNameForId(capture.getIndex()))) {
+                    if ("name".equals(currentPackageQuery.getCaptureNameForId(capture.getIndex()))) {
                         TSNode nameNode = capture.getNode();
                         if (nameNode != null && !nameNode.isNull()) {
                             return textSlice(nameNode, src).trim();

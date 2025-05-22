@@ -9,7 +9,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 public final class PhpAnalyzer extends TreeSitterAnalyzer {
-    private static final TSLanguage PHP_LANGUAGE = new TreeSitterPhp();
+    // PHP_LANGUAGE field removed, createTSLanguage will provide new instances.
 
     private static final String NODE_TYPE_NAMESPACE_DEFINITION = "namespace_definition";
     private static final String NODE_TYPE_PHP_TAG = "php_tag";
@@ -41,19 +41,21 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
     );
 
     private final Map<ProjectFile, String> fileScopedPackageNames = new ConcurrentHashMap<>();
-    private static TSQuery PHP_NAMESPACE_QUERY;
+    private final ThreadLocal<TSQuery> phpNamespaceQuery;
 
-    static {
-        try {
-            PHP_NAMESPACE_QUERY = new TSQuery(PHP_LANGUAGE, "(namespace_definition name: (namespace_name) @nsname)");
-        } catch (Exception e) { // TSQuery constructor can throw various exceptions including TSException
-            log.error("Failed to compile PHP namespace query", e);
-            PHP_NAMESPACE_QUERY = null;
-        }
-    }
 
     public PhpAnalyzer(IProject project, Set<String> excludedFiles) {
         super(project, excludedFiles);
+        // Initialize the ThreadLocal for the PHP namespace query.
+        // getTSLanguage() is safe to call here.
+        this.phpNamespaceQuery = ThreadLocal.withInitial(() -> {
+            try {
+                return new TSQuery(getTSLanguage(), "(namespace_definition name: (namespace_name) @nsname)");
+            } catch (Exception e) { // TSQuery constructor can throw various exceptions
+                log.error("Failed to compile phpNamespaceQuery for PhpAnalyzer ThreadLocal", e);
+                throw e; // Re-throw to indicate critical setup error for this thread's query
+            }
+        });
     }
 
     public PhpAnalyzer(IProject project) {
@@ -61,8 +63,8 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected TSLanguage getTSLanguage() {
-        return PHP_LANGUAGE;
+    protected TSLanguage createTSLanguage() {
+        return new TreeSitterPhp();
     }
 
     @Override
@@ -115,20 +117,36 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
     }
 
     private String computeFilePackageName(ProjectFile file, TSNode rootNode, String src) {
-        if (PHP_NAMESPACE_QUERY == null) {
-            log.warn("PHP namespace query was not initialized. Cannot determine package name for {}", file);
-            return ""; // Fallback if query compilation failed
+        TSQuery currentPhpNamespaceQuery;
+        if (this.phpNamespaceQuery != null) { // Check if PhpAnalyzer constructor has initialized the ThreadLocal
+            currentPhpNamespaceQuery = this.phpNamespaceQuery.get();
+        } else {
+            // This block executes if computeFilePackageName is called (likely via determinePackageName)
+            // during the super() constructor phase, before this.phpNamespaceQuery (ThreadLocal) is initialized.
+            log.trace("PhpAnalyzer.computeFilePackageName: phpNamespaceQuery ThreadLocal is null, creating temporary query for file {}", file);
+            try {
+                currentPhpNamespaceQuery = new TSQuery(getTSLanguage(), "(namespace_definition name: (namespace_name) @nsname)");
+            } catch (Exception e) {
+                log.error("Failed to compile temporary namespace query for PhpAnalyzer in computeFilePackageName for file {}: {}", file, e.getMessage(), e);
+                return ""; // Cannot proceed without the query
+            }
         }
+
+        if (currentPhpNamespaceQuery == null) {
+            log.warn("PhpAnalyzer.phpNamespaceQuery (currentPhpNamespaceQuery) is unexpectedly null for {}. Cannot determine package name.", file);
+            return ""; // Fallback
+        }
+
         TSQueryCursor cursor = new TSQueryCursor();
-        cursor.exec(PHP_NAMESPACE_QUERY, rootNode);
+        cursor.exec(currentPhpNamespaceQuery, rootNode);
         TSQueryMatch match = new TSQueryMatch(); // Reusable match object
 
         if (cursor.nextMatch(match)) { // Assuming one namespace per file, take the first
             for (TSQueryCapture capture : match.getCaptures()) {
-                // Check capture name using query's method, not hardcoded string if IDs could change
-                if ("nsname".equals(PHP_NAMESPACE_QUERY.getCaptureNameForId(capture.getIndex()))) {
+                // Check capture name using query's method
+                if ("nsname".equals(currentPhpNamespaceQuery.getCaptureNameForId(capture.getIndex()))) {
                     TSNode nameNode = capture.getNode();
-                    if (nameNode != null) { // No need for !nameNode.isNull() if we just textSlice
+                    if (nameNode != null) { 
                         return textSlice(nameNode, src).replace('\\', '.');
                     }
                 }
@@ -159,14 +177,15 @@ public final class PhpAnalyzer extends TreeSitterAnalyzer {
 
         // If this.fileScopedPackageNames is null, it means this method is being called
         // from the superclass (TreeSitterAnalyzer) constructor, before this PhpAnalyzer
-        // instance's fields (like fileScopedPackageNames) have been initialized.
-        // In this specific scenario, we cannot use the instance cache.
-        // We must compute the package name directly.
+        // instance's fields (like fileScopedPackageNames or phpNamespaceQueryInstance) have been initialized.
+        // In this specific scenario, we cannot use the instance cache for fileScopedPackageNames.
+        // We must compute the package name directly. computeFilePackageName will handle query initialization.
         if (this.fileScopedPackageNames == null) {
+            log.trace("PhpAnalyzer.determinePackageName called during super-constructor for file: {}", file);
             return computeFilePackageName(file, rootNode, src);
         }
 
-        // If fileScopedPackageNames is not null, the PhpAnalyzer instance is fully initialized,
+        // If fileScopedPackageNames is not null, the PhpAnalyzer instance is (likely) fully initialized,
         // and we can use the caching mechanism.
         return fileScopedPackageNames.computeIfAbsent(file, f -> computeFilePackageName(f, rootNode, src));
     }
