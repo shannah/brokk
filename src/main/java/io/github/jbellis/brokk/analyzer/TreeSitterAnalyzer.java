@@ -1111,7 +1111,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             // This might be acceptable for abstract methods or interface methods in some languages
             // but renderFunctionDeclaration typically expects it for the placeholder.
             // For now, we'll log and proceed, as some renderers might handle it (e.g. C# method_declaration can lack body for extern).
-            log.debug("Body node (field '{}') not found for function node type '{}', name '{}'. Renderer must handle this.",
+            log.trace("Body node (field '{}') not found for function node type '{}', name '{}'. Renderer must handle this.",
                      profile.bodyFieldName(), funcNode.getType(), functionName);
         }
 
