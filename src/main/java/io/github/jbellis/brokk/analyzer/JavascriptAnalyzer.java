@@ -3,14 +3,19 @@ package io.github.jbellis.brokk.analyzer;
 import io.github.jbellis.brokk.IProject;
 import org.treesitter.TSLanguage;
 import org.treesitter.TSNode;
+import org.treesitter.TSQuery;
+import org.treesitter.TSQueryCursor;
+import org.treesitter.TSQueryMatch;
 import org.treesitter.TreeSitterJavascript;
 
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.Collections;
+import java.util.HashSet;
 import java.util.Set;
 
-public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
+public class JavascriptAnalyzer extends TreeSitterAnalyzer {
     // JS_LANGUAGE field removed, createTSLanguage will provide new instances.
     private static final LanguageSyntaxProfile JS_SYNTAX_PROFILE = new LanguageSyntaxProfile(
             Set.of("class_declaration", "class_expression", "class"),
@@ -98,7 +103,26 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected String renderFunctionDeclaration(TSNode funcNode, String src, String exportPrefix, String asyncPrefix, String functionName, String paramsText, String returnTypeText, String indent) {
         // The 'indent' parameter is now "" when called from buildSignatureString.
-        String tsReturnTypeSuffix = (returnTypeText != null && !returnTypeText.isEmpty()) ? ": " + returnTypeText : "";
+        String inferredReturnType = returnTypeText;
+        ProjectFile currentFile = null; // This ideally would be obtained if needed for extension check
+                                        // However, returnsJsxElement directly queries the node.
+
+        // Attempt to get current file from CU if available through funcNode context
+        // For now, type inference will be based on syntax, not file extension.
+        // If super.getProject().findFile(sourcePath) could be used, it would require sourcePath.
+
+        // Infer JSX.Element return type only for exported functions starting with an uppercase letter
+        // (common React component convention) if no explicit return type is present.
+        boolean isExported = exportPrefix != null && !exportPrefix.trim().isEmpty();
+        boolean isComponentName = !functionName.isEmpty() && Character.isUpperCase(functionName.charAt(0));
+
+        if (isExported && isComponentName && (returnTypeText == null || returnTypeText.isEmpty())) {
+            if (returnsJsxElement(funcNode, src)) {
+                inferredReturnType = "JSX.Element"; 
+            }
+        }
+
+        String tsReturnTypeSuffix = (inferredReturnType != null && !inferredReturnType.isEmpty()) ? ": " + inferredReturnType : "";
         String signature;
         String bodySuffix = " " + bodyPlaceholder();
 
@@ -111,6 +135,106 @@ public final class JavascriptAnalyzer extends TreeSitterAnalyzer {
         }
         return signature + bodySuffix; // Do not prepend indent here
     }
+
+    private boolean isJsxNode(TSNode node) {
+        if (node == null || node.isNull()) return false;
+        String type = node.getType();
+        return "jsx_element".equals(type) || "jsx_self_closing_element".equals(type) || "jsx_fragment".equals(type);
+    }
+
+    private boolean returnsJsxElement(TSNode funcNode, String src) {
+        TSNode bodyNode = funcNode.getChildByFieldName(getLanguageSyntaxProfile().bodyFieldName());
+        if (bodyNode == null || bodyNode.isNull()) {
+            return false;
+        }
+
+        // Case 1: Arrow function with implicit return: () => <div />
+        if ("arrow_function".equals(funcNode.getType())) {
+            if (isJsxNode(bodyNode)) { // bodyNode is the expression itself for implicit return
+                return true;
+            }
+        }
+
+        // Case 2: Explicit return statement: return <div />; or return (<div />);
+        // We need a small query to run over the bodyNode.
+        // Create a specific, local query for this check.
+        // TSLanguage and TSQuery are not AutoCloseable.
+        TSLanguage jsLanguage = getTSLanguage(); // Use thread-local language instance
+        try {
+            // Query for return statements that directly return a JSX element, or one wrapped in parentheses.
+            // The @jsx_return capture is on the JSX node itself.
+            String jsxReturnQueryStr = String.join("\n",
+                "(return_statement ",
+                "  [",
+                "    (jsx_element)",
+                "    (jsx_self_closing_element)",
+                "    (jsx_fragment)",
+                "    (parenthesized_expression (jsx_element))",
+                "    (parenthesized_expression (jsx_self_closing_element))",
+                "    (parenthesized_expression (jsx_fragment))",
+                "  ] @jsx_return",
+                ")"
+            );
+            TSQuery returnJsxQuery = new TSQuery(jsLanguage, jsxReturnQueryStr);
+            TSQueryCursor cursor = new TSQueryCursor();
+            cursor.exec(returnJsxQuery, bodyNode);
+            TSQueryMatch match = new TSQueryMatch(); // Reusable match object
+            if (cursor.nextMatch(match)) {
+                return true; // Found a JSX return
+            }
+        } catch (Exception e) { // Catch broader exceptions if TSQuery construction fails
+            log.error("Error querying function body for JSX return type inference: {}", e.getMessage(), e);
+        }
+        return false;
+    }
+
+    @Override
+    protected List<String> getExtraFunctionComments(TSNode bodyNode, String src, CodeUnit functionCu) {
+        if (bodyNode == null || bodyNode.isNull()) {
+            return List.of();
+        }
+
+        // Only apply for .jsx or .tsx files, or if JSX syntax is clearly present.
+        // For simplicity, let's assume if this logic is active, it's for a JSX context.
+        // A more robust check might involve checking functionCu.source().getFileName().
+
+        Set<String> mutatedIdentifiers = new HashSet<>();
+        String mutationQueryStr = String.join("\n",
+            "(assignment_expression left: (identifier) @mutated.id)",
+            "(assignment_expression left: (member_expression property: (property_identifier) @mutated.id))",
+            "(assignment_expression left: (subscript_expression index: _ @mutated.id))",
+            "(update_expression argument: (identifier) @mutated.id)",
+            "(update_expression argument: (member_expression property: (property_identifier) @mutated.id))"
+        );
+
+        // TSLanguage and TSQuery are not AutoCloseable.
+        TSLanguage jsLanguage = getTSLanguage(); // Use thread-local language instance
+        try {
+            TSQuery mutationQuery = new TSQuery(jsLanguage, mutationQueryStr);
+            TSQueryCursor cursor = new TSQueryCursor();
+            cursor.exec(mutationQuery, bodyNode);
+            TSQueryMatch match = new TSQueryMatch(); // Reusable match object
+            while (cursor.nextMatch(match)) {
+                for (org.treesitter.TSQueryCapture capture : match.getCaptures()) {
+                    String captureName = mutationQuery.getCaptureNameForId(capture.getIndex());
+                    if ("mutated.id".equals(captureName)) {
+                        mutatedIdentifiers.add(textSlice(capture.getNode(), src));
+                    }
+                }
+            }
+        } catch (Exception e) { // Catch broader exceptions if TSQuery construction fails
+            log.error("Error querying function body for mutations: {}", e.getMessage(), e);
+        }
+
+        if (!mutatedIdentifiers.isEmpty()) {
+            List<String> sortedMutations = new ArrayList<>(mutatedIdentifiers);
+            Collections.sort(sortedMutations);
+            return List.of("// mutates: " + String.join(", ", sortedMutations));
+        }
+
+        return List.of();
+    }
+
 
     @Override
     protected String getVisibilityPrefix(TSNode node, String src) {

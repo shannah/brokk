@@ -70,7 +70,9 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
     private record FileAnalysisResult(List<CodeUnit> topLevelCUs,
                                       Map<CodeUnit, List<CodeUnit>> children,
                                       Map<CodeUnit, List<String>> signatures,
-                                      Map<CodeUnit, List<Range>> sourceRanges) {}
+                                      Map<CodeUnit, List<Range>> sourceRanges,
+                                      List<String> importStatements // Added for module-level imports
+                                      ) {}
 
     /* ---------- constructor ---------- */
     protected TreeSitterAnalyzer(IProject project, Set<String> excludedFiles) {
@@ -270,7 +272,14 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         if (topCUs.isEmpty()) return Map.of();
 
         Map<CodeUnit, String> resultSkeletons = new HashMap<>();
-        for (CodeUnit cu : topCUs) {
+        List<CodeUnit> sortedTopCUs = new ArrayList<>(topCUs);
+        // Sort CUs: MODULE CUs (for imports) should ideally come first.
+        // This simple sort puts them first if their fqName sorts before others.
+        // A more explicit sort could check cu.isModule().
+        Collections.sort(sortedTopCUs);
+
+
+        for (CodeUnit cu : sortedTopCUs) {
             resultSkeletons.put(cu, reconstructFullSkeleton(cu));
         }
         log.trace("getSkeletons: file={}, count={}", file, resultSkeletons.size());
@@ -443,6 +452,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         CLASS_LIKE,
         FUNCTION_LIKE,
         FIELD_LIKE,
+        MODULE_STATEMENT, // For individual import/directive lines if treated as CUs
         UNSUPPORTED
     }
 
@@ -538,12 +548,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         Map<CodeUnit, List<String>> localSignatures = new HashMap<>();
         Map<CodeUnit, List<Range>> localSourceRanges = new HashMap<>();
         Map<String, CodeUnit> localCuByFqName = new HashMap<>(); // For parent lookup within the file
+        List<String> localImportStatements = new ArrayList<>(); // For collecting import lines
 
         TSTree tree = localParser.parseString(null, src);
         TSNode rootNode = tree.getRootNode();
         if (rootNode.isNull()) {
             log.warn("Parsing failed or produced null root node for {}", file);
-            return new FileAnalysisResult(List.of(), Map.of(), Map.of(), Map.of());
+            return new FileAnalysisResult(List.of(), Map.of(), Map.of(), Map.of(), List.of());
         }
         // Log root node type
         String rootNodeType = rootNode.getType();
@@ -578,12 +589,24 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 }
             }
 
+            // Handle module-level import statements first if present in this match
+            TSNode importNode = capturedNodes.get("module.import_statement");
+            if (importNode != null && !importNode.isNull()) {
+                String importText = textSlice(importNode, src).strip();
+                if (!importText.isEmpty()) {
+                    localImportStatements.add(importText);
+                }
+                // Continue to next match if this was primarily an import, or process other captures in same match
+                // For now, assume an import statement match won't also be a primary .definition capture.
+                // If it can, then this 'if' should not 'continue' but allow further processing.
+            }
+
             // Process each potential definition found in the match
             for (var captureEntry : capturedNodes.entrySet()) {
                 String captureName = captureEntry.getKey();
                 TSNode definitionNode = captureEntry.getValue();
 
-                if (captureName.endsWith(".definition")) {
+                if (captureName.endsWith(".definition")) { // Ensure we only process definition captures here
                     String simpleName;
                     String expectedNameCapture = captureName.replace(".definition", ".name");
                     TSNode nameNode = capturedNodes.get(expectedNameCapture);
@@ -831,8 +854,38 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             log.trace("Stored/Updated info for CU: {}", cu);
         }
 
-        log.trace("Finished analyzing {}: found {} top-level CUs, {} total signatures, {} parent entries, {} source range entries.",
-                  file, localTopLevelCUs.size(), localSignatures.size(), localChildren.size(), localSourceRanges.size());
+        // After processing all captures, if there were import statements, create a MODULE CodeUnit
+        if (!localImportStatements.isEmpty()) {
+            String modulePackageName = determinePackageName(file, rootNode, rootNode, src); // Use rootNode for general package name
+            // Use a consistent, unique short name for the module CU, e.g., based on filename.
+            // Using "_module_" might lead to collisions in maps if not combined with unique package name.
+            // For fqName uniqueness, source+packageName+"_module_" should be fine.
+            String moduleShortName = "_module_";
+            CodeUnit moduleCU = CodeUnit.module(file, modulePackageName, moduleShortName);
+
+            // Check if a module CU with this FQ name already exists (e.g. from a different file, though unlikely here)
+            // or if this logic somehow runs twice for the same file.
+            if (!localCuByFqName.containsKey(moduleCU.fqName())) {
+                 localTopLevelCUs.add(0, moduleCU); // Add to the beginning for preferred order
+                 localCuByFqName.put(moduleCU.fqName(), moduleCU);
+                 // Join imports into a single multi-line signature string for the module CU
+                 String importBlockSignature = String.join("\n", localImportStatements);
+                 localSignatures.computeIfAbsent(moduleCU, k -> new ArrayList<>()).add(importBlockSignature);
+                 // Add a general range for the module CU (e.g. entire file or first import to last)
+                 // For simplicity, can use the range of the root node or skip detailed range for module CU.
+                 // Here, we'll use the root node's range as a placeholder.
+                 localSourceRanges.computeIfAbsent(moduleCU, k -> new ArrayList<>())
+                                  .add(new Range(rootNode.getStartByte(), rootNode.getEndByte(),
+                                                 rootNode.getStartPoint().getRow(), rootNode.getEndPoint().getRow()));
+                 log.trace("Created MODULE CU for {} with {} import statements.", file, localImportStatements.size());
+            } else {
+                log.warn("Module CU for {} with fqName {} already exists. Skipping duplicate module CU creation.", file, moduleCU.fqName());
+            }
+        }
+
+
+        log.trace("Finished analyzing {}: found {} top-level CUs (includes {} imports), {} total signatures, {} parent entries, {} source range entries.",
+                  file, localTopLevelCUs.size(), localImportStatements.size(), localSignatures.size(), localChildren.size(), localSourceRanges.size());
 
         // Make internal lists unmodifiable before returning in FileAnalysisResult
         Map<CodeUnit, List<CodeUnit>> finalLocalChildren = new HashMap<>();
@@ -842,9 +895,10 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         localSourceRanges.forEach((c, ranges) -> finalLocalSourceRanges.put(c, Collections.unmodifiableList(ranges)));
 
         return new FileAnalysisResult(Collections.unmodifiableList(localTopLevelCUs),
-                                      finalLocalChildren, // Values (lists) are already unmodifiable
-                                      localSignatures,    // Values (strings) are inherently unmodifiable
-                                      finalLocalSourceRanges); // Values (lists) are already unmodifiable
+                                      finalLocalChildren,
+                                      localSignatures,
+                                      finalLocalSourceRanges,
+                                      Collections.unmodifiableList(localImportStatements));
     }
 
 
@@ -894,6 +948,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         // TSNode nodeForContext = definitionNode; // Node for contextual things like overall export (kept as definitionNode for now)
 
         // 1. Handle language-specific structural unwrapping (e.g., export statements, Python's decorated_definition)
+        // For JAVASCRIPT:
         if (project.getAnalyzerLanguage() == Language.JAVASCRIPT && "export_statement".equals(definitionNode.getType())) {
             TSNode declarationInExport = definitionNode.getChildByFieldName("declaration");
             if (declarationInExport != null && !declarationInExport.isNull()) {
@@ -953,10 +1008,21 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                 if (headerLine != null && !headerLine.isBlank()) signatureLines.add(headerLine);
                 break;
             }
-            case FUNCTION_LIKE:
+            case FUNCTION_LIKE: {
+                // Add extra comments determined from the function body
+                CodeUnit tempCuForComments = null; // Ideally, resolve CU here if needed by getExtraFunctionComments
+                                                // For now, pass null, JsxAnalyzer override will handle bodyNode directly.
+                TSNode bodyNodeForComments = nodeForContent.getChildByFieldName(profile.bodyFieldName());
+                List<String> extraComments = getExtraFunctionComments(bodyNodeForComments, src, tempCuForComments);
+                for (String comment : extraComments) {
+                    if (comment != null && !comment.isBlank()) {
+                        signatureLines.add(comment); // Comments are added without indent here; buildSkeletonRecursive adds indent.
+                    }
+                }
                 // Pass determined exportPrefix to buildFunctionSkeleton
                 buildFunctionSkeleton(nodeForContent, Optional.of(simpleName), src, "", signatureLines, exportPrefix);
                 break;
+            }
             case FIELD_LIKE: {
                 String fieldDeclText = textSlice(nodeForContent, src).stripLeading().strip();
                 // If exportPrefix is present and fieldDeclText also starts with it,
@@ -1096,22 +1162,18 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         }
         TSNode bodyNode = funcNode.getChildByFieldName(profile.bodyFieldName());
 
-        // Parameter and body nodes are usually essential for a valid function signature.
-        // Return type can often be omitted.
+        // Parameter node is usually essential for a valid function signature.
         if (paramsNode == null || paramsNode.isNull()) {
-              String funcNodeText = textSlice(funcNode, src);
-              log.warn("Could not find parameters node (field '{}') for function node type '{}', name '{}'. Raw text: {}",
-                       profile.parametersFieldName(), funcNode.getType(), functionName, funcNodeText.lines().findFirst().orElse(""));
-              lines.add(indent + funcNodeText);
-              log.warn("-> Falling back to raw text slice for function skeleton for '{}' due to missing parameters.", functionName);
-              return;
+            // Allow functions without explicit parameter lists if the language syntax supports it (e.g. some JS/Go forms)
+            // but log it if it's unusual for the current node type based on typical expectations.
+            // If paramsText ends up empty, renderFunctionDeclaration should handle it gracefully.
+            log.trace("Parameters node (field '{}') not found for function node type '{}', name '{}'. Assuming empty parameter list.",
+                     profile.parametersFieldName(), funcNode.getType(), functionName);
         }
-        // Body node is essential for some languages to distinguish declaration from call or for placeholder
+
+        // Body node might be missing for abstract/interface methods.
         if (bodyNode == null || bodyNode.isNull()) {
-            // This might be acceptable for abstract methods or interface methods in some languages
-            // but renderFunctionDeclaration typically expects it for the placeholder.
-            // For now, we'll log and proceed, as some renderers might handle it (e.g. C# method_declaration can lack body for extern).
-            log.trace("Body node (field '{}') not found for function node type '{}', name '{}'. Renderer must handle this.",
+            log.trace("Body node (field '{}') not found for function node type '{}', name '{}'. Renderer or placeholder logic must handle this.",
                      profile.bodyFieldName(), funcNode.getType(), functionName);
         }
 
@@ -1124,14 +1186,79 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
             asyncPrefix = textSlice(firstChildOfFunc, src).strip() + " "; // Capture "async " or similar from source
         }
 
-        String paramsText = formatParameterList(paramsNode, src);
-        String returnTypeText = formatReturnType(returnTypeNode, src);
+        String paramsText = formatParameterList(paramsNode, src); // paramsNode can be null, formatParameterList handles it
+        String returnTypeText = formatReturnType(returnTypeNode, src); // returnTypeNode can be null
 
         String functionLine = assembleFunctionSignature(funcNode, src, exportPrefix, asyncPrefix, functionName, paramsText, returnTypeText, indent);
+
+        // Add extra comments (e.g., // mutates: ...) before the function line if they exist
+        // These comments should not have the 'indent' applied here, as assembleFunctionSignature might return a multi-line string already.
+        // The expectation is that buildSignatureString handles the overall structure.
+        // Let's refine: getExtraFunctionComments are added to `lines` before the main signature.
+        // The main `functionLine` from `assembleFunctionSignature` could itself be multi-line if it includes the body placeholder.
+
+        CodeUnit currentCu = null; // Need to retrieve or construct the CU for getExtraFunctionComments
+        // This requires resolving fqName or having CU available here. For now, pass null or skip.
+        // A better approach: pass the CU into buildFunctionSkeleton if available.
+        // Or, getExtraFunctionComments is called from buildSignatureString where CU is known.
+        // For now, cannot call getExtraFunctionComments here without CU.
+        // Let's assume getExtraFunctionComments is called from a place with CU context.
+        //
+        // Re-thinking: buildFunctionSkeleton is called by buildSignatureString.
+        // buildSignatureString has the CU. It can call getExtraFunctionComments and pass to buildFunctionSkeleton.
+        //
+        // Simpler: assembleFunctionSignature itself should integrate these.
+        // So, the List<String> lines passed to buildFunctionSkeleton should be used.
+        //
+        // Current path: buildSignatureString -> buildFunctionSkeleton(lines.add(...))
+        // -> assembleFunctionSignature (returns String) -> lines.add(result of assembleFunctionSignature)
+        //
+        // New path: buildSignatureString -> calls getExtraFunctionComments -> adds to 'signatureLines'
+        //             buildSignatureString -> calls buildFunctionSkeleton(signatureLines.add(...))
+        // This means `buildFunctionSkeleton` adds its line (from `assembleFunctionSignature`) to the list.
+
         if (functionLine != null && !functionLine.isBlank()) {
-            lines.add(functionLine);
+            // Add extra comments first
+            List<String> extraComments = getExtraFunctionComments(bodyNode, src, null /* CU not available here directly */);
+            for (String comment : extraComments) {
+                if (comment != null && !comment.isBlank()) {
+                    lines.add(indent + comment); // Apply indent to comments too
+                }
+            }
+            lines.add(functionLine); // The functionLine itself should handle its internal indent if multi-line from placeholder.
+                                     // assembleFunctionSignature takes 'indent' and should use it if it's building the full line.
+                                     // But `renderFunctionDeclaration`'s indent is now "", so `functionLine` is unindented.
+                                     // So, the indent must be applied here.
+                                     // If functionLine is multi-line (e.g. from a complex `renderFunctionDeclaration`),
+                                     // each line of it needs indent.
+            String[] renderedLines = functionLine.split("\n");
+            for (int i = 0; i < renderedLines.length; i++) {
+                // lines.add(indent + renderedLines[i]); // This would duplicate if lines.add(functionLine) was already done.
+                // This whole section needs to be clear. `assembleFunctionSignature` returns a string.
+                // `buildFunctionSkeleton` is supposed to add to `lines`.
+            }
+            // Correct logic: assembleFunctionSignature returns the core signature string.
+            // buildFunctionSkeleton is responsible for adding it to `lines` with appropriate surrounding elements (like comments).
+
+            // Let `renderFunctionDeclaration` return the full string including body placeholder, unindented.
+            // `buildFunctionSkeleton` then adds it to `lines`.
+            // `getExtraFunctionComments` should be called by `buildSignatureString` and those lines added *before* calling `buildFunctionSkeleton`.
         }
     }
+
+    /**
+     * Retrieves extra comment lines to be added to a function's skeleton, typically before the body.
+     * Example: mutation tracking comments.
+     *
+     * @param bodyNode The TSNode representing the function's body. Can be null.
+     * @param src The source code.
+     * @param functionCu The CodeUnit for the function. Can be null if not available.
+     * @return A list of comment strings, or an empty list if none.
+     */
+    protected List<String> getExtraFunctionComments(TSNode bodyNode, String src, CodeUnit functionCu) {
+        return List.of(); // Default: no extra comments
+    }
+
 
     protected abstract String bodyPlaceholder();
 
