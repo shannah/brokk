@@ -97,14 +97,14 @@ public final class JavascriptAnalyzerTest {
 
         String expectedJsxClassSkeleton = """
         export class JsxClass {
-          function render() ...
+          function render(): JSX.Element ...
         }
         """.stripIndent();
         assertEquals(expectedJsxClassSkeleton.trim(), skelJsx.get(jsxClass).trim(), "JsxClass skeleton mismatch in Hello.jsx.");
 
 
         String expectedExportedArrowFnSkeleton = """
-        export JsxArrowFnComponent({ name }) => ...
+        export JsxArrowFnComponent({ name }): JSX.Element => ...
         """.stripIndent();
         assertEquals(expectedExportedArrowFnSkeleton.trim(), skelJsx.get(jsxArrowFn).trim(), "JsxArrowFnComponent skeleton mismatch");
 
@@ -209,6 +209,87 @@ public final class JavascriptAnalyzerTest {
         Set<CodeUnit> jsxSources = Set.of(jsxClass, plainJsxFunc);
         Set<String> jsxCombinedSymbols = analyzer.getSymbols(jsxSources);
         assertEquals(Set.of("JsxClass", "render", "PlainJsxFunc"), jsxCombinedSymbols, "Symbols mismatch for combined JSX sources.");
+    }
+
+    @Test
+    void testJsxFeaturesSkeletons() {
+        TestProject project = createTestProject("testcode-js", Language.JAVASCRIPT);
+        IAnalyzer ana = new JavascriptAnalyzer(project);
+        assertInstanceOf(JavascriptAnalyzer.class, ana, "Analyzer should be JavascriptAnalyzer");
+        JavascriptAnalyzer analyzer = (JavascriptAnalyzer) ana;
+
+        ProjectFile featuresFile = new ProjectFile(project.getRoot(), "FeaturesTest.jsx");
+        var skeletons = analyzer.getSkeletons(featuresFile);
+        assertFalse(skeletons.isEmpty(), "Skeletons map for FeaturesTest.jsx should not be empty.");
+
+        // Module CU for imports
+        CodeUnit moduleCU = CodeUnit.module(featuresFile, "", "_module_");
+        assertTrue(skeletons.containsKey(moduleCU), "Skeletons map should contain module CU for imports.");
+        String expectedImports = """
+        import React, { useState } from 'react';
+        import { Something, AnotherThing as AT } from './another-module';
+        import * as AllThings from './all-the-things';
+        import DefaultThing from './default-thing';
+        """.stripIndent();
+        assertEquals(expectedImports.trim(), skeletons.get(moduleCU).trim(), "Module imports skeleton mismatch.");
+
+        // MyExportedComponent: JSX inference + mutations
+        CodeUnit mecCU = CodeUnit.fn(featuresFile, "", "MyExportedComponent");
+        assertTrue(skeletons.containsKey(mecCU), "Skeleton for MyExportedComponent missing.");
+        String expectedMecSkeleton = """
+        // mutates: counter, wasUpdated
+        export function MyExportedComponent(props): JSX.Element ...
+        """.stripIndent();
+        assertEquals(expectedMecSkeleton.trim(), skeletons.get(mecCU).trim(), "MyExportedComponent skeleton mismatch.");
+
+        // MyExportedArrowComponent: JSX inference (arrow) + mutation
+        CodeUnit meacCU = CodeUnit.fn(featuresFile, "", "MyExportedArrowComponent");
+        assertTrue(skeletons.containsKey(meacCU), "Skeleton for MyExportedArrowComponent missing.");
+        String expectedMeacSkeleton = """
+        // mutates: localStatus
+        export MyExportedArrowComponent({ id }): JSX.Element => ...
+        """.stripIndent();
+        assertEquals(expectedMeacSkeleton.trim(), skeletons.get(meacCU).trim(), "MyExportedArrowComponent skeleton mismatch.");
+
+        // internalProcessingUtil: No JSX inference (local) + mutation
+        CodeUnit ipuCU = CodeUnit.fn(featuresFile, "", "internalProcessingUtil");
+        assertTrue(skeletons.containsKey(ipuCU), "Skeleton for internalProcessingUtil missing.");
+        String expectedIpuSkeleton = """
+        // mutates: isValid
+        function internalProcessingUtil(dataObject) ...
+        """.stripIndent();
+        assertEquals(expectedIpuSkeleton.trim(), skeletons.get(ipuCU).trim(), "internalProcessingUtil skeleton mismatch.");
+
+        // updateGlobalConfig: No JSX inference (lowercase) + mutation
+        CodeUnit ugcCU = CodeUnit.fn(featuresFile, "", "updateGlobalConfig");
+        assertTrue(skeletons.containsKey(ugcCU), "Skeleton for updateGlobalConfig missing.");
+        String expectedUgcSkeleton = """
+        // mutates: global_config_val
+        export function updateGlobalConfig(newVal) ...
+        """.stripIndent();
+        assertEquals(expectedUgcSkeleton.trim(), skeletons.get(ugcCU).trim(), "updateGlobalConfig skeleton mismatch.");
+
+        // ComponentWithComment: JSX inference (despite comment)
+        CodeUnit cwcCU = CodeUnit.fn(featuresFile, "", "ComponentWithComment");
+        assertTrue(skeletons.containsKey(cwcCU), "Skeleton for ComponentWithComment missing.");
+        String expectedCwcSkeleton = """
+        export function ComponentWithComment(user /*: UserType */): JSX.Element ...
+        """.stripIndent(); // Mutations comment should not appear if no mutations
+        assertEquals(expectedCwcSkeleton.trim(), skeletons.get(cwcCU).trim(), "ComponentWithComment skeleton mismatch.");
+
+        // modifyUser: Mutations, no JSX
+        CodeUnit muCU = CodeUnit.fn(featuresFile, "", "modifyUser");
+        assertTrue(skeletons.containsKey(muCU), "Skeleton for modifyUser missing.");
+        String expectedMuSkeleton = """
+        // mutates: age, name
+        export function modifyUser(user) ...
+        """.stripIndent();
+        assertEquals(expectedMuSkeleton.trim(), skeletons.get(muCU).trim(), "modifyUser skeleton mismatch.");
+
+        // Verify getSkeleton for one of the CUs
+        Optional<String> mecSkeletonOpt = analyzer.getSkeleton(mecCU.fqName());
+        assertTrue(mecSkeletonOpt.isPresent(), "getSkeleton should find MyExportedComponent by FQ name.");
+        assertEquals(expectedMecSkeleton.trim(), mecSkeletonOpt.get().trim(), "getSkeleton for MyExportedComponent FQ name mismatch.");
     }
 
     @Test

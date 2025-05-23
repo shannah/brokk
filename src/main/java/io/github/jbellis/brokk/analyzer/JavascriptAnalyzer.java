@@ -5,6 +5,7 @@ import org.treesitter.TSLanguage;
 import org.treesitter.TSNode;
 import org.treesitter.TSQuery;
 import org.treesitter.TSQueryCursor;
+import org.treesitter.TSQueryException;
 import org.treesitter.TSQueryMatch;
 import org.treesitter.TreeSitterJavascript;
 
@@ -162,28 +163,39 @@ public class JavascriptAnalyzer extends TreeSitterAnalyzer {
         TSLanguage jsLanguage = getTSLanguage(); // Use thread-local language instance
         try {
             // Query for return statements that directly return a JSX element, or one wrapped in parentheses.
+            // Each line is a separate pattern; the query matches if any of them are found.
             // The @jsx_return capture is on the JSX node itself.
+            // Queries for return statements that directly return a JSX element or one wrapped in parentheses.
+            // Note: Removed jsx_fragment queries as they were causing TSQueryErrorField,
+            // potentially due to grammar version or query engine specifics.
+            // Standard jsx_element (e.g. <></> becoming <JsxElement name={null}>) might cover fragments.
             String jsxReturnQueryStr = String.join("\n",
-                "(return_statement ",
-                "  [",
-                "    (jsx_element)",
-                "    (jsx_self_closing_element)",
-                "    (jsx_fragment)",
-                "    (parenthesized_expression (jsx_element))",
-                "    (parenthesized_expression (jsx_self_closing_element))",
-                "    (parenthesized_expression (jsx_fragment))",
-                "  ] @jsx_return",
-                ")"
+                "(return_statement (jsx_element) @jsx_return)",
+                "(return_statement (jsx_self_closing_element) @jsx_return)",
+                "(return_statement (parenthesized_expression (jsx_element)) @jsx_return)",
+                "(return_statement (parenthesized_expression (jsx_self_closing_element)) @jsx_return)"
             );
+            // TSQuery and TSLanguage are not AutoCloseable by default in the used library version.
+            // Ensure cursor is handled if it were AutoCloseable.
             TSQuery returnJsxQuery = new TSQuery(jsLanguage, jsxReturnQueryStr);
             TSQueryCursor cursor = new TSQueryCursor();
-            cursor.exec(returnJsxQuery, bodyNode);
-            TSQueryMatch match = new TSQueryMatch(); // Reusable match object
-            if (cursor.nextMatch(match)) {
-                return true; // Found a JSX return
+            try {
+                cursor.exec(returnJsxQuery, bodyNode);
+                TSQueryMatch match = new TSQueryMatch(); // Reusable match object
+                if (cursor.nextMatch(match)) {
+                    return true; // Found a JSX return
+                }
+            } finally {
+                // Manually close cursor if underlying native resource needs it,
+                // though the current TreeSitter binding might not require explicit closing for TSQueryCursor.
+                // For safety and future-proofing, if a close method were available, it would be called here.
+                // cursor.close(); // Example if TSQueryCursor had a close method
             }
-        } catch (Exception e) { // Catch broader exceptions if TSQuery construction fails
-            log.error("Error querying function body for JSX return type inference: {}", e.getMessage(), e);
+        } catch (TSQueryException e) {
+            // Log specific query exceptions, which usually indicate a problem with the query string itself.
+            log.error("Invalid TSQuery for JSX return type inference: {}", e.getMessage(), e);
+        } catch (Exception e) { // Catch other broader exceptions during query execution
+            log.error("Error during JSX return type inference query execution: {}", e.getMessage(), e);
         }
         return false;
     }

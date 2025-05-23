@@ -1218,31 +1218,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
         // This means `buildFunctionSkeleton` adds its line (from `assembleFunctionSignature`) to the list.
 
         if (functionLine != null && !functionLine.isBlank()) {
-            // Add extra comments first
-            List<String> extraComments = getExtraFunctionComments(bodyNode, src, null /* CU not available here directly */);
-            for (String comment : extraComments) {
-                if (comment != null && !comment.isBlank()) {
-                    lines.add(indent + comment); // Apply indent to comments too
-                }
-            }
-            lines.add(functionLine); // The functionLine itself should handle its internal indent if multi-line from placeholder.
-                                     // assembleFunctionSignature takes 'indent' and should use it if it's building the full line.
-                                     // But `renderFunctionDeclaration`'s indent is now "", so `functionLine` is unindented.
-                                     // So, the indent must be applied here.
-                                     // If functionLine is multi-line (e.g. from a complex `renderFunctionDeclaration`),
-                                     // each line of it needs indent.
-            String[] renderedLines = functionLine.split("\n");
-            for (int i = 0; i < renderedLines.length; i++) {
-                // lines.add(indent + renderedLines[i]); // This would duplicate if lines.add(functionLine) was already done.
-                // This whole section needs to be clear. `assembleFunctionSignature` returns a string.
-                // `buildFunctionSkeleton` is supposed to add to `lines`.
-            }
-            // Correct logic: assembleFunctionSignature returns the core signature string.
-            // buildFunctionSkeleton is responsible for adding it to `lines` with appropriate surrounding elements (like comments).
-
-            // Let `renderFunctionDeclaration` return the full string including body placeholder, unindented.
-            // `buildFunctionSkeleton` then adds it to `lines`.
-            // `getExtraFunctionComments` should be called by `buildSignatureString` and those lines added *before* calling `buildFunctionSkeleton`.
+            // Extra comments are now added by buildSignatureString directly to the lines list.
+            // This method just adds the main functionLine.
+            // The `indent` parameter for this method is the base indent for the CU, and
+            // `functionLine` is expected to be a single conceptual signature line (possibly multi-line text from placeholder).
+            // `reconstructSkeletonRecursive` handles the overall indent for the CU.
+            // `assembleFunctionSignature` is responsible for the internal structure of `functionLine`.
+            lines.add(functionLine);
         }
     }
 
