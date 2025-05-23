@@ -13,7 +13,7 @@ import java.util.Set;
 public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     protected static final Logger log = LoggerFactory.getLogger(CSharpAnalyzer.class);
 
-    private static final TSLanguage CS_LANGUAGE = new TreeSitterCSharp();
+    // CS_LANGUAGE field removed, createTSLanguage will provide new instances.
     private static final LanguageSyntaxProfile CS_SYNTAX_PROFILE = new LanguageSyntaxProfile(
             Set.of("class_declaration", "interface_declaration", "struct_declaration", "record_declaration", "record_struct_declaration"),
             Set.of("method_declaration", "constructor_declaration", "local_function_statement"),
@@ -45,9 +45,8 @@ public final class CSharpAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected TSLanguage getTSLanguage() {
-        log.trace("CSharpAnalyzer: getTSLanguage() returning cached: {}", CS_LANGUAGE.getClass().getName());
-        return CS_LANGUAGE;
+    protected TSLanguage createTSLanguage() {
+        return new TreeSitterCSharp();
     }
 
     @Override

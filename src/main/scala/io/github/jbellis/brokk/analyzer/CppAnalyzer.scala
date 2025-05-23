@@ -155,7 +155,7 @@ class CppAnalyzer private(sourcePath: Path, cpgInit: Cpg)
   override protected def methodsFromName(resolvedMethodName: String): List[Method] = {
     val escapedInitial = Regex.quote(resolvedMethodName)
     var methods = cpg.method.fullName(s"$escapedInitial:.*").l
-    logger.debug(s"methodsFromName for '$resolvedMethodName': initial query for '$escapedInitial:.*' found ${methods.size} methods.")
+    logger.trace(s"methodsFromName for '$resolvedMethodName': initial query for '$escapedInitial:.*' found ${methods.size} methods.")
 
     // Attempt 1: Replace last dot with colon (common for global/static functions in CPG)
     // e.g., test input "file_cpp.func" -> CPG "file.cpp:func"
