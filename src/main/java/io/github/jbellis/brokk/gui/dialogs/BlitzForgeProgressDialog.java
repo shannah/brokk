@@ -333,144 +333,149 @@ public class BlitzForgeProgressDialog extends JDialog {
             @Override
             protected TaskResult doInBackground() {
                 var contextManager = chrome.getContextManager();
-                var service = contextManager.getService();
-                var model = requireNonNull(service.getModel(selectedFavorite.modelName(), selectedFavorite.reasoning()));
-
-                @Nullable Integer maxConcurrentRequests = service.getMaxConcurrentRequests(model);
-                @Nullable Integer tokensPerMinute    = service.getTokensPerMinute(model);
-
-                final TokenRateLimiter rateLimiter;
-                int poolSize;
-                if (maxConcurrentRequests != null) {
-                    poolSize = Math.min(maxConcurrentRequests, Math.max(1, filesToProcess.size()));
-                    rateLimiter = null;
-                } else if (tokensPerMinute != null) {
-                    rateLimiter = new TokenRateLimiter(tokensPerMinute);
-                    poolSize = 100;
-                } else {
-                    throw new IllegalStateException("Neither max_concurrent_requests nor tokens_per_minute defined for model "
-                                                    + service.nameOf(model));
-                }
-
-                executorService = Executors.newFixedThreadPool(poolSize);
-                var frozenContext = contextManager.topContext();
-
-                // ---- 1.  Sort by on-disk size, smallest first ----
-                var sortedFiles = filesToProcess.stream()
-                                                .sorted(Comparator.comparingLong(BlitzForgeProgressDialog::fileSize))
-                                                .toList();
-
-                // If there are files to process, start by preloading the prefix cache
-                if (!sortedFiles.isEmpty()) {
-                    SwingUtilities.invokeLater(() -> progressBar.setString("Preloading prefix cache..."));
-
-                    // Process the very first file synchronously to warm up caches
-                    if (!isCancelled()) {
-                        var firstResult = processSingleFile(sortedFiles.getFirst(),
-                                                            contextManager,
-                                                            model,
-                                                            instructions,
-                                                            includeWorkspace,
-                                                            relatedK,
-                                                            perFileCommandTemplate,
-                                                            frozenContext,
-                                                            contextFilter,
-                                                            rateLimiter);
-                        processedFileCount.set(1); // Mark the first file as processed
-                        // Publish result for the first file
-                        publish(new ProgressData(processedFileCount.get(), firstResult.file().toString(), firstResult.errorMessage()));
-                    }
-
-                    // Early exit if user cancelled during first file processing
-                    if (isCancelled()) {
-                        executorService.shutdownNow();
-                        return new TaskResult(contextManager, instructions,
-                                              List.of(), new HashSet<>(filesToProcess),
-                                              new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED, "User cancelled operation."));
-                    }
-                }
-
-                // Submit the remaining files for concurrent processing
-                CompletionService<FileProcessingResult> completionService = new ExecutorCompletionService<>(executorService);
-                // Skip the first file as it was processed synchronously
-                sortedFiles.stream().skip(1).forEach(file -> {
-                    if (!isCancelled()) {
-                        completionService.submit(() -> processSingleFile(file,
-                                                                         contextManager,
-                                                                         model,
-                                                                         instructions,
-                                                                         includeWorkspace,
-                                                                         relatedK,
-                                                                         perFileCommandTemplate,
-                                                                         frozenContext,
-                                                                         contextFilter,
-                                                                         rateLimiter));
-                    }
-                });
-                executorService.shutdown(); // No new tasks will be submitted
-
-                List<FileProcessingResult> results = new ArrayList<>();
-                // Collect results for remaining files. Loop totalFiles - 1 times since one file was processed upfront.
-                // If filesToProcess is 0 or 1, this loop won't run.
-                for (int i = 0; i < filesToProcess.size() - 1; i++) {
-                    if (isCancelled()) {
-                        break; // Exit loop if worker is cancelled
-                    }
-                    try {
-                        Future<FileProcessingResult> future = completionService.take(); // Blocks until a task completes
-                        FileProcessingResult result = future.get(); // Retrieves result or re-throws exception
-                        results.add(result);
-                        // Increment count and publish progress for the completed file
-                        publish(new ProgressData(processedFileCount.incrementAndGet(), result.file().toString(), result.errorMessage()));
-                    } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt(); // Restore interrupt status
-                        break; // Exit loop due to interruption
-                    } catch (ExecutionException e) {
-                        // Log unexpected errors from file processing tasks, and increment count to show progress
-                        logger.error("Error processing file", e.getCause());
-                        processedFileCount.incrementAndGet();
-                    }
-                }
-
-                // Wait for any remaining tasks to complete if cancelled
+                var analyzerWrapper = contextManager.getAnalyzerWrapper();
+                analyzerWrapper.pause();
                 try {
-                    while (!executorService.awaitTermination(1, TimeUnit.SECONDS)) {
+                    var service = contextManager.getService();
+                    var model = requireNonNull(service.getModel(selectedFavorite.modelName(), selectedFavorite.reasoning()));
+
+                    @Nullable Integer maxConcurrentRequests = service.getMaxConcurrentRequests(model);
+                    @Nullable Integer tokensPerMinute = service.getTokensPerMinute(model);
+
+                    final TokenRateLimiter rateLimiter;
+                    int poolSize;
+                    if (maxConcurrentRequests != null) {
+                        poolSize = Math.min(maxConcurrentRequests, Math.max(1, filesToProcess.size()));
+                        rateLimiter = null;
+                    } else if (tokensPerMinute != null) {
+                        rateLimiter = new TokenRateLimiter(tokensPerMinute);
+                        poolSize = 100;
+                    } else {
+                        throw new IllegalStateException("Neither max_concurrent_requests nor tokens_per_minute defined for model "
+                                                        + service.nameOf(model));
+                    }
+
+                    executorService = Executors.newFixedThreadPool(poolSize);
+                    var frozenContext = contextManager.topContext();
+
+                    // ---- 1.  Sort by on-disk size, smallest first ----
+                    var sortedFiles = filesToProcess.stream()
+                            .sorted(Comparator.comparingLong(BlitzForgeProgressDialog::fileSize))
+                            .toList();
+
+                    // If there are files to process, start by preloading the prefix cache
+                    if (!sortedFiles.isEmpty()) {
+                        SwingUtilities.invokeLater(() -> progressBar.setString("Preloading prefix cache..."));
+
+                        // Process the very first file synchronously to warm up caches
+                        if (!isCancelled()) {
+                            var firstResult = processSingleFile(sortedFiles.getFirst(),
+                                                                contextManager,
+                                                                model,
+                                                                instructions,
+                                                                includeWorkspace,
+                                                                relatedK,
+                                                                perFileCommandTemplate,
+                                                                frozenContext,
+                                                                contextFilter,
+                                                                rateLimiter);
+                            processedFileCount.set(1); // Mark the first file as processed
+                            // Publish result for the first file
+                            publish(new ProgressData(processedFileCount.get(), firstResult.file().toString(), firstResult.errorMessage()));
+                        }
+
+                        // Early exit if user cancelled during first file processing
                         if (isCancelled()) {
                             executorService.shutdownNow();
-                            break;
+                            return new TaskResult(contextManager, instructions,
+                                                  List.of(), new HashSet<>(filesToProcess),
+                                                  new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED, "User cancelled operation."));
                         }
                     }
-                } catch (InterruptedException e) {
-                    executorService.shutdownNow();
-                    Thread.currentThread().interrupt();
+
+                    // Submit the remaining files for concurrent processing
+                    CompletionService<FileProcessingResult> completionService = new ExecutorCompletionService<>(executorService);
+                    // Skip the first file as it was processed synchronously
+                    sortedFiles.stream().skip(1).forEach(file -> {
+                        if (!isCancelled()) {
+                            completionService.submit(() -> processSingleFile(file,
+                                                                             contextManager,
+                                                                             model,
+                                                                             instructions,
+                                                                             includeWorkspace,
+                                                                             relatedK,
+                                                                             perFileCommandTemplate,
+                                                                             frozenContext,
+                                                                             contextFilter,
+                                                                             rateLimiter));
+                        }
+                    });
+                    executorService.shutdown(); // No new tasks will be submitted
+
+                    List<FileProcessingResult> results = new ArrayList<>();
+                    // Collect results for remaining files. Loop totalFiles - 1 times since one file was processed upfront.
+                    // If filesToProcess is 0 or 1, this loop won't run.
+                    for (int i = 0; i < filesToProcess.size() - 1; i++) {
+                        if (isCancelled()) {
+                            break; // Exit loop if worker is cancelled
+                        }
+                        try {
+                            Future<FileProcessingResult> future = completionService.take(); // Blocks until a task completes
+                            FileProcessingResult result = future.get(); // Retrieves result or re-throws exception
+                            results.add(result);
+                            // Increment count and publish progress for the completed file
+                            publish(new ProgressData(processedFileCount.incrementAndGet(), result.file().toString(), result.errorMessage()));
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt(); // Restore interrupt status
+                            break; // Exit loop due to interruption
+                        } catch (ExecutionException e) {
+                            // Log unexpected errors from file processing tasks, and increment count to show progress
+                            logger.error("Error processing file", e.getCause());
+                            processedFileCount.incrementAndGet();
+                        }
+                    }
+
+                    // Wait for any remaining tasks to complete if cancelled
+                    try {
+                        while (!executorService.awaitTermination(1, TimeUnit.SECONDS)) {
+                            if (isCancelled()) {
+                                executorService.shutdownNow();
+                                break;
+                            }
+                        }
+                    } catch (InterruptedException e) {
+                        executorService.shutdownNow();
+                        Thread.currentThread().interrupt();
+                    }
+
+                    var uiMessageText = results.stream()
+                            .filter(r -> !r.llmOutput().isBlank())
+                            .map(r -> "## " + r.file() + "\n" + r.llmOutput() + "\n\n")
+                            .collect(Collectors.joining());
+
+                    var uiMessages = !uiMessageText.isEmpty()
+                                     ? List.of(new UserMessage(instructions),
+                                               CodePrompts.redactAiMessage(new AiMessage(uiMessageText), EditBlockConflictsParser.instance).orElse(new AiMessage("")))
+                                     : List.<ChatMessage>of();
+
+                    List<String> failures = results.stream()
+                            .filter(r -> r.errorMessage() != null)
+                            .map(r -> r.file() + ": " + r.errorMessage())
+                            .toList();
+
+                    TaskResult.StopDetails stopDetails;
+                    if (failures.isEmpty() && !isCancelled()) {
+                        stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
+                    } else if (isCancelled()) {
+                        stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED, "User cancelled operation.");
+                    } else {
+                        stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.TOOL_ERROR, String.join("\n", failures));
+                    }
+
+                    return new TaskResult(contextManager, instructions, uiMessages, new HashSet<>(filesToProcess), stopDetails);
+                } finally {
+                    analyzerWrapper.resume();
                 }
-
-                var uiMessageText = results.stream()
-                                           .filter(r -> !r.llmOutput().isBlank())
-                                           .map(r -> "## " + r.file() + "\n" + r.llmOutput() + "\n\n")
-                                           .collect(Collectors.joining());
-
-                var uiMessages = !uiMessageText.isEmpty()
-                                 ? List.of(new UserMessage(instructions),
-                                           CodePrompts.redactAiMessage(new AiMessage(uiMessageText), EditBlockConflictsParser.instance).orElse(new AiMessage("")))
-                                 : List.<ChatMessage>of();
-
-                List<String> failures = results.stream()
-                                               .filter(r -> r.errorMessage() != null)
-                                               .map(r -> r.file() + ": " + r.errorMessage())
-                                               .toList();
-
-                TaskResult.StopDetails stopDetails;
-                if (failures.isEmpty() && !isCancelled()) {
-                    stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
-                } else if (isCancelled()) {
-                    stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED, "User cancelled operation.");
-                }
-                else {
-                    stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.TOOL_ERROR, String.join("\n", failures));
-                }
-
-                return new TaskResult(contextManager, instructions, uiMessages, new HashSet<>(filesToProcess), stopDetails);
             }
 
             @Override
