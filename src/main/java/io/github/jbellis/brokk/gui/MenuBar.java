@@ -365,6 +365,12 @@ public class MenuBar {
         });
         helpMenu.add(sendFeedbackItem);
 
+        var joinDiscordItem = new JMenuItem("Join Discord");
+        joinDiscordItem.addActionListener(e -> {
+            io.github.jbellis.brokk.util.Environment.openInBrowser("https://discord.gg/QjhQDK8kAj", chrome.getFrame());
+        });
+        helpMenu.add(joinDiscordItem);
+
         var aboutItem = new JMenuItem("About");
         aboutItem.addActionListener(e -> {
             ImageIcon icon = null;
