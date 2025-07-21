@@ -218,13 +218,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
             @Override
             public void onRepoChange() {
-                project.getRepo().refresh();
+                project.getRepo().invalidateCaches();
                 io.updateGitRepo();
             }
 
             @Override
             public void onTrackedFileChange() {
-                project.getRepo().refresh();
+                project.getRepo().invalidateCaches();
                 var fr = liveContext.freezeAndCleanup();
                 // we can't rely on pushContext's change detection because here we care about the contents and not the fragment identity
                 if (!topContext().workspaceContentEquals(fr.frozenContext())) {
@@ -778,7 +778,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public void requestRebuild()
     {
-        project.getRepo().refresh();
+        project.getRepo().invalidateCaches();
         analyzerWrapper.requestRebuild();
     }
 
