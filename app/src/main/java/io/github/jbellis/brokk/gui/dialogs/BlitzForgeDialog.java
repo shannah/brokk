@@ -465,11 +465,11 @@ public class BlitzForgeDialog extends JDialog {
 
         var infoIcon = new JLabel(smallInfoIcon);
         infoIcon.setToolTipText("""
-                                <html>
-                                BlitzForge applies your instructions independently to multiple files in parallel, with optional
-                                post-processing by a single agent.
-                                </html>
-                                """);
+                                        <html>
+                                        BlitzForge applies your instructions independently to multiple files in parallel, with optional
+                                        post-processing by a single agent.
+                                        </html>
+                                        """);
         instructionsPanel.add(infoIcon);
         parallelProcessingPanel.add(instructionsPanel, paraGBC);
 
@@ -537,8 +537,7 @@ public class BlitzForgeDialog extends JDialog {
                                                           Object value,
                                                           int index,
                                                           boolean isSelected,
-                                                          boolean cellHasFocus)
-            {
+                                                          boolean cellHasFocus) {
                 // Use default renderer for basic background/selection handling
                 super.getListCellRendererComponent(list, "", index, isSelected, cellHasFocus);
                 var fav = (Service.FavoriteModel) value;
@@ -613,12 +612,12 @@ public class BlitzForgeDialog extends JDialog {
         paraGBC.anchor = GridBagConstraints.WEST;
         var perFileIconCtx = new JLabel(smallInfoIcon);
         perFileIconCtx.setToolTipText("""
-                                      <html>
-                                      Command to run for each file.<br>
-                                      Use {{filepath}} for the file path. Blank for no command.
-                                      <br>The output will be sent to the LLM with each target file.
-                                      </html>
-                                      """);
+                                              <html>
+                                              Command to run for each file.<br>
+                                              Use {{filepath}} for the file path. Blank for no command.
+                                              <br>The output will be sent to the LLM with each target file.
+                                              </html>
+                                              """);
         parallelProcessingPanel.add(perFileIconCtx, paraGBC);
         // Per-file command input on the same row, spanning the remaining column(s)
         paraGBC.gridx = 2;
@@ -1003,8 +1002,7 @@ public class BlitzForgeDialog extends JDialog {
      * Display a dropdown menu containing recent BlitzForge instructions.
      * Selecting an entry populates the Instructions and Post-processing fields.
      */
-    private void showBlitzHistoryMenu(Component invoker)
-    {
+    private void showBlitzHistoryMenu(Component invoker) {
         var historyEntries = chrome.getProject().loadBlitzHistory();
         JPopupMenu popup = new JPopupMenu();
 
@@ -1461,22 +1459,19 @@ public class BlitzForgeDialog extends JDialog {
         setVisible(false); // Hide this dialog
 
         // Show progress dialog
-        var progressDialog = new BlitzForgeProgressDialog(
-                (Frame) getOwner(),
-                instructions,
-                action,
-                selectedFavorite,
-                filesToProcessList,
-                chrome,
-                relatedK,
-                perFileCommandTemplate,
-                includeWorkspace,
-                runOption,
-                contextFilter,
-                parallelOutputMode,
-                buildFirst,
-                postProcessingInstructions
-        );
+        var progressDialog = new BlitzForgeProgressDialog(instructions,
+                                                          action,
+                                                          selectedFavorite,
+                                                          filesToProcessList,
+                                                          chrome,
+                                                          relatedK,
+                                                          perFileCommandTemplate,
+                                                          includeWorkspace,
+                                                          runOption,
+                                                          contextFilter,
+                                                          parallelOutputMode,
+                                                          buildFirst,
+                                                          postProcessingInstructions);
         progressDialog.setVisible(true);
     }
 }
