@@ -98,7 +98,7 @@ public class HybridFileComparison {
                 mainPanel.cachePanel(fileIndex, panel);
 
                 // Display immediately
-                var resizedIcon = FileComparisonHelper.getScaledIcon();
+                var resizedIcon = FileComparisonHelper.getCompareIcon();
                 mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
                 mainPanel.getTabbedPane().setSelectedComponent(panel);
                 panel.applyTheme(theme);
@@ -122,35 +122,63 @@ public class HybridFileComparison {
 
     /**
      * Asynchronous diff creation for large files - prevents UI blocking.
+     * Uses simple background thread instead of over-engineered SwingWorker.
      */
     private static void createAsyncDiffPanel(BufferSource leftSource, BufferSource rightSource,
                                            BrokkDiffPanel mainPanel, GuiTheme theme,
                                            ContextManager contextManager, boolean isMultipleCommitsContext,
                                            int fileIndex, long startTime) {
 
-        // Use the existing FileComparison for large files
-        var fileComparison = new FileComparison.FileComparisonBuilder(mainPanel, theme, contextManager)
-                .withSources(leftSource, rightSource)
-                .setMultipleCommitsContext(isMultipleCommitsContext)
-                .build();
+        var taskDescription = "Computing diff: %s".formatted(mainPanel.fileComparisons.get(fileIndex).getDisplayName());
+        logger.debug("Starting async diff computation for large file: {} vs {}",
+                    leftSource.title(), rightSource.title());
 
-        fileComparison.addPropertyChangeListener(evt -> {
-            if ("state".equals(evt.getPropertyName()) && SwingWorker.StateValue.DONE.equals(evt.getNewValue())) {
-                // Performance monitoring for async operations
-                long elapsedTime = System.currentTimeMillis() - startTime;
-                totalAsyncTime.addAndGet(elapsedTime);
+        contextManager.submitBackgroundTask(taskDescription, () -> {
+            try {
+                // Create diff node and compute diff in background
+                var diffNode = FileComparisonHelper.createDiffNode(leftSource, rightSource, contextManager, isMultipleCommitsContext);
 
-                if (elapsedTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS * 5) { // 5x threshold for async
-                    logger.warn("Slow async diff creation: {}ms", elapsedTime);
-                } else {
-                    logger.debug("Async diff panel created successfully in {}ms", elapsedTime);
-                }
+                logger.debug("Computing diff for large file in background thread");
+                diffNode.diff(); // This is the potentially slow operation for large files
 
-                mainPanel.handleFileComparisonResult(evt, fileIndex);
+                // Create panel on EDT after diff computation is complete
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        var panel = new BufferDiffPanel(mainPanel, theme);
+                        panel.setDiffNode(diffNode);
+
+                        // Cache the panel
+                        mainPanel.cachePanel(fileIndex, panel);
+
+                        // Display panel
+                        var resizedIcon = FileComparisonHelper.getCompareIcon();
+                        mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
+                        mainPanel.getTabbedPane().setSelectedComponent(panel);
+                        panel.applyTheme(theme);
+
+                        // Performance monitoring
+                        long elapsedTime = System.currentTimeMillis() - startTime;
+                        totalAsyncTime.addAndGet(elapsedTime);
+
+                        if (elapsedTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS * 5) {
+                            logger.warn("Slow async diff creation: {}ms", elapsedTime);
+                        } else {
+                            logger.debug("Async diff panel created successfully in {}ms", elapsedTime);
+                        }
+
+                    } catch (Exception ex) {
+                        logger.error("Error creating async diff panel on EDT", ex);
+                        mainPanel.getConsoleIO().toolError("Error creating diff: " + ex.getMessage(), "Error");
+                    }
+                });
+
+            } catch (Exception ex) {
+                logger.error("Error computing diff in background thread", ex);
+                SwingUtilities.invokeLater(() -> {
+                    mainPanel.getConsoleIO().toolError("Error computing diff: " + ex.getMessage(), "Error");
+                });
             }
         });
-
-        fileComparison.execute();
     }
 
     /**

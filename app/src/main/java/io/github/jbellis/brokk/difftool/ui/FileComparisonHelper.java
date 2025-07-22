@@ -10,11 +10,7 @@ import io.github.jbellis.brokk.git.IGitRepo;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.Nullable;
 
-import javax.imageio.ImageIO;
 import javax.swing.*;
-import java.awt.*;
-import java.awt.image.BufferedImage;
-import java.io.IOException;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -104,16 +100,14 @@ public class FileComparisonHelper {
     }
     
     /**
-     * Gets the scaled compare icon for tabs.
-     * Extracted from FileComparison for reuse.
+     * Gets the compare icon for tabs.
+     * Uses the standard resource loading pattern consistent with other UI components.
      */
     @Nullable
-    public static ImageIcon getScaledIcon() {
+    public static ImageIcon getCompareIcon() {
         try {
-            BufferedImage originalImage = ImageIO.read(Objects.requireNonNull(FileComparison.class.getResource("/images/compare.png")));
-            Image scaledImage = originalImage.getScaledInstance(24, 24, Image.SCALE_SMOOTH);
-            return new ImageIcon(scaledImage);
-        } catch (IOException | NullPointerException e) {
+            return new ImageIcon(Objects.requireNonNull(FileComparisonHelper.class.getResource("/images/compare.png")));
+        } catch (NullPointerException e) {
             return null;
         }
     }

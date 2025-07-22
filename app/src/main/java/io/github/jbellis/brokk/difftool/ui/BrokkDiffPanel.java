@@ -35,11 +35,9 @@ import java.util.Arrays;
 import java.util.Collections;
 import java.util.List;
 import java.util.Map;
-import java.util.concurrent.ExecutionException;
 
 public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(BrokkDiffPanel.class);
-    private static final String STATE_PROPERTY = "state";
     private final ContextManager contextManager;
     private final JTabbedPane tabbedPane;
     private boolean started;
@@ -48,7 +46,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private final JCheckBox showBlankLineDiffsCheckBox = new JCheckBox("Show blank-lines");
 
     // All file comparisons with lazy loading cache
-    private final List<FileComparisonInfo> fileComparisons;
+    final List<FileComparisonInfo> fileComparisons;
     private int currentFileIndex = 0;
     private final boolean isMultipleCommitsContext;
 
@@ -524,23 +522,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         refreshUI();
     }
 
-    private void showErrorForFile(int fileIndex, String errorMessage) {
-        assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
-
-        var compInfo = fileComparisons.get(fileIndex);
-        logger.error("Error loading file: {} - {}", compInfo.getDisplayName(), errorMessage);
-
-        // Show error dialog
-        contextManager.getIo().toolError(
-            "Error loading file '" + compInfo.getDisplayName() + "':\n" + errorMessage,
-            "File Load Error"
-        );
-
-        // Remove loading indicator
-        remove(loadingLabel);
-        revalidate();
-        repaint();
-    }
 
     @Nullable
     public AbstractContentPanel getCurrentContentPanel() {
@@ -629,46 +610,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         return fileComparisons.size() > 1 && currentFileIndex > 0;
     }
 
-    public void handleFileComparisonResult(java.beans.PropertyChangeEvent evt, int fileIndex) {
-        if (STATE_PROPERTY.equals(evt.getPropertyName()) && SwingWorker.StateValue.DONE.equals(evt.getNewValue())) {
-            var compInfo = fileComparisons.get(fileIndex);
-            try {
-                String result = (String) ((SwingWorker<?, ?>) evt.getSource()).get(); // Explicit type for clarity with cast
-                if (result == null) {
-                    var comp = (FileComparison) evt.getSource();
-                    var loadedPanel = comp.getPanel();
-
-                    // Cache the loaded panel
-                    if (loadedPanel != null) {
-                        cachePanel(fileIndex, loadedPanel);
-                        invokeLater(() -> {
-                            logger.debug("File loaded successfully and cached: {}", compInfo.getDisplayName());
-                            displayCachedFile(fileIndex, loadedPanel);
-                        });
-                    } else {
-                        // This case should ideally be handled by FileComparison returning an error string.
-                        // However, if getPanel() can return null without an error string, handle it.
-                        var errorMsg = "Failed to load panel for " + compInfo.getDisplayName() + " (panel is null).";
-                        logger.error(errorMsg);
-                        panelCache.removeReserved(fileIndex); // Remove reserved entry
-                        invokeLater(() -> showErrorForFile(fileIndex, errorMsg));
-                    }
-                } else {
-                    panelCache.removeReserved(fileIndex); // Remove reserved entry on error
-                    invokeLater(() -> {
-                        logger.error("Failed to load file: {} - {}", compInfo.getDisplayName(), result);
-                        showErrorForFile(fileIndex, result);
-                    });
-                }
-            } catch (InterruptedException | ExecutionException e) {
-                panelCache.removeReserved(fileIndex); // Remove reserved entry on exception
-                invokeLater(() -> {
-                    logger.error("Exception loading file: {}", compInfo.getDisplayName(), e);
-                    showErrorForFile(fileIndex, Objects.toString(e.getMessage(), "Unknown error"));
-                });
-            }
-        }
-    }
 
     @Nullable
     private String detectFilename(BufferSource leftSource, BufferSource rightSource) {
