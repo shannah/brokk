@@ -491,13 +491,31 @@ public class ArchitectAgent {
     public TaskResult execute() throws ExecutionException, InterruptedException {
         io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
-        // Check if ContextAgent is enabled in options before using it
+        // Kick off with Context Agent if it's enabled
         if (options.includeContextAgent()) {
-            var contextAgent = new ContextAgent(contextManager,
-                                                contextManager.getSearchModel(),
-                                                goal,
-                                                true);
-            contextAgent.execute();
+            var contextAgent = new ContextAgent(contextManager, contextManager.getSearchModel(), goal, true);
+            io.llmOutput("\nExamining initial workspace", ChatMessageType.CUSTOM);
+
+            // Execute without a specific limit on recommendations, allowing skip-pruning
+            var recommendationResult = contextAgent.getRecommendations(true);
+            if (!recommendationResult.success() || recommendationResult.fragments().isEmpty()) {
+                io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
+                // Display reasoning even if no fragments were found, if available
+                if (!recommendationResult.reasoning().isBlank()) {
+                    io.llmOutput("\nReasoning: " + recommendationResult.reasoning(), ChatMessageType.CUSTOM);
+                }
+            } else {
+                io.llmOutput("\nReasoning for recommendations: " + recommendationResult.reasoning(), ChatMessageType.CUSTOM);// Final budget check
+                int totalTokens = contextAgent.calculateFragmentTokens(recommendationResult.fragments());
+                logger.debug("Total tokens for recommended context: {}", totalTokens);
+                int finalBudget = contextManager.getService().getMaxInputTokens(model) / 2;
+                if (totalTokens > finalBudget) {
+                    logger.warn("Recommended context ({} tokens) exceeds final budget ({} tokens). Skipping context addition.", totalTokens, finalBudget);
+                } else {
+                    logger.debug("Recommended context fits within final budget.");
+                    contextAgent.addSelectedFragments(recommendationResult.fragments());
+                }
+            }
         }
 
         var llm = contextManager.getLlm(model, "Architect: " + goal);

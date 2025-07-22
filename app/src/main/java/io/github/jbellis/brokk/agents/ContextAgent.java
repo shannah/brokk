@@ -4,7 +4,6 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import org.jetbrains.annotations.Nullable;
 import dev.langchain4j.data.message.SystemMessage;
@@ -47,8 +46,6 @@ public class ContextAgent {
     private final int skipPruningBudget;
     // if our to-prune context is larger than the Pruning budget then we give up
     private final int budgetPruning;
-    // if our pruned context is larger than the Final target budget then we also give up
-    private final int finalBudget;
 
     // Rule 1: Use all available summaries if they fit the smallest budget and meet the limit (if not deepScan)
     private int QUICK_TOPK = 10;
@@ -63,10 +60,9 @@ public class ContextAgent {
 
         int maxInputTokens = contextManager.getService().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
-        this.finalBudget = maxInputTokens / 2;
         this.budgetPruning = (int) (maxInputTokens * 0.9);
 
-        debug("ContextAgent initialized. Budgets: SkipPruning={}, Final={}, Pruning={}", skipPruningBudget, finalBudget, budgetPruning);
+        debug("ContextAgent initialized. Budgets: SkipPruning={}, Pruning={}", skipPruningBudget, budgetPruning);
     }
 
     private void debug(String format, Object... args) {
@@ -119,48 +115,9 @@ public class ContextAgent {
     }
 
     /**
-     * Executes the context population logic, obtains context recommendations,
-     * presents them for selection (if workspace is not empty), and adds them to the workspace.
-     *
-     * @return true if context fragments were successfully added, false otherwise
-     */
-    public boolean execute() throws InterruptedException {
-        io.llmOutput("\nExamining initial workspace", ChatMessageType.CUSTOM);
-
-        // Execute without a specific limit on recommendations, allowing skip-pruning
-        var recommendationResult = getRecommendations(true);
-        if (!recommendationResult.success || recommendationResult.fragments.isEmpty()) {
-            io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
-            // Display reasoning even if no fragments were found, if available
-            if (!recommendationResult.reasoning.isBlank()) {
-                io.llmOutput("\nReasoning: " + recommendationResult.reasoning, ChatMessageType.CUSTOM);
-            }
-            return false;
-        }
-        io.llmOutput("\nReasoning for recommendations: " + recommendationResult.reasoning, ChatMessageType.CUSTOM);
-
-        // Final budget check
-        int totalTokens = calculateFragmentTokens(recommendationResult.fragments());
-        debug("Total tokens for recommended context: {}", totalTokens);
-
-        if (totalTokens > finalBudget) {
-            logger.warn("Recommended context ({} tokens) exceeds final budget ({} tokens). Skipping context addition.", totalTokens, finalBudget);
-            logGiveUp("recommended context (exceeded final budget)");
-            // Optionally provide reasoning about exceeding budget
-            io.llmOutput("\nWarning: Recommended context exceeded the final budget and could not be added automatically.", ChatMessageType.CUSTOM);
-            return false; // Indicate failure due to budget
-        }
-
-        debug("Recommended context fits within final budget.");
-        addSelectedFragments(recommendationResult.fragments);
-
-        return true;
-    }
-
-    /**
      * Calculates the approximate token count for a list of ContextFragments.
      */
-    private int calculateFragmentTokens(List<ContextFragment> fragments) {
+    int calculateFragmentTokens(List<ContextFragment> fragments) {
         int totalTokens = 0;
 
         for (var fragment : fragments) {
