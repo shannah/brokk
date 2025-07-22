@@ -153,64 +153,6 @@ public class ContextAgent {
     }
 
     /**
-     * ContextAgent returns fragment-per-file to make it easy for DeepScanDialog to get user input, but
-     * when adding to the Workspace we want to merge the summaries into a singleSkeletonFragment. This
-     * takes care of that.
-     */
-    public void addSelectedFragments(List<ContextFragment> selected) {
-        // Group selected fragments by type
-        var groupedByType = selected.stream().collect(Collectors.groupingBy(ContextFragment::getType));
-
-        // Process ProjectPathFragments
-        var pathFragments = groupedByType.getOrDefault(ContextFragment.FragmentType.PROJECT_PATH, List.of()).stream()
-                .map(ContextFragment.ProjectPathFragment.class::cast)
-                .toList();
-        if (!pathFragments.isEmpty()) {
-            debug("Adding selected ProjectPathFragments: {}", pathFragments.stream().map(ContextFragment.ProjectPathFragment::shortDescription).collect(Collectors.joining(", ")));
-            contextManager.editFiles(pathFragments);
-        }
-
-        // Process SkeletonFragments
-        var skeletonFragments = groupedByType.getOrDefault(ContextFragment.FragmentType.SKELETON, List.of()).stream()
-                .map(ContextFragment.SkeletonFragment.class::cast)
-                .toList();
-
-        if (!skeletonFragments.isEmpty()) {
-            // For CLASS_SKELETON, collect all target FQNs.
-            // For FILE_SKELETONS, collect all target file paths.
-            // Create one fragment per type.
-            List<String> classTargetFqns = skeletonFragments.stream()
-                    .filter(sf -> sf.getSummaryType() == ContextFragment.SummaryType.CLASS_SKELETON)
-                    .flatMap(sf -> sf.getTargetIdentifiers().stream())
-                    .distinct()
-                    .toList();
-
-            List<String> fileTargetPaths = skeletonFragments.stream()
-                    .filter(sf -> sf.getSummaryType() == ContextFragment.SummaryType.FILE_SKELETONS)
-                    .flatMap(sf -> sf.getTargetIdentifiers().stream())
-                    .distinct()
-                    .toList();
-
-            if (!classTargetFqns.isEmpty()) {
-                debug("Adding combined SkeletonFragment for classes: {}", classTargetFqns);
-                contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(contextManager, classTargetFqns, ContextFragment.SummaryType.CLASS_SKELETON));
-            }
-            if (!fileTargetPaths.isEmpty()) {
-                debug("Adding combined SkeletonFragment for files: {}", fileTargetPaths);
-                contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(contextManager, fileTargetPaths, ContextFragment.SummaryType.FILE_SKELETONS));
-            }
-        }
-
-        // Handle any unexpected fragment types (should not happen with current logic)
-        groupedByType.keySet().stream()
-                .filter(type -> type != ContextFragment.FragmentType.PROJECT_PATH && type != ContextFragment.FragmentType.SKELETON)
-                .findFirst()
-                .ifPresent(unexpectedType -> {
-                    throw new AssertionError("Unexpected fragment type selected: " + unexpectedType + " in " + selected);
-                });
-    }
-
-    /**
      * Determines the best initial context based on project size and token budgets,
      * potentially using LLM inference, and returns recommended context fragments.
      * <p>
