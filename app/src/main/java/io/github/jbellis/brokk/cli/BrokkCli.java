@@ -202,20 +202,28 @@ public final class BrokkCli implements Callable<Integer> {
 
         StreamingChatModel taskModelOverride = null;
         if (modelName != null) {
-            taskModelOverride = service.getModel(modelName, Service.ReasoningLevel.DEFAULT);
-            if (taskModelOverride == null) {
+            Service.FavoriteModel fav;
+            try {
+                fav = MainProject.getFavoriteModel(modelName);
+            } catch (IllegalArgumentException e) {
                 System.err.println("Unknown model specified via --model: " + modelName);
                 return 1;
             }
+            taskModelOverride = service.getModel(fav.modelName(), fav.reasoning());
+            assert taskModelOverride != null : "service.getModel returned null for alias " + modelName;
         }
 
         StreamingChatModel codeModelOverride = null;
         if (codeModelName != null) {
-            codeModelOverride = service.getModel(codeModelName, Service.ReasoningLevel.DEFAULT);
-            if (codeModelOverride == null) {
+            Service.FavoriteModel fav;
+            try {
+                fav = MainProject.getFavoriteModel(codeModelName);
+            } catch (IllegalArgumentException e) {
                 System.err.println("Unknown code model specified via --codemodel: " + codeModelName);
                 return 1;
             }
+            codeModelOverride = service.getModel(fav.modelName(), fav.reasoning());
+            assert codeModelOverride != null : "service.getModel returned null for alias " + codeModelName;
         }
 
         var workspaceTools = new WorkspaceTools(cm);
