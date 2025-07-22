@@ -192,7 +192,7 @@ public final class BrokkCli implements Callable<Integer> {
 
         // Create Project + ContextManager
         var mainProject = new MainProject(projectPath);
-        var project = worktreePath == null ? mainProject : new WorktreeProject(projectPath, mainProject);
+        var project = worktreePath == null ? mainProject : new WorktreeProject(worktreePath, mainProject);
         var cm = new ContextManager(project);
         cm.createHeadless();
         var io = cm.getIo();
@@ -227,7 +227,6 @@ public final class BrokkCli implements Callable<Integer> {
         }
 
         var workspaceTools = new WorkspaceTools(cm);
-        System.out.println("Project opened successfully: " + projectPath);
 
         // --- Name Resolution and Context Building ---
         boolean cpgRequired = !addUsages.isEmpty() || !addCallers.isEmpty() || !addCallees.isEmpty();
