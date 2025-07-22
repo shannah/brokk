@@ -1184,7 +1184,7 @@ public class Llm {
          */
         public String getDescription() {
             if (error != null) {
-                return requireNonNull(error.getMessage());
+                return requireNonNull(error.getMessage(), error.toString());
             }
 
             var cr = castNonNull(chatResponse);
