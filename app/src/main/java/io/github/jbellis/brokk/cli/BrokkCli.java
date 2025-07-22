@@ -43,6 +43,7 @@ import java.util.stream.Stream;
 
 import static java.util.Objects.requireNonNull;
 
+@SuppressWarnings("NullAway.Init") // NullAway is upset that some fiels are initialized in picocli's call()
 @CommandLine.Command(name = "brokk-cli", mixinStandardHelpOptions = true,
         description = "One-shot Brokk workspace and task runner.")
 public final class BrokkCli implements Callable<Integer> {
@@ -111,6 +112,7 @@ public final class BrokkCli implements Callable<Integer> {
 
     @CommandLine.Option(names = "--deepscan", description = "Perform a Deep Scan to suggest additional relevant context.")
     private boolean deepScan = false;
+    private ContextManager cm;
 
     public static void main(String[] args) {
         System.err.println("Starting Brokk CLI...");
@@ -193,7 +195,7 @@ public final class BrokkCli implements Callable<Integer> {
         // Create Project + ContextManager
         var mainProject = new MainProject(projectPath);
         var project = worktreePath == null ? mainProject : new WorktreeProject(worktreePath, mainProject);
-        var cm = new ContextManager(project);
+        cm = new ContextManager(project);
         cm.createHeadless();
         var io = cm.getIo();
 
@@ -240,8 +242,8 @@ public final class BrokkCli implements Callable<Integer> {
         }
 
         // Resolve files and classes
-        var resolvedEditFiles = resolveFiles(editFiles, project, cm, "editable file");
-        var resolvedReadFiles = resolveFiles(readFiles, project, cm, "read-only file");
+        var resolvedEditFiles = resolveFiles(editFiles, project, "editable file");
+        var resolvedReadFiles = resolveFiles(readFiles, project, "read-only file");
         var resolvedClasses = resolveClasses(addClasses, cm.getAnalyzer(), "class");
         var resolvedSummaryClasses = resolveClasses(addSummaryClasses, cm.getAnalyzer(), "summary class");
 
@@ -347,16 +349,9 @@ public final class BrokkCli implements Callable<Integer> {
         return 0;
     }
 
-    private List<String> resolveFiles(List<String> inputs, IProject project, ContextManager cm, String entityType) {
+    private List<String> resolveFiles(List<String> inputs, IProject project, String entityType) {
         Supplier<Collection<ProjectFile>> primarySource = project::getAllFiles;
-        Supplier<Collection<ProjectFile>> secondarySource = () -> {
-            var trackedFiles = project.getRepo().getTrackedFiles();
-            var result = new ArrayList<ProjectFile>();
-            for (Object pathString : trackedFiles) {
-                result.add(cm.toFile((String) pathString));
-            }
-            return result;
-        };
+        Supplier<Collection<ProjectFile>> secondarySource = () -> project.getRepo().getTrackedFiles();
 
         return inputs.stream()
                 .map(input -> resolve(input, primarySource, secondarySource, ProjectFile::toString, entityType))
