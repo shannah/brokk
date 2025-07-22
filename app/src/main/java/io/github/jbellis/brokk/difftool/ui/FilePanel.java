@@ -269,10 +269,12 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             SwingUtilities.invokeLater(this::scrollToFirstDiff);
 
         } catch (Exception ex) {
-            JOptionPane.showMessageDialog(diffPanel, "Could not read file or set document: "
-                                                  + (bd != null ? bd.getName() : "Unknown")
-                                                  + "\n" + ex.getMessage(),
-                                          "Error processing file", JOptionPane.ERROR_MESSAGE);
+            diffPanel.getMainPanel().getConsoleIO().toolError(
+                "Could not read file or set document: "
+                + (bd != null ? bd.getName() : "Unknown")
+                + "\n" + ex.getMessage(),
+                "Error processing file"
+            );
         }
     }
 

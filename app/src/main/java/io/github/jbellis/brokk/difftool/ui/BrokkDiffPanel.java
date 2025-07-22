@@ -31,6 +31,7 @@ import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
@@ -53,18 +54,18 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
     // LRU cache for loaded diff panels
     private static final int MAX_CACHED_PANELS = PerformanceConstants.MAX_CACHED_DIFF_PANELS;
-    private final Map<Integer, BufferDiffPanel> panelCache = new LinkedHashMap<>(MAX_CACHED_PANELS + 1, 0.75f, true) {
+    private final Map<Integer, BufferDiffPanel> panelCache = Collections.synchronizedMap(new LinkedHashMap<>(MAX_CACHED_PANELS + 1, 0.75f, true) {
         @Override
         protected boolean removeEldestEntry(Map.Entry<Integer, BufferDiffPanel> eldest) {
             if (size() > MAX_CACHED_PANELS) {
                 logger.debug("Evicting panel from cache: index {}", eldest.getKey());
-                // Dispose UI resources of evicted panel
-                eldest.getValue().removeAll();
+                // Properly dispose of evicted panel to prevent resource leaks
+                eldest.getValue().dispose();
                 return true;
             }
             return false;
         }
-    };
+    });
 
     /**
      * Inner class to hold a single file comparison metadata
@@ -396,7 +397,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             btnPrevious.setEnabled(false);
             btnNext.setEnabled(false);
         }
-        
+
         // Update save button text and enable state
         boolean hasUnsaved = hasUnsavedChanges();
         btnSaveAll.setText(fileComparisons.size() > 1 ? "Save All" : "Save");
@@ -529,10 +530,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         logger.error("Error loading file: {} - {}", compInfo.getDisplayName(), errorMessage);
 
         // Show error dialog
-        contextManager.getIo().systemNotify(
+        contextManager.getIo().toolError(
             "Error loading file '" + compInfo.getDisplayName() + "':\n" + errorMessage,
-            "File Load Error",
-            JOptionPane.ERROR_MESSAGE
+            "File Load Error"
         );
 
         // Remove loading indicator
@@ -756,7 +756,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
         // Clear all cached panels and dispose their resources
         for (var panel : panelCache.values()) {
-            panel.removeAll();
+            panel.dispose();
         }
         panelCache.clear();
 
