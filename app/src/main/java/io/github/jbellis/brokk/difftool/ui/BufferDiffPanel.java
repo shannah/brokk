@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.difftool.scroll.DiffScrollComponent;
 import io.github.jbellis.brokk.difftool.scroll.ScrollSynchronizer;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
+import io.github.jbellis.brokk.util.ThreadSafeLRUCache;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import org.apache.logging.log4j.LogManager;
@@ -33,7 +34,7 @@ import static java.util.Objects.requireNonNull;
  * This panel shows the side-by-side file panels, the diff curves, plus search bars.
  * It no longer depends on custom JMRevision/JMDelta but rather on a Patch<String>.
  */
-public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware
+public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware, ThreadSafeLRUCache.Disposable
 {
     private static final Logger logger = LogManager.getLogger(BufferDiffPanel.class);
 
@@ -908,6 +909,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware
      * Should be called when the BufferDiffPanel is being disposed to prevent memory leaks.
      */
 
+    @Override
     public void dispose() {
         // Dispose of file panels to clean up their timers and listeners
         for (var fp : filePanels.values()) {
