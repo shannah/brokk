@@ -478,13 +478,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
         showLoadingForFile(fileIndex);
 
-        var fileComparison = new FileComparison.FileComparisonBuilder(this, theme, contextManager)
-                .withSources(compInfo.leftSource, compInfo.rightSource)
-                .setMultipleCommitsContext(this.isMultipleCommitsContext)
-                .build();
-
-        fileComparison.addPropertyChangeListener(evt -> handleFileComparisonResult(evt, fileIndex));
-        fileComparison.execute();
+        // Use hybrid approach - sync for small files, async for large files
+        HybridFileComparison.createDiffPanel(compInfo.leftSource, compInfo.rightSource,
+                                           this, theme, contextManager, this.isMultipleCommitsContext, fileIndex);
     }
 
     private void showLoadingForFile(int fileIndex) {
@@ -628,7 +624,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         return fileComparisons.size() > 1 && currentFileIndex > 0;
     }
 
-    private void handleFileComparisonResult(java.beans.PropertyChangeEvent evt, int fileIndex) {
+    public void handleFileComparisonResult(java.beans.PropertyChangeEvent evt, int fileIndex) {
         if (STATE_PROPERTY.equals(evt.getPropertyName()) && SwingWorker.StateValue.DONE.equals(evt.getNewValue())) {
             var compInfo = fileComparisons.get(fileIndex);
             try {
@@ -639,7 +635,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
                     // Cache the loaded panel
                     if (loadedPanel != null) {
-                        panelCache.put(fileIndex, loadedPanel);
+                        cachePanel(fileIndex, loadedPanel);
                         invokeLater(() -> {
                             logger.debug("File loaded successfully and cached: {}", compInfo.getDisplayName());
                             displayCachedFile(fileIndex, loadedPanel);
@@ -743,6 +739,14 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         if (window != null) {
             window.dispose();
         }
+    }
+
+    /**
+     * Cache a panel for the given file index.
+     * Helper method for both sync and async panel creation.
+     */
+    public void cachePanel(int fileIndex, BufferDiffPanel panel) {
+        panelCache.put(fileIndex, panel);
     }
 
     /**

@@ -184,28 +184,22 @@ public class FileComparison extends SwingWorker<String, Object> {
         try {
             String result = get();
             if (result != null) {
-                // Error case - no panel creation needed
                 mainPanel.getConsoleIO().toolError(result, "Error opening file");
             } else {
                 // Create panel outside of invokeLater to avoid race condition
                 panel = new BufferDiffPanel(mainPanel, theme);
                 panel.setDiffNode(diffNode);
 
-                // Capture non-null panel in local variable for lambda
                 var createdPanel = panel;
 
-                // Only UI manipulation goes inside invokeLater
                 SwingUtilities.invokeLater(() -> {
                     ImageIcon resizedIcon = getScaledIcon();
                     mainPanel.getTabbedPane().addTab(createdPanel.getTitle(), resizedIcon, createdPanel);
                     mainPanel.getTabbedPane().setSelectedComponent(createdPanel);
-
-                    // Apply theme after the panel is added to the UI hierarchy
                     createdPanel.applyTheme(theme);
                 });
             }
         } catch (Exception ex) {
-            // Handle exceptions during the 'done' phase, e.g., from get()
             mainPanel.getConsoleIO().toolError("Error finalizing comparison: " + ex.getMessage(), "Error");
         }
     }
