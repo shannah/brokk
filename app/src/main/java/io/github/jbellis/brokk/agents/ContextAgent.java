@@ -63,7 +63,20 @@ public class ContextAgent {
 
         int maxInputTokens = contextManager.getService().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
-        this.budgetPruning = (int) (maxInputTokens * 0.9);
+
+        // non-openai models often use more tokens than our estimation so cap this conservatively
+        var location = model.defaultRequestParameters().modelName();
+        double allowed;
+        if (location.contains("openai")) {
+            allowed = 0.8; // even openai's models aren't consistent
+        } else if (location.contains("deepseek")) {
+            // particularly low since deepseek's 8k output window is a material chunk
+            // out of the 64k total budget
+            allowed = 0.6;
+        } else {
+            allowed = 0.7;
+        }
+        this.budgetPruning = (int) (maxInputTokens * allowed);
 
         debug("ContextAgent initialized. Budgets: SkipPruning={}, Pruning={}", skipPruningBudget, budgetPruning);
     }
