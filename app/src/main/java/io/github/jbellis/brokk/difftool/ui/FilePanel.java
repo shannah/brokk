@@ -568,6 +568,11 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     public void applyTheme(GuiTheme guiTheme) {
         // Apply current theme
         GuiTheme.loadRSyntaxTheme(guiTheme.isDarkTheme()).ifPresent(theme -> {
+            // Ensure syntax style is set before applying theme
+            if (bufferDocument != null) {
+                updateSyntaxStyle();
+            }
+
             // Apply theme to the composite highlighter (which will forward to JMHighlighter)
             if (editor.getHighlighter() instanceof ThemeAware high) {
                 high.applyTheme(guiTheme);

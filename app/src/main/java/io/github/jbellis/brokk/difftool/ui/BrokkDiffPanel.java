@@ -516,6 +516,12 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         tabbedPane.addTab(cachedPanel.getTitle(), cachedPanel);
         this.bufferDiffPanel = cachedPanel;
 
+        // Apply theme to ensure proper syntax highlighting
+        cachedPanel.applyTheme(theme);
+
+        // Ensure diff highlights are properly displayed after theme application
+        SwingUtilities.invokeLater(() -> cachedPanel.diff());
+
         // Update file indicator
         updateFileIndicatorLabel(compInfo.getDisplayName());
 

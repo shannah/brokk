@@ -768,9 +768,14 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         this.guiTheme = guiTheme;
 
         // Refresh RSyntax themes and highlights in each child FilePanel
-        for (FilePanel fp : filePanels.values()) {
-            // Note: fp.applyTheme() already calls reDisplay()
-            fp.applyTheme(guiTheme);
+        // Apply to RIGHT panel first so LEFT panel can inherit syntax style if needed
+        var rightPanel = getFilePanel(PanelSide.RIGHT);
+        if (rightPanel != null) {
+            rightPanel.applyTheme(guiTheme);
+        }
+        var leftPanel = getFilePanel(PanelSide.LEFT);
+        if (leftPanel != null) {
+            leftPanel.applyTheme(guiTheme);
         }
 
         // Let the Look-and-Feel repaint every child component (headers, scroll-bars, etc.)
