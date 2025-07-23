@@ -6,6 +6,7 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionPanel;
 import io.github.jbellis.brokk.util.Decompiler;
+import io.github.jbellis.brokk.util.FileUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.Git;
@@ -166,11 +167,6 @@ public class ImportDependencyDialog {
             importButton.setEnabled(false);
             updateContentPanel();
             dialog.pack();
-            if (newType == SourceType.GIT) {
-                var size = dialog.getSize();
-                size.width += 80;
-                dialog.setSize(size);
-            }
         }
 
         private void updateContentPanel() {
@@ -187,6 +183,7 @@ public class ImportDependencyDialog {
         private JPanel createGitPanel() {
             gitPanel = new JPanel(new GridBagLayout());
             gitUrlField = new JTextField();
+            gitUrlField.setColumns(30);
             validateGitRepoButton = new JButton("Load Tags & Branches");
             gitRefComboBox = new JComboBox<>();
 
@@ -194,32 +191,42 @@ public class ImportDependencyDialog {
             gbc.insets = new Insets(2, 2, 2, 2);
             gbc.anchor = GridBagConstraints.WEST;
 
-            // Row 0: URL
+            // Row 0: URL Label
             gbc.gridx = 0;
             gbc.gridy = 0;
             gbc.weightx = 0;
+            gbc.gridwidth = 1;
             gbc.fill = GridBagConstraints.NONE;
             gitPanel.add(new JLabel("Repo URL:"), gbc);
 
+            // Row 0: URL Field
             gbc.gridx = 1;
+            gbc.gridy = 0;
             gbc.weightx = 1.0;
+            gbc.gridwidth = 2;
             gbc.fill = GridBagConstraints.HORIZONTAL;
             gitPanel.add(gitUrlField, gbc);
 
-            gbc.gridx = 2;
-            gbc.weightx = 0;
-            gbc.fill = GridBagConstraints.NONE;
+            // Row 1: Button
+            gbc.gridx = 1;
+            gbc.gridy = 1;
+            // gbc constraints from URL Field are reused to make button stretch
             gitPanel.add(validateGitRepoButton, gbc);
 
-            // Row 1: Branch/Tag
+            // Row 2: Branch/Tag Label
             gbc.gridx = 0;
-            gbc.gridy = 1;
+            gbc.gridy = 2;
+            gbc.weightx = 0;
+            gbc.gridwidth = 1;
+            gbc.fill = GridBagConstraints.NONE;
             gitPanel.add(new JLabel("Branch/Tag:"), gbc);
 
+            // Row 2: Branch/Tag ComboBox
             gbc.gridx = 1;
-            gbc.gridwidth = 2; // Span across two columns
+            gbc.gridy = 2;
+            gbc.weightx = 1.0;
+            gbc.gridwidth = 2;
             gbc.fill = GridBagConstraints.HORIZONTAL;
-            gitRefComboBox.setMaximumSize(gitRefComboBox.getPreferredSize());
             gitPanel.add(gitRefComboBox, gbc);
 
             gitPanel.setBorder(new EmptyBorder(5, 5, 5, 5));
@@ -269,8 +276,16 @@ public class ImportDependencyDialog {
                         info.branches().forEach(cb::addItem);
                         info.tags().forEach(cb::addItem);
 
-                        if (info.defaultBranch() != null && info.branches().contains(info.defaultBranch())) {
-                            cb.setSelectedItem(info.defaultBranch());
+                        String preferred = info.defaultBranch();
+                        if (preferred == null && info.branches().contains("main")) {
+                            preferred = "main";
+                        }
+                        if (preferred == null && info.branches().contains("master")) {
+                            preferred = "master";
+                        }
+
+                        if (preferred != null) {
+                            cb.setSelectedItem(preferred);
                         } else if (!info.branches().isEmpty()) {
                             cb.setSelectedIndex(0);
                         } else if (!info.tags().isEmpty()) {
@@ -449,12 +464,12 @@ public class ImportDependencyDialog {
 
                     Path gitInternalDir = tempDir.resolve(".git");
                     if (Files.exists(gitInternalDir)) {
-                        deleteRecursively(gitInternalDir);
+                        FileUtil.deleteRecursively(gitInternalDir);
                     }
 
                     Files.createDirectories(dependenciesRoot);
                     if (Files.exists(targetPath)) {
-                        deleteRecursively(targetPath);
+                        FileUtil.deleteRecursively(targetPath);
                     }
                     Files.move(tempDir, targetPath, StandardCopyOption.REPLACE_EXISTING);
 
@@ -473,7 +488,7 @@ public class ImportDependencyDialog {
                     });
                     if (tempDir != null && Files.exists(tempDir)) {
                         try {
-                            deleteRecursively(tempDir);
+                            FileUtil.deleteRecursively(tempDir);
                         } catch (IOException e) {
                             logger.error("Failed to delete temporary clone directory {}", tempDir, e);
                         }
@@ -530,7 +545,7 @@ public class ImportDependencyDialog {
                     try {
                         Files.createDirectories(dependenciesRoot);
                         if (Files.exists(targetPath)) {
-                            deleteRecursively(targetPath);
+                            FileUtil.deleteRecursively(targetPath);
                         }
                         List<String> allowedExtensions = project.getAnalyzerLanguages().stream()
                             .flatMap(lang -> lang.getExtensions().stream()).distinct().toList();
@@ -581,16 +596,4 @@ public class ImportDependencyDialog {
         });
     }
 
-    private static void deleteRecursively(Path path) throws IOException {
-        if (!Files.exists(path)) return;
-        try (Stream<Path> walk = Files.walk(path)) {
-            walk.sorted(Comparator.reverseOrder()).forEach(p -> {
-                try {
-                    Files.delete(p);
-                } catch (IOException e) {
-                    logger.warn("Failed to delete path during recursive cleanup: {}", p, e);
-                }
-            });
-        }
-    }
 }
