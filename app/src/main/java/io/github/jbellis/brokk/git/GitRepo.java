@@ -138,8 +138,9 @@ public class GitRepo implements Closeable, IGitRepo {
         this.projectRoot = projectRoot;
 
         try {
-            FileRepositoryBuilder builder = new FileRepositoryBuilder();
-            builder.findGitDir(projectRoot.toFile());
+            var builder = new FileRepositoryBuilder()
+                    .setWorkTree(projectRoot.toFile())
+                    .findGitDir(projectRoot.toFile());
             if (builder.getGitDir() == null) {
                 throw new RuntimeException("No git repo found at or above " + projectRoot);
             }
