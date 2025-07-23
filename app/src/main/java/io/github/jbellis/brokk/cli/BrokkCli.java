@@ -343,8 +343,8 @@ public final class BrokkCli implements Callable<Integer> {
         }
 
         if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
-            io.toolError(result.stopDetails().explanation(), "Task failure: " + result.stopDetails().reason());
-            return 2; // task failure
+            io.toolError(result.stopDetails().explanation(), result.stopDetails().reason().toString());
+            // exit code is 0 since we ran the task as requested; we print out the metrics from Code Agent to let harness see how we did
         }
 
         return 0;
