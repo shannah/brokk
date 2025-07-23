@@ -103,6 +103,9 @@ public class HybridFileComparison {
                 mainPanel.getTabbedPane().setSelectedComponent(panel);
                 panel.applyTheme(theme);
 
+                // Ensure diff highlights are properly displayed after theme application
+                SwingUtilities.invokeLater(() -> panel.diff());
+
                 // Performance monitoring
                 long elapsedTime = System.currentTimeMillis() - startTime;
                 totalSyncTime.addAndGet(elapsedTime);
@@ -155,6 +158,9 @@ public class HybridFileComparison {
                         mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
                         mainPanel.getTabbedPane().setSelectedComponent(panel);
                         panel.applyTheme(theme);
+
+                        // Ensure diff highlights are properly displayed after theme application
+                        SwingUtilities.invokeLater(() -> panel.diff());
 
                         // Performance monitoring
                         long elapsedTime = System.currentTimeMillis() - startTime;
