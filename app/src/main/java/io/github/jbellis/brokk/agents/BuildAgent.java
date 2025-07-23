@@ -369,7 +369,9 @@ public class BuildAgent {
 
     public static String getBuildLintCommand(IContextManager cm, BuildDetails details, Collection<ProjectFile> workspaceTestFiles) {
         // Determine if template is files-based or classes-based
-        String testSomeTemplate = details.testSomeCommand();
+        String testSomeTemplate = System.getenv("BRK_TESTSOME_CMD") == null 
+                                  ? details.testSomeCommand() 
+                                  : System.getenv("BRK_TESTSOME_CMD");
         boolean isFilesBased = testSomeTemplate.contains("{{#files}}");
         boolean isClassesBased = testSomeTemplate.contains("{{#classes}}");
 
