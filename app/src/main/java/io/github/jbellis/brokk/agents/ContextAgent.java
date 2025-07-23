@@ -73,6 +73,11 @@ public class ContextAgent {
             // particularly low since deepseek's 8k output window is a material chunk
             // out of the 64k total budget
             allowed = 0.6;
+        } else if (location.contains("anthropic")) {
+            // Anthropic's tokenizer generates a lot more tokens than most
+            // TODO if we could override the max_output_tokens here then we could reclaim at least 10% of this
+            // but langchain4j's fucking brain dead api won't let us do that without rewriting a dozen call sites
+            allowed = 0.55;
         } else {
             allowed = 0.7;
         }
