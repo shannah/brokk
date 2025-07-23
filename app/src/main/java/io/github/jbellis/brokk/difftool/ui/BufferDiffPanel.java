@@ -252,17 +252,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         mainPanel.repaint();
     }
 
-    /**
-     * Refresh highlights for only the specified panel to reduce flickering.
-     */
-    public void reDisplayPanel(PanelSide side)
-    {
-        var fp = filePanels.get(side);
-        if (fp != null) {
-            fp.reDisplay();
-        }
-    }
-
     public String getTitle()
     {
         if (diffNode != null && !diffNode.getName().isBlank()) {

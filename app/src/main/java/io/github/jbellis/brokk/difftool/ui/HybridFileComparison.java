@@ -97,14 +97,8 @@ public class HybridFileComparison {
                 // Cache the panel
                 mainPanel.cachePanel(fileIndex, panel);
 
-                // Display immediately
-                var resizedIcon = FileComparisonHelper.getCompareIcon();
-                mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
-                mainPanel.getTabbedPane().setSelectedComponent(panel);
-                panel.applyTheme(theme);
-
-                // Ensure diff highlights are properly displayed after theme application
-                SwingUtilities.invokeLater(() -> panel.diff());
+                // Display using the proper method that updates navigation buttons
+                mainPanel.displayAndRefreshPanel(fileIndex, panel);
 
                 // Performance monitoring
                 long elapsedTime = System.currentTimeMillis() - startTime;
@@ -116,7 +110,7 @@ public class HybridFileComparison {
                     logger.debug("Sync diff panel created successfully in {}ms", elapsedTime);
                 }
 
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 logger.error("Error creating sync diff panel", ex);
                 mainPanel.getConsoleIO().toolError("Error creating diff: " + ex.getMessage(), "Error");
             }
@@ -153,14 +147,8 @@ public class HybridFileComparison {
                         // Cache the panel
                         mainPanel.cachePanel(fileIndex, panel);
 
-                        // Display panel
-                        var resizedIcon = FileComparisonHelper.getCompareIcon();
-                        mainPanel.getTabbedPane().addTab(panel.getTitle(), resizedIcon, panel);
-                        mainPanel.getTabbedPane().setSelectedComponent(panel);
-                        panel.applyTheme(theme);
-
-                        // Ensure diff highlights are properly displayed after theme application
-                        SwingUtilities.invokeLater(() -> panel.diff());
+                        // Display using the proper method that updates navigation buttons
+                        mainPanel.displayAndRefreshPanel(fileIndex, panel);
 
                         // Performance monitoring
                         long elapsedTime = System.currentTimeMillis() - startTime;
@@ -172,13 +160,13 @@ public class HybridFileComparison {
                             logger.debug("Async diff panel created successfully in {}ms", elapsedTime);
                         }
 
-                    } catch (Exception ex) {
+                    } catch (RuntimeException ex) {
                         logger.error("Error creating async diff panel on EDT", ex);
                         mainPanel.getConsoleIO().toolError("Error creating diff: " + ex.getMessage(), "Error");
                     }
                 });
 
-            } catch (Exception ex) {
+            } catch (RuntimeException ex) {
                 logger.error("Error computing diff in background thread", ex);
                 SwingUtilities.invokeLater(() -> {
                     mainPanel.getConsoleIO().toolError("Error computing diff: " + ex.getMessage(), "Error");
@@ -220,7 +208,7 @@ public class HybridFileComparison {
                                         SizeConfidence.LOW, "unknown source type");
             }
 
-        } catch (Exception ex) {
+        } catch (RuntimeException ex) {
             sizeEstimationErrors.incrementAndGet();
             logger.error("Error estimating size for source: {}", source, ex);
             return new SizeEstimation(PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES / 4,

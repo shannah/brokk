@@ -691,6 +691,14 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     }
 
     /**
+     * Displays a cached panel and updates navigation buttons.
+     * This is the proper way to display panels created by HybridFileComparison.
+     */
+    public void displayAndRefreshPanel(int fileIndex, BufferDiffPanel panel) {
+        displayCachedFile(fileIndex, panel);
+    }
+
+    /**
      * Cache a panel for the given file index.
      * Helper method for both sync and async panel creation.
      * Uses putReserved if the slot was reserved, otherwise regular put.

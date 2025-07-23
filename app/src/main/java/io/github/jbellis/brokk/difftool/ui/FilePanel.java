@@ -328,18 +328,20 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         var patch = diffPanel.getPatch();
         if (patch == null) return;
 
+        boolean isOriginal = BufferDocumentIF.ORIGINAL.equals(name);
+
         // Skip viewport optimization when navigating to ensure highlights appear
         if (isNavigatingToDiff.get()) {
-            paintAllDeltas(patch);
+            paintAllDeltas(patch, isOriginal);
             return;
         }
 
         // For right side, also check if paired left side is navigating
-        if (BufferDocumentIF.REVISED.equals(name)) {
+        if (!isOriginal) {
             try {
                 var leftPanel = diffPanel.getFilePanel(BufferDiffPanel.PanelSide.LEFT);
                 if (leftPanel != null && leftPanel.isNavigatingToDiff()) {
-                    paintAllDeltas(patch);
+                    paintAllDeltas(patch, isOriginal);
                     return;
                 }
             } catch (Exception e) {
@@ -351,42 +353,21 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         var visibleRange = getVisibleLineRange();
         if (visibleRange == null) {
             // Fallback to highlighting all deltas if viewport calculation fails
-            paintAllDeltas(patch);
+            paintAllDeltas(patch, isOriginal);
             return;
         }
 
-        int startLine = visibleRange.start;
-        int endLine = visibleRange.end;
-
-        for (var delta : patch.getDeltas()) {
-            if (deltaIntersectsViewport(delta, startLine, endLine)) {
-                // Are we the "original" side or the "revised" side?
-                if (BufferDocumentIF.ORIGINAL.equals(name)) {
-                    new HighlightOriginal(delta).highlight();
-                } else if (BufferDocumentIF.REVISED.equals(name)) {
-                    var targetChunk = delta.getTarget();
-                    if (targetChunk == null) {
-                        logger.warn("Right side delta has null target chunk: type={}, delta={}", delta.getType(), delta);
-                        continue;
-                    }
-                    new HighlightRevised(delta).highlight();
-                }
-            }
-        }
-
+        // Use streams to filter and highlight visible deltas
+        patch.getDeltas().stream()
+            .filter(delta -> deltaIntersectsViewport(delta, visibleRange.start, visibleRange.end))
+            .forEach(delta -> DeltaHighlighter.highlight(this, delta, isOriginal));
     }
 
     /**
      * Fallback method to paint all deltas (original behavior).
      */
-    private void paintAllDeltas(com.github.difflib.patch.Patch<String> patch) {
-        for (var delta : patch.getDeltas()) {
-            if (BufferDocumentIF.ORIGINAL.equals(name)) {
-                new HighlightOriginal(delta).highlight();
-            } else if (BufferDocumentIF.REVISED.equals(name)) {
-                new HighlightRevised(delta).highlight();
-            }
-        }
+    private void paintAllDeltas(com.github.difflib.patch.Patch<String> patch, boolean isOriginal) {
+        patch.getDeltas().forEach(delta -> DeltaHighlighter.highlight(this, delta, isOriginal));
     }
 
     /**
@@ -466,16 +447,12 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * Force invalidation of viewport cache for both sides to ensure consistency
      */
     private void invalidateViewportCacheForBothSides() {
-        invalidateViewportCache();
-        // Also invalidate the paired panel's cache to ensure both sides recalculate together
-        try {
-            var pairedPanel = diffPanel.getFilePanel(BufferDocumentIF.REVISED.equals(name) ?
-                BufferDiffPanel.PanelSide.LEFT : BufferDiffPanel.PanelSide.RIGHT);
-            if (pairedPanel != null && pairedPanel != this) {
-                pairedPanel.invalidateViewportCache();
-            }
-        } catch (Exception e) {
-            // Continue without invalidating paired cache
+        var scrollSync = diffPanel.getScrollSynchronizer();
+        if (scrollSync != null) {
+            scrollSync.invalidateViewportCacheForBothPanels();
+        } else {
+            // Fallback to individual invalidation if synchronizer not available
+            invalidateViewportCache();
         }
     }
 
@@ -600,128 +577,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         });
     }
 
-    abstract class AbstractHighlight {
-        protected final AbstractDelta<String> delta;
-
-        AbstractHighlight(AbstractDelta<String> delta) {
-            this.delta = delta;
-        }
-
-        public void highlight() {
-            if (bufferDocument == null) {
-                logger.trace("Skipping highlight: bufferDocument is null for {}", this.getClass().getSimpleName());
-                return;
-            }
-
-            // Retrieve the chunk relevant to this side
-            var chunk = getChunk(delta);
-            if (chunk == null) {
-                logger.warn("Skipping highlight: chunk is null for {} delta type {}",
-                           this.getClass().getSimpleName(), delta.getType());
-                return;
-            }
-
-            var fromOffset = bufferDocument.getOffsetForLine(chunk.getPosition());
-            if (fromOffset < 0) {
-                logger.warn("{}: invalid fromOffset {} for line {}",
-                           this.getClass().getSimpleName(), fromOffset, chunk.getPosition());
-                return;
-            }
-            var toOffset = bufferDocument.getOffsetForLine(chunk.getPosition() + chunk.size());
-            if (toOffset < 0) {
-                logger.warn("{}: invalid toOffset {} for line {}",
-                           this.getClass().getSimpleName(), toOffset, chunk.getPosition() + chunk.size());
-                return;
-            }
-
-            // Check if chunk is effectively "empty line" in the old code
-            boolean isEmpty = (chunk.size() == 0);
-
-            // End offset might be the doc length; check trailing newline logic:
-            boolean isEndAndNewline = isEndAndLastNewline(toOffset);
-
-            // Decide color. For Insert vs Delete vs Change we do:
-            var isDark = diffPanel.isDarkTheme();
-            var type = delta.getType(); // DeltaType.INSERT, DELETE, CHANGE
-            var painter = switch (type) {
-                case INSERT ->
-                        isEmpty
-                                ? new JMHighlightPainter.JMHighlightLinePainter(Colors.getAdded(isDark))
-                                : isEndAndNewline
-                                ? new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getAdded(isDark))
-                                : new JMHighlightPainter(Colors.getAdded(isDark));
-
-                case DELETE ->
-                        isEmpty
-                                ? new JMHighlightPainter.JMHighlightLinePainter(Colors.getDeleted(isDark))
-                                : isEndAndNewline
-                                ? new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getDeleted(isDark))
-                                : new JMHighlightPainter(Colors.getDeleted(isDark));
-
-                case CHANGE ->
-                        isEndAndNewline
-                                ? new JMHighlightPainter.JMHighlightNewLinePainter(Colors.getChanged(isDark))
-                                : new JMHighlightPainter(Colors.getChanged(isDark));
-                case EQUAL -> throw new IllegalStateException();
-            };
-            setHighlight(fromOffset, toOffset, painter);
-        }
-
-        // Check if the last char is a newline *and* if offset is doc length
-        private boolean isEndAndLastNewline(int toOffset) {
-            if (bufferDocument == null) {
-                return false;
-            }
-            try {
-                var docLen = bufferDocument.getDocument().getLength();
-                int endOffset = toOffset - 1;
-                if (endOffset < 0 || endOffset >= docLen) {
-                    return false;
-                }
-                // If the final character is a newline & chunk touches doc-end
-                boolean lastCharIsNL = "\n".equals(bufferDocument.getDocument().getText(endOffset, 1));
-                return (endOffset == docLen - 1) && lastCharIsNL;
-            } catch (BadLocationException e) {
-                // This exception indicates an issue with offsets, likely a bug
-                throw new RuntimeException("Bad location accessing document text", e);
-            }
-        }
-
-        protected abstract @Nullable Chunk<String> getChunk(AbstractDelta<String> d);
-    }
-
-    class HighlightOriginal extends AbstractHighlight {
-        HighlightOriginal(AbstractDelta<String> delta) {
-            super(delta);
-        }
-
-        @Override
-        protected Chunk<String> getChunk(AbstractDelta<String> d) {
-            return d.getSource(); // For the original side
-        }
-    }
-
-    class HighlightRevised extends AbstractHighlight {
-        HighlightRevised(AbstractDelta<String> delta) {
-            super(delta);
-        }
-
-        @Override
-        protected Chunk<String> getChunk(AbstractDelta<String> d) {
-            var target = d.getTarget();
-            if (target == null) {
-                logger.warn("HighlightRevised: target chunk is null for delta type {}", d.getType());
-                // For certain delta types (like DELETE), target might be null
-                // In that case, try to use source chunk as fallback for positioning
-                var source = d.getSource();
-                if (source != null) {
-                    logger.trace("HighlightRevised: using source chunk as fallback for positioning");
-                    return source;
-                }
-            }
-            return target; // For the revised side
-        }
-    }
 
 
     /** Package-clients (e.g. BufferDiffPanel) need to query the composite highlighter. */
@@ -729,16 +584,16 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         return jmHighlighter;
     }
 
+    /** Provide access to the parent diff panel for DeltaHighlighter. */
+    public BufferDiffPanel getDiffPanel() {
+        return diffPanel;
+    }
+
     private void removeHighlights() {
         JMHighlighter jmhl = getHighlighter();
         jmhl.removeHighlights(JMHighlighter.LAYER0);
         jmhl.removeHighlights(JMHighlighter.LAYER1);
         jmhl.removeHighlights(JMHighlighter.LAYER2);
-    }
-
-    private void setHighlight(int offset, int size,
-                              Highlighter.HighlightPainter highlight) {
-        setHighlight(JMHighlighter.LAYER0, offset, size, highlight);
     }
 
     private void setHighlight(Integer layer, int offset, int size,

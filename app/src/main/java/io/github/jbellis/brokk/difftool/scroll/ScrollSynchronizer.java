@@ -227,6 +227,7 @@ public class ScrollSynchronizer
      */
     private int getCurrentLineCenter(FilePanel fp)
     {
+        assert SwingUtilities.isEventDispatchThread() : "getCurrentLineCenter must be called on EDT";
         var editor = fp.getEditor();
         var viewport = fp.getScrollPane().getViewport();
         var p = viewport.getViewPosition();
@@ -414,6 +415,16 @@ public class ScrollSynchronizer
      * Cleanup method to properly dispose of resources when the synchronizer is no longer needed.
      * Should be called when the BufferDiffPanel is being disposed to prevent memory leaks.
      */
+    /**
+     * Invalidate viewport cache for both synchronized panels.
+     * Since both panels are synchronized, when one needs cache invalidation,
+     * both should be updated to maintain consistency.
+     */
+    public void invalidateViewportCacheForBothPanels() {
+        filePanelLeft.invalidateViewportCache();
+        filePanelRight.invalidateViewportCache();
+    }
+
     public void dispose() {
         // Dispose debouncer to stop any pending timers
         debouncer.dispose();
