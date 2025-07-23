@@ -23,7 +23,7 @@ import java.util.stream.Stream;
 
 /**
  * Very small, project-scoped cache that maps a hash of (filePath + mtime) to a
- * previously-built CPG.  Limited to 20 entries with simple LRU eviction based
+ * previously-built CPG.  Performs simple LRU eviction based
  * on {@link java.nio.file.attribute.FileTime} of the cached files.
  *
  * Enabled only when the environment variable {@code BRK_CPG_CACHE} is set.
@@ -32,7 +32,7 @@ public final class CpgCache
 {
     private static final Logger logger = LogManager.getLogger(CpgCache.class);
     private static final String ENV_FLAG = "BRK_CPG_CACHE";
-    private static final int MAX_ENTRIES = 20;
+    private static final int MAX_ENTRIES = 100;
 
     private CpgCache() {}
 
