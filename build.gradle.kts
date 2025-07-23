@@ -54,4 +54,10 @@ subprojects {
         }
     }
 
+
+    tasks.withType<Test> {
+        filter {
+            isFailOnNoMatchingTests = false
+        }
+    }
 }
