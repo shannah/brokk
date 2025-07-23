@@ -662,7 +662,7 @@ public class BlitzForgeProgressDialog extends JDialog {
 
 
         pack();
-        setLocationRelativeTo(owner);
+        setLocationRelativeTo(chrome.getFrame());
         worker.execute();
     }
 
