@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.agents;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
+import com.google.common.collect.Streams;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
@@ -360,7 +361,13 @@ public class BuildAgent {
 
         // Decide which command to use
         if (workspaceTestFiles.isEmpty()) {
-            logger.debug("No relevant test files found in workspace, using build/lint command: {}", details.buildLintCommand());
+            var ctx = cm.topContext();
+            var summaries = Streams.concat(ctx.getReadOnlyFragments(), ctx.getEditableFragments())
+                    .map(ContextFragment::formatSummary)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.joining(", "));
+            logger.debug("No relevant test files found; using build/lint command: {}. Workspace is [%s]",
+                         details.buildLintCommand(), summaries);
             return details.buildLintCommand();
         }
 

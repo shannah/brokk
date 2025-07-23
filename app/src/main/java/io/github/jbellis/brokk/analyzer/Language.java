@@ -5,6 +5,7 @@ import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
+import io.github.jbellis.brokk.cpg.CpgCache;
 
 import java.io.IOException;
 import java.nio.file.DirectoryStream;
@@ -134,8 +135,10 @@ public interface Language {
 
         @Override
         public IAnalyzer createAnalyzer(IProject project) {
-            var cpgPath = getCpgPath(project);
-            return new JavaAnalyzer(project.getRoot(), project.getExcludedDirectories(), cpgPath);
+            return CpgCache.getOrCompute(project, this, () -> {
+                var cpgPath = getCpgPath(project);
+                return new JavaAnalyzer(project.getRoot(), project.getExcludedDirectories(), cpgPath);
+            });
         }
 
         @Override
@@ -468,8 +471,10 @@ public interface Language {
 
         @Override
         public IAnalyzer createAnalyzer(IProject project) {
-            var cpgPath = getCpgPath(project);
-            return new CppAnalyzer(project.getRoot(), project.getExcludedDirectories(), cpgPath);
+            return CpgCache.getOrCompute(project, this, () -> {
+                var cpgPath = getCpgPath(project);
+                return new CppAnalyzer(project.getRoot(), project.getExcludedDirectories(), cpgPath);
+            });
         }
 
         @Override
