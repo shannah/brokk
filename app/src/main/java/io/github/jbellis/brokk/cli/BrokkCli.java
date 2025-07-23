@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.cli;
 
 import com.google.common.collect.Streams;
+import io.github.jbellis.brokk.AbstractProject;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.MainProject;
@@ -18,7 +19,6 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.InstructionsPanel;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.context.ContextFragment;
-import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.Service;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import org.jetbrains.annotations.Nullable;
@@ -113,6 +113,7 @@ public final class BrokkCli implements Callable<Integer> {
     @CommandLine.Option(names = "--deepscan", description = "Perform a Deep Scan to suggest additional relevant context.")
     private boolean deepScan = false;
     private ContextManager cm;
+    private AbstractProject project;
 
     public static void main(String[] args) {
         System.err.println("Starting Brokk CLI...");
@@ -159,14 +160,14 @@ public final class BrokkCli implements Callable<Integer> {
             return 1;
         }
 
-        // --- Project Validation ---
+        // --- Validation ---
         projectPath = requireNonNull(projectPath).toAbsolutePath();
         if (!Files.isDirectory(projectPath)) {
             System.err.println("Project path is not a directory: " + projectPath);
             return 1;
         }
         if (!GitRepo.hasGitRepo(projectPath)) {
-            System.err.println("Brokk CLI requires project to have a Git repo");
+            System.err.println("Brokk CLI requires to have a Git repo");
             return 1;
         }
 
@@ -194,7 +195,7 @@ public final class BrokkCli implements Callable<Integer> {
 
         // Create Project + ContextManager
         var mainProject = new MainProject(projectPath);
-        var project = worktreePath == null ? mainProject : new WorktreeProject(worktreePath, mainProject);
+        project = worktreePath == null ? mainProject : new WorktreeProject(worktreePath, mainProject);
         cm = new ContextManager(project);
         cm.createHeadless();
         var io = cm.getIo();
@@ -242,8 +243,8 @@ public final class BrokkCli implements Callable<Integer> {
         }
 
         // Resolve files and classes
-        var resolvedEditFiles = resolveFiles(editFiles, project, "editable file");
-        var resolvedReadFiles = resolveFiles(readFiles, project, "read-only file");
+        var resolvedEditFiles = resolveFiles(editFiles, "editable file");
+        var resolvedReadFiles = resolveFiles(readFiles, "read-only file");
         var resolvedClasses = resolveClasses(addClasses, cm.getAnalyzer(), "class");
         var resolvedSummaryClasses = resolveClasses(addSummaryClasses, cm.getAnalyzer(), "summary class");
 
@@ -349,12 +350,18 @@ public final class BrokkCli implements Callable<Integer> {
         return 0;
     }
 
-    private List<String> resolveFiles(List<String> inputs, IProject project, String entityType) {
+    private List<String> resolveFiles(List<String> inputs, String entityType) {
         Supplier<Collection<ProjectFile>> primarySource = project::getAllFiles;
         Supplier<Collection<ProjectFile>> secondarySource = () -> project.getRepo().getTrackedFiles();
 
         return inputs.stream()
-                .map(input -> resolve(input, primarySource, secondarySource, ProjectFile::toString, entityType))
+                .map(input -> {
+                    var pf = cm.toFile(input);
+                    if (pf.exists()) {
+                        return Optional.of(pf);
+                    }
+                    return resolve(input, primarySource, secondarySource, ProjectFile::toString, entityType);
+                })
                 .flatMap(Optional::stream)
                 .map(ProjectFile::toString)
                 .toList();
@@ -377,7 +384,8 @@ public final class BrokkCli implements Callable<Integer> {
                                     Supplier<Collection<T>> primarySourceSupplier,
                                     Supplier<Collection<T>> secondarySourceSupplier,
                                     Function<T, String> nameExtractor,
-                                    String entityType) {
+                                    String entityType) 
+    {
         var primarySource = primarySourceSupplier.get();
         var primaryResult = findUnique(userInput, primarySource, nameExtractor, entityType, "primary source");
 
