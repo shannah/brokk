@@ -19,15 +19,13 @@ import java.util.Optional;
  * Centralizes common logic for creating diff nodes and handling resources.
  */
 public class FileComparisonHelper {
-    
+
     /**
      * Creates a JMDiffNode from two buffer sources.
      * This is the core logic extracted from FileComparison for reuse.
      */
-    public static JMDiffNode createDiffNode(BufferSource left, BufferSource right, 
+    public static JMDiffNode createDiffNode(BufferSource left, BufferSource right,
                                           ContextManager contextManager, boolean isMultipleCommitsContext) {
-        Objects.requireNonNull(left, "Left source cannot be null");
-        Objects.requireNonNull(right, "Right source cannot be null");
 
         String leftDocSyntaxHint = left.title();
         if (left instanceof BufferSource.StringSource stringSourceLeft && stringSourceLeft.filename() != null) {
@@ -66,7 +64,7 @@ public class FileComparisonHelper {
 
         return node;
     }
-    
+
     /**
      * Gets display title for a buffer source, handling commit message resolution.
      * Extracted from FileComparison for reuse.
@@ -98,7 +96,7 @@ public class FileComparisonHelper {
         }
         return originalTitle; // Fallback to original commit ID if message not found or repo error
     }
-    
+
     /**
      * Gets the compare icon for tabs.
      * Uses the standard resource loading pattern consistent with other UI components.

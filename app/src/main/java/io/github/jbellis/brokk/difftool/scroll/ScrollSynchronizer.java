@@ -327,10 +327,7 @@ public class ScrollSynchronizer
         scrollToLine(sourcePanel, line);
 
         // Determine the counterpart panel
-        FilePanel targetPanel = leftSide ? filePanelRight : filePanelLeft;
-        if (targetPanel == null) {
-            return;
-        }
+        var targetPanel = leftSide ? filePanelRight : filePanelLeft;
 
         // Compute the best-effort mapped line on the opposite side using existing logic
         int mappedLine;
@@ -378,17 +375,14 @@ public class ScrollSynchronizer
             scrollToLine(filePanelLeft, sourceLine);
 
             // For navigation, we want to scroll to the corresponding target of this specific delta
+            // Note: getTarget() returns a non-null Chunk, which may be empty for DELETE deltas.
             var target = delta.getTarget();
-            int targetLine;
+            int targetLine = target.getPosition();
 
-            if (target != null && target.size() > 0) {
-                // Normal case: target chunk exists, scroll to its position
-                targetLine = target.getPosition();
+            if (target.size() > 0) {
                 logger.debug("Navigation: delta has target at line {}, scrolling right panel", targetLine);
-            } else {
-                // DELETE case: target is empty, scroll to where the deletion would be
-                // Use the target position (where the deletion happened in revised file)
-                targetLine = target != null ? target.getPosition() : sourceLine;
+            }
+            else {
                 logger.debug("Navigation: DELETE delta, scrolling right panel to target position {}", targetLine);
             }
 

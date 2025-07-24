@@ -133,21 +133,19 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
     // Builder Class
     public static class Builder {
-        @Nullable
-        private BufferSource leftSource;
-        @Nullable
-        private BufferSource rightSource;
         private final GuiTheme theme;
         private final ContextManager contextManager;
         private final List<FileComparisonInfo> fileComparisons;
         private boolean isMultipleCommitsContext = false;
+        @Nullable
+        private BufferSource leftSource;
+        @Nullable
+        private BufferSource rightSource;
 
         public Builder(GuiTheme theme, ContextManager contextManager) {
             this.theme = theme;
             this.contextManager = contextManager;
             this.fileComparisons = new ArrayList<>();
-            this.leftSource = null; // Initialize @Nullable fields
-            this.rightSource = null;
         }
 
         public Builder leftSource(BufferSource source) {
@@ -213,8 +211,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private JButton btnPreviousFile = new JButton("Previous File");
     private JButton btnNextFile = new JButton("Next File");
     private JLabel fileIndicatorLabel = new JLabel(""); // Initialize
-    @Nullable
-    private BufferDiffPanel bufferDiffPanel;
+    @Nullable private BufferDiffPanel bufferDiffPanel;
 
     public void setBufferDiffPanel(@Nullable BufferDiffPanel bufferDiffPanel) {
         this.bufferDiffPanel = bufferDiffPanel;

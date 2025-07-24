@@ -59,10 +59,11 @@ public class ThreadSafeLRUCache<K, V extends ThreadSafeLRUCache.Disposable> {
         }
     }
 
+    @Nullable
     public V put(K key, V value) {
         // Collect items to dispose outside of lock
         var toDispose = new ArrayList<V>();
-        V previousValue;
+        @Nullable V previousValue;
 
         writeLock.lock();
         try {
@@ -122,6 +123,7 @@ public class ThreadSafeLRUCache<K, V extends ThreadSafeLRUCache.Disposable> {
      * Replaces a reserved entry with the actual value.
      * Should only be called after successful tryReserve().
      */
+    @Nullable
     public V putReserved(K key, V value) {
         writeLock.lock();
         try {

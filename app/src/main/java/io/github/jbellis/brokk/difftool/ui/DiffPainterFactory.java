@@ -2,6 +2,8 @@ package io.github.jbellis.brokk.difftool.ui;
 
 import com.github.difflib.patch.DeltaType;
 import io.github.jbellis.brokk.difftool.utils.Colors;
+import org.jetbrains.annotations.NotNull;
+
 import javax.swing.text.Highlighter;
 
 /**
@@ -22,10 +24,10 @@ public final class DiffPainterFactory {
      * @param isEndAndNewline Whether the chunk ends at document end with a newline
      * @return The appropriate highlight painter
      */
-    public static Highlighter.HighlightPainter create(DeltaType type, 
-                                                      boolean isDark, 
-                                                      boolean isEmpty, 
-                                                      boolean isEndAndNewline) {
+    public static @NotNull Highlighter.HighlightPainter create(@NotNull DeltaType type,
+                                                               boolean isDark,
+                                                               boolean isEmpty,
+                                                               boolean isEndAndNewline) {
         return switch (type) {
             case INSERT -> createInsertPainter(isDark, isEmpty, isEndAndNewline);
             case DELETE -> createDeletePainter(isDark, isEmpty, isEndAndNewline);
@@ -34,9 +36,9 @@ public final class DiffPainterFactory {
         };
     }
     
-    private static Highlighter.HighlightPainter createInsertPainter(boolean isDark, 
-                                                                    boolean isEmpty, 
-                                                                    boolean isEndAndNewline) {
+    private static @NotNull Highlighter.HighlightPainter createInsertPainter(boolean isDark,
+                                                                             boolean isEmpty,
+                                                                             boolean isEndAndNewline) {
         var color = Colors.getAdded(isDark);
         
         if (isEmpty) {
@@ -48,9 +50,9 @@ public final class DiffPainterFactory {
         }
     }
     
-    private static Highlighter.HighlightPainter createDeletePainter(boolean isDark, 
-                                                                    boolean isEmpty, 
-                                                                    boolean isEndAndNewline) {
+    private static @NotNull Highlighter.HighlightPainter createDeletePainter(boolean isDark,
+                                                                             boolean isEmpty,
+                                                                             boolean isEndAndNewline) {
         var color = Colors.getDeleted(isDark);
         
         if (isEmpty) {
@@ -62,8 +64,8 @@ public final class DiffPainterFactory {
         }
     }
     
-    private static Highlighter.HighlightPainter createChangePainter(boolean isDark, 
-                                                                    boolean isEndAndNewline) {
+    private static @NotNull Highlighter.HighlightPainter createChangePainter(boolean isDark,
+                                                                             boolean isEndAndNewline) {
         var color = Colors.getChanged(isDark);
         
         if (isEndAndNewline) {
