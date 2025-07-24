@@ -7,8 +7,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
-import dev.langchain4j.model.chat.response.ChatResponse;
-import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.Llm.StreamingResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -131,8 +129,7 @@ public class CodeAgent {
                                                                                  loopContext.conversationState().originalWorkspaceEditableMessages());
                 streamingResult = coder.sendRequest(allMessagesForLlm, true);
                 if (metrics != null) {
-                    Optional.ofNullable(streamingResult.originalResponse())
-                            .map(ChatResponse::tokenUsage)
+                    Optional.ofNullable(streamingResult.tokenUsage())
                             .ifPresent(metrics::addTokens);
                     metrics.addRetries(streamingResult.retries());
                 }
@@ -1032,42 +1029,37 @@ public class CodeAgent {
         private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
         final long startNanos = System.nanoTime();
-        @Nullable Integer totalInputTokens = 0;
-        @Nullable Integer totalOutputTokens = 0;
+        int totalInputTokens = 0;
+        int totalCachedTokens = 0;
+        int totalThinkingTokens = 0;
+        int totalOutputTokens = 0;
         int totalEditBlocks = 0;
         int failedEditBlocks = 0;
         int buildFailures = 0;
         int retries = 0;
 
-        void addTokens(@Nullable TokenUsage usage) {
-            if (usage == null || totalInputTokens == null) {
+        void addTokens(@Nullable Llm.RichTokenUsage usage) {
+            if (usage == null) {
                 return;
             }
-            var current = new TokenUsage(totalInputTokens, totalOutputTokens);
-            var summed = current.add(usage);
-            totalInputTokens = summed.inputTokenCount();
-            totalOutputTokens = summed.outputTokenCount();
+            totalInputTokens += usage.inputTokens();
+            totalCachedTokens += usage.cachedInputTokens();
+            totalThinkingTokens += usage.thinkingTokens();
+            totalOutputTokens += usage.outputTokens();
         }
 
         void addRetries(int retryCount) {
             retries += retryCount;
         }
 
-        void nullifyTokens() {
-            totalInputTokens = null;
-            totalOutputTokens = null;
-        }
-
         void print(Set<ProjectFile> changedFiles, TaskResult.StopDetails stopDetails) {
-            if (stopDetails.reason() == TaskResult.StopReason.LLM_ERROR || stopDetails.reason() == TaskResult.StopReason.EMPTY_RESPONSE) {
-                nullifyTokens();
-            }
-
             var changedFilesList = changedFiles.stream().map(ProjectFile::toString).toList();
 
             var jsonMap = new LinkedHashMap<String, Object>();
             jsonMap.put("elapsedMillis", Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
             jsonMap.put("inputTokens", totalInputTokens);
+            jsonMap.put("cachedInputTokens", totalCachedTokens);
+            jsonMap.put("reasoningTokens", totalThinkingTokens);
             jsonMap.put("outputTokens", totalOutputTokens);
             jsonMap.put("editBlocksTotal", totalEditBlocks);
             jsonMap.put("editBlocksFailed", failedEditBlocks);

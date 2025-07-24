@@ -1083,6 +1083,8 @@ public class Llm {
         // TODO this should be final but disentanglihg from ContextManager is difficult
         this.io = io;
     }
+    
+    public record RichTokenUsage(int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens) { }
 
     /**
      * The result of a streaming cal. Exactly one of (chatResponse, error) is not null UNLESS
@@ -1115,6 +1117,31 @@ public class Llm {
                 // indicating it's a partial/synthetic response accompanying an error.
                 assert chatResponse == null || chatResponse.originalResponse == null;
             }
+        }
+        
+        public @Nullable RichTokenUsage tokenUsage() {
+            if (originalResponse() == null) {
+                return null;
+            }
+            var usage = (OpenAiTokenUsage) originalResponse().tokenUsage();
+
+            // always present
+            int inputTokens       = usage.inputTokenCount();
+            int cachedInputTokens = 0;
+            int thinkingTokens    = 0;
+            int outputTokens      = usage.outputTokenCount();
+
+            // only present if litellm didn't fuck up the streaming-complete response
+            var inputDetails = usage.inputTokensDetails();
+            var outputDetails = usage.outputTokensDetails();
+            if (inputDetails != null && inputDetails.cachedTokens() != null) {
+                cachedInputTokens = inputDetails.cachedTokens();
+            }
+            if (outputDetails != null && outputDetails.reasoningTokens() != null) {
+                thinkingTokens = outputDetails.reasoningTokens();
+            }
+
+            return new RichTokenUsage(inputTokens, cachedInputTokens, thinkingTokens, outputTokens);
         }
 
         public String text() {
