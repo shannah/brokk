@@ -360,17 +360,16 @@ public class ContextAgent {
             var service = contextManager.getService();
             var executorService = AdaptiveExecutor.create(service, model, chunks.size() - parallelStartIndex);
 
-            // This TokenAwareCallable is very similar to BlitzForgeProgressDialog's
             interface TokenAwareLlmRecommendationCallable extends Callable<LlmRecommendation>, TokenAware {}
 
+            List<Future<LlmRecommendation>> futures = new ArrayList<>();
             try {
-                var completionService = new ExecutorCompletionService<LlmRecommendation>(executorService);
                 for (int i = parallelStartIndex; i < chunks.size(); i++) {
                     if (Thread.currentThread().isInterrupted()) {
                         break;
                     }
                     var chunk = chunks.get(i);
-                    completionService.submit(new TokenAwareLlmRecommendationCallable() {
+                    futures.add(executorService.submit(new TokenAwareLlmRecommendationCallable() {
                         @Override
                         public int tokens() {
                             return chunk.tokenCount();
@@ -380,23 +379,21 @@ public class ContextAgent {
                         public LlmRecommendation call() throws Exception {
                             return askLlmToRecommendContext(List.of(), chunk.summaries(), Map.of(), workspaceRepresentation);
                         }
-                    });
+                    }));
                 }
 
-                int tasksSubmitted = chunks.size() - parallelStartIndex;
-                for (int i = 0; i < tasksSubmitted; i++) {
+                for (var future : futures) {
                     if (Thread.currentThread().isInterrupted()) {
                         break;
                     }
                     try {
-                        Future<LlmRecommendation> future = completionService.take();
                         LlmRecommendation result = future.get();
                         recommendations.add(result);
                     } catch (ExecutionException e) {
                         logger.error("Error recommending context for a chunk", e.getCause());
                     } catch (InterruptedException e) {
-                        Thread.currentThread().interrupt(); // Restore interrupt status
-                        break; // Exit loop due to interruption
+                        Thread.currentThread().interrupt();
+                        break;
                     }
                 }
             } finally {
