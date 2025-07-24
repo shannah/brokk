@@ -964,6 +964,20 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     }
 
     /**
+     * Clear viewport cache to free memory
+     */
+    public void clearViewportCache() {
+        viewportCache.set(null);
+    }
+
+    /**
+     * Clear search cache to free memory
+     */
+    public void clearSearchCache() {
+        searchHits = null; // Clear reference to search results
+    }
+
+    /**
      * Synchronizes a specific document change incrementally to preserve cursor position
      * and avoid replacing the entire document content.
      */

@@ -34,20 +34,50 @@ public class HybridFileComparison {
         boolean isLowConfidence = leftEstimation.confidence() == SizeConfidence.LOW ||
                                  rightEstimation.confidence() == SizeConfidence.LOW;
 
-        logger.debug("Size estimation: left={}B ({}), right={}B ({}), max={}B",
-                    leftEstimation.estimatedBytes(), leftEstimation.confidence(),
-                    rightEstimation.estimatedBytes(), rightEstimation.confidence(),
-                    maxSize);
+        // More detailed logging with human-readable sizes
+        String leftSizeStr = formatFileSize(leftEstimation.estimatedBytes());
+        String rightSizeStr = formatFileSize(rightEstimation.estimatedBytes());
+        String maxSizeStr = formatFileSize(maxSize);
 
-        // Use async for large files OR when size estimation is uncertain
+        logger.debug("Size estimation: left={} ({}), right={} ({}), max={}",
+                    leftSizeStr, leftEstimation.confidence(),
+                    rightSizeStr, rightEstimation.confidence(),
+                    maxSizeStr);
+
+        // Check for files too large to handle safely
+        if (maxSize > PerformanceConstants.MAX_FILE_SIZE_BYTES) {
+            logger.error("File too large to process safely: {} (max allowed: {})",
+                        maxSizeStr, formatFileSize(PerformanceConstants.MAX_FILE_SIZE_BYTES));
+
+            // Show error on EDT and clear loading state
+            SwingUtilities.invokeLater(() -> {
+                String message = String.format(
+                    "File is too large to display safely: %s (maximum: %s)",
+                    maxSizeStr, formatFileSize(PerformanceConstants.MAX_FILE_SIZE_BYTES)
+                );
+
+                // Clear the loading state and re-enable buttons
+                mainPanel.displayErrorForFile(fileIndex, message);
+            });
+            return; // Don't process the file
+        }
+
+        // Warn about potentially problematic files
+        if (maxSize > PerformanceConstants.HUGE_FILE_THRESHOLD_BYTES) {
+            logger.warn("Processing huge file ({}): may cause memory issues", maxSizeStr);
+        } else if (maxSize > PerformanceConstants.MEDIUM_FILE_THRESHOLD_BYTES) {
+            logger.info("Processing medium file ({}): using async processing for responsiveness", maxSizeStr);
+        }
+
+        // Use async for large files OR when size estimation is uncertain and file is medium+
         boolean useAsync = maxSize > PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES ||
-                          (isLowConfidence && maxSize > PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES / 4);
+                          (isLowConfidence && maxSize > PerformanceConstants.MEDIUM_FILE_THRESHOLD_BYTES);
 
         if (useAsync) {
-            logger.info("Using async processing: size={}B, lowConfidence={}", maxSize, isLowConfidence);
+            logger.info("Using async processing: size={}, lowConfidence={}", maxSizeStr, isLowConfidence);
             createAsyncDiffPanel(leftSource, rightSource, mainPanel, theme, contextManager, isMultipleCommitsContext, fileIndex, startTime);
         } else {
-            logger.debug("Using sync processing: size={}B", maxSize);
+            logger.debug("Using sync processing: size={}", maxSizeStr);
             createSyncDiffPanel(leftSource, rightSource, mainPanel, theme, contextManager, isMultipleCommitsContext, fileIndex, startTime);
         }
     }
@@ -62,9 +92,23 @@ public class HybridFileComparison {
 
         SwingUtilities.invokeLater(() -> {
             try {
+                long diffStartTime = System.currentTimeMillis();
+
                 // Create diff node and compute diff synchronously
                 var diffNode = FileComparisonHelper.createDiffNode(leftSource, rightSource, contextManager, isMultipleCommitsContext);
+
+                long diffCreationTime = System.currentTimeMillis() - diffStartTime;
+                if (diffCreationTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS / 2) {
+                    logger.warn("Slow diff node creation: {}ms", diffCreationTime);
+                }
+
+                diffStartTime = System.currentTimeMillis();
                 diffNode.diff(); // Fast for small files
+
+                long diffComputeTime = System.currentTimeMillis() - diffStartTime;
+                if (diffComputeTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS) {
+                    logger.warn("Slow diff computation (sync): {}ms - consider lowering size threshold", diffComputeTime);
+                }
 
                 // Create and configure panel
                 var panel = new BufferDiffPanel(mainPanel, theme);
@@ -76,12 +120,13 @@ public class HybridFileComparison {
                 // Display using the proper method that updates navigation buttons
                 mainPanel.displayAndRefreshPanel(fileIndex, panel);
 
-                long elapsedTime = System.currentTimeMillis() - startTime;
+                long totalElapsedTime = System.currentTimeMillis() - startTime;
 
-                if (elapsedTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS) {
-                    logger.warn("Slow sync diff creation: {}ms", elapsedTime);
+                if (totalElapsedTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS) {
+                    logger.warn("Slow sync diff creation: {}ms (diff: {}ms, total: {}ms)",
+                               diffComputeTime, totalElapsedTime, totalElapsedTime);
                 } else {
-                    logger.debug("Sync diff panel created successfully in {}ms", elapsedTime);
+                    logger.debug("Sync diff panel created successfully in {}ms", totalElapsedTime);
                 }
 
             } catch (RuntimeException ex) {
@@ -198,5 +243,20 @@ public class HybridFileComparison {
         HIGH,   // Exact or very accurate (e.g., file.length(), string.getBytes().length)
         MEDIUM, // Good approximation (e.g., string.length() * avg_char_size)
         LOW     // Rough estimate or fallback (e.g., unknown types, errors)
+    }
+
+    /**
+     * Format file size in human-readable format with appropriate units.
+     */
+    private static String formatFileSize(long bytes) {
+        if (bytes < 1024) {
+            return bytes + "B";
+        } else if (bytes < 1024 * 1024) {
+            return String.format("%.1fKB", bytes / 1024.0);
+        } else if (bytes < 1024 * 1024 * 1024) {
+            return String.format("%.1fMB", bytes / (1024.0 * 1024.0));
+        } else {
+            return String.format("%.1fGB", bytes / (1024.0 * 1024.0 * 1024.0));
+        }
     }
 }

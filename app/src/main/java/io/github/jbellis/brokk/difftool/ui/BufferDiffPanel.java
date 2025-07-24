@@ -12,7 +12,7 @@ import io.github.jbellis.brokk.difftool.scroll.DiffScrollComponent;
 import io.github.jbellis.brokk.difftool.scroll.ScrollSynchronizer;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
-import io.github.jbellis.brokk.util.ThreadSafeLRUCache;
+import io.github.jbellis.brokk.util.SlidingWindowCache;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import org.apache.logging.log4j.LogManager;
@@ -33,7 +33,7 @@ import static java.util.Objects.requireNonNull;
  * This panel shows the side-by-side file panels, the diff curves, plus search bars.
  * It no longer depends on custom JMRevision/JMDelta but rather on a Patch<String>.
  */
-public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware, ThreadSafeLRUCache.Disposable
+public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware, SlidingWindowCache.Disposable
 {
     private static final Logger logger = LogManager.getLogger(BufferDiffPanel.class);
 
@@ -926,5 +926,21 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         diffNode = null;
         patch = null;
         selectedDelta = null;
+    }
+
+    /**
+     * Clear caches to free memory while keeping the panel functional.
+     * Used by sliding window memory management.
+     */
+    public void clearCaches() {
+        // Clear undo history
+        var undoManager = getUndoHandler();
+        undoManager.discardAllEdits();
+
+        // Clear file panel caches
+        for (var fp : filePanels.values()) {
+            fp.clearViewportCache();
+            fp.clearSearchCache();
+        }
     }
 }

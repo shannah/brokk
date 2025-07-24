@@ -11,6 +11,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import java.nio.charset.StandardCharsets;
 import java.util.Objects;
 import java.util.Optional;
 
@@ -108,5 +109,23 @@ public class FileComparisonHelper {
         } catch (NullPointerException e) {
             return null;
         }
+    }
+
+    /**
+     * Estimates the size of a BufferSource in bytes.
+     * Used for preload size checking to avoid loading files that are too large.
+     */
+    public static long estimateSourceSize(BufferSource source) {
+        if (source instanceof BufferSource.FileSource fileSource) {
+            var file = fileSource.file();
+            if (file.exists() && file.isFile()) {
+                return file.length();
+            }
+            return 0L;
+        } else if (source instanceof BufferSource.StringSource stringSource) {
+            return stringSource.content().getBytes(StandardCharsets.UTF_8).length;
+        }
+        // Unknown source type, return 0
+        return 0L;
     }
 }

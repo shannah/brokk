@@ -5,7 +5,7 @@ import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import java.awt.*;
 
-import io.github.jbellis.brokk.util.ThreadSafeLRUCache;
+import io.github.jbellis.brokk.util.SlidingWindowCache;
 
 import io.github.jbellis.brokk.difftool.node.JMDiffNode;
 import org.apache.logging.log4j.LogManager;
@@ -34,7 +34,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private final ContextManager contextManager;
     private final JTabbedPane tabbedPane;
     private boolean started;
-    private final JLabel loadingLabel = new JLabel("Processing... Please wait.");
+    private final JLabel loadingLabel = createLoadingLabel();
     private final GuiTheme theme;
     private final JCheckBox showBlankLineDiffsCheckBox = new JCheckBox("Show blank-lines");
 
@@ -43,9 +43,11 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private int currentFileIndex = 0;
     private final boolean isMultipleCommitsContext;
 
-    // Thread-safe LRU cache for loaded diff panels
+    // Thread-safe sliding window cache for loaded diff panels
+    private static final int WINDOW_SIZE = PerformanceConstants.DEFAULT_SLIDING_WINDOW;
     private static final int MAX_CACHED_PANELS = PerformanceConstants.MAX_CACHED_DIFF_PANELS;
-    private final ThreadSafeLRUCache<Integer, BufferDiffPanel> panelCache = new ThreadSafeLRUCache<>(MAX_CACHED_PANELS);
+    private final SlidingWindowCache<Integer, BufferDiffPanel> panelCache =
+        new SlidingWindowCache<>(MAX_CACHED_PANELS, WINDOW_SIZE);
 
     /**
      * Inner class to hold a single file comparison metadata
@@ -215,28 +217,79 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
     public void nextFile() {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
+
+        // Disable all control buttons FIRST, before any logic
+        disableAllControlButtons();
+
+        logger.debug("Navigation Step 1: User clicked next file (current: {}, total: {})",
+                    currentFileIndex, fileComparisons.size());
+
         if (canNavigateToNextFile()) {
-            switchToFile(currentFileIndex + 1);
+            try {
+                switchToFile(currentFileIndex + 1);
+            } catch (Exception e) {
+                logger.error("Error navigating to next file", e);
+                // Re-enable buttons on exception
+                updateNavigationButtons();
+            }
+        } else {
+            logger.debug("Navigation blocked: cannot navigate to next file");
+            // Re-enable buttons if navigation was blocked
+            updateNavigationButtons();
         }
     }
 
     public void previousFile() {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
+
+        // Disable all control buttons FIRST, before any logic
+        disableAllControlButtons();
+
+        logger.debug("Navigation Step 1: User clicked previous file (current: {}, total: {})",
+                    currentFileIndex, fileComparisons.size());
+
         if (canNavigateToPreviousFile()) {
-            switchToFile(currentFileIndex - 1);
+            try {
+                switchToFile(currentFileIndex - 1);
+            } catch (Exception e) {
+                logger.error("Error navigating to previous file", e);
+                // Re-enable buttons on exception
+                updateNavigationButtons();
+            }
+        } else {
+            logger.debug("Navigation blocked: cannot navigate to previous file");
+            // Re-enable buttons if navigation was blocked
+            updateNavigationButtons();
         }
     }
 
     public void switchToFile(int index) {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
         if (index < 0 || index >= fileComparisons.size()) {
+            logger.warn("Navigation Step 2: Invalid file index {} (valid range: 0-{})",
+                       index, fileComparisons.size() - 1);
             return;
         }
 
-        // No automatic save; user must choose "Save All"
+        logger.debug("Navigation Step 2: Starting switchToFile from {} to {} with sliding window",
+                    currentFileIndex, index);
+
+        // Update sliding window in cache - this automatically evicts files outside window
+        panelCache.updateWindowCenter(index, fileComparisons.size());
 
         currentFileIndex = index;
+
+        // Load current file if not in cache
         loadFileOnDemand(currentFileIndex);
+
+        // Predictively load adjacent files in background
+        preloadAdjacentFiles(currentFileIndex);
+
+        updateNavigationButtons();
+
+        // Log memory and window status
+        logger.debug("Window after switch: {}", panelCache.getWindowInfo());
+        logMemoryUsage();
     }
 
 
@@ -246,6 +299,74 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
         btnPreviousFile.setEnabled(canNavigateToPreviousFile());
         btnNextFile.setEnabled(canNavigateToNextFile());
+    }
+
+    /**
+     * Creates a styled loading label for the "Processing... Please wait." message.
+     * The label is centered and uses a larger font for better visibility.
+     */
+    private static JLabel createLoadingLabel() {
+        var label = new JLabel("Processing... Please wait.", SwingConstants.CENTER);
+
+        // Make the font larger and bold for better visibility
+        var currentFont = label.getFont();
+        var largerFont = currentFont.deriveFont(Font.BOLD, currentFont.getSize() + 4);
+        label.setFont(largerFont);
+
+        // Add some padding
+        label.setBorder(javax.swing.BorderFactory.createEmptyBorder(50, 20, 50, 20));
+
+        return label;
+    }
+
+    /**
+     * Creates a styled error label similar to the loading label but for error messages.
+     * Uses theme-aware colors instead of hardcoded red.
+     */
+    private JLabel createErrorLabel(String errorMessage) {
+        var label = new JLabel("File Too Large to Display", SwingConstants.CENTER);
+
+        // Make the font larger and bold for better visibility (same as loading label)
+        var currentFont = label.getFont();
+        var largerFont = currentFont.deriveFont(Font.BOLD, currentFont.getSize() + 4);
+        label.setFont(largerFont);
+
+        // Use theme-aware error color instead of hardcoded red
+        label.setForeground(UIManager.getColor("Label.disabledForeground"));
+
+        // Add some padding (same as loading label)
+        label.setBorder(javax.swing.BorderFactory.createEmptyBorder(50, 20, 50, 20));
+
+        // Set the actual error message as tooltip for full details
+        label.setToolTipText(errorMessage);
+
+        return label;
+    }
+
+    /**
+     * Disables all control buttons during file loading to prevent navigation issues.
+     * Called from showLoadingForFile() to ensure clean loading states.
+     */
+    private void disableAllControlButtons() {
+        assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
+
+        // File navigation buttons
+        btnPreviousFile.setEnabled(false);
+        btnNextFile.setEnabled(false);
+
+        // Change navigation buttons
+        btnNext.setEnabled(false);
+        btnPrevious.setEnabled(false);
+
+        // Edit buttons
+        btnUndo.setEnabled(false);
+        btnRedo.setEnabled(false);
+        btnSaveAll.setEnabled(false);
+
+        // Other control buttons
+        captureDiffButton.setEnabled(false);
+
+        logger.debug("All control buttons disabled during file loading");
     }
 
 
@@ -394,20 +515,31 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
      * Saves every dirty document across all BufferDiffPanels.
      */
     public void saveAll() {
-        var visited = new java.util.HashSet<BufferDiffPanel>();
-        if (bufferDiffPanel != null) {
-            visited.add(bufferDiffPanel);
-            bufferDiffPanel.doSave();
-            refreshTabTitle(bufferDiffPanel);
-        }
-        // save each panel
-        for (var p : panelCache.nonNullValues()) {
-            if (visited.add(p)) {
-                p.doSave();
-                refreshTabTitle(p);
+        try {
+            // Disable save button temporarily
+            btnSaveAll.setEnabled(false);
+
+            var visited = new java.util.HashSet<BufferDiffPanel>();
+            if (bufferDiffPanel != null) {
+                visited.add(bufferDiffPanel);
+                bufferDiffPanel.doSave();
+                refreshTabTitle(bufferDiffPanel);
             }
+            // save each panel
+            for (var p : panelCache.nonNullValues()) {
+                if (visited.add(p)) {
+                    p.doSave();
+                    refreshTabTitle(p);
+                }
+            }
+            repaint();
+
+            // Re-enable buttons after save operation
+            SwingUtilities.invokeLater(this::updateNavigationButtons);
+        } catch (Exception e) {
+            logger.error("Error saving files", e);
+            updateNavigationButtons();
         }
-        repaint();
     }
 
     /**
@@ -428,6 +560,8 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     }
 
     public void launchComparison() {
+        logger.info("Navigation Step 0: Launching diff comparison with {} files, starting with file index 0",
+                   fileComparisons.size());
         // Show the first file immediately
         currentFileIndex = 0;
         loadFileOnDemand(currentFileIndex);
@@ -439,11 +573,14 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             return;
         }
 
+        logger.debug("Navigation Step 3: Starting loadFileOnDemand for file index {}", fileIndex);
+
         var compInfo = fileComparisons.get(fileIndex);
 
         // First check if panel is already cached (fast read operation)
         var cachedPanel = panelCache.get(fileIndex);
         if (cachedPanel != null) {
+            logger.debug("Navigation Step 3: File {} found in cache, displaying immediately", fileIndex);
             displayCachedFile(fileIndex, cachedPanel);
             return;
         }
@@ -453,14 +590,17 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             // Another thread is already loading this file or it was cached between checks
             var nowCachedPanel = panelCache.get(fileIndex);
             if (nowCachedPanel != null) {
+                logger.debug("Navigation Step 3: File {} was cached during reservation check", fileIndex);
                 displayCachedFile(fileIndex, nowCachedPanel);
             } else {
                 // Reserved by another thread, show loading and wait
+                logger.debug("Navigation Step 3: File {} is being loaded by another thread, showing loading state", fileIndex);
                 showLoadingForFile(fileIndex);
             }
             return;
         }
 
+        logger.debug("Navigation Step 3: File {} not cached, reserved for loading", fileIndex);
         showLoadingForFile(fileIndex);
 
         // Use hybrid approach - sync for small files, async for large files
@@ -471,25 +611,46 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private void showLoadingForFile(int fileIndex) {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
 
+        logger.debug("Navigation Step 4: Showing loading UI for file {} - disabling all control buttons", fileIndex);
+
         var compInfo = fileComparisons.get(fileIndex);
 
-        // Clear existing tabs and show loading label
+        // Disable all control buttons during loading
+        disableAllControlButtons();
+
+        // Clear existing tabs and show loading label at top center
         tabbedPane.removeAll();
-        add(loadingLabel, BorderLayout.CENTER);
+
+        // Create a panel to hold the loading label at the top
+        var loadingPanel = new JPanel(new BorderLayout());
+        loadingPanel.add(loadingLabel, BorderLayout.NORTH);
+        add(loadingPanel, BorderLayout.CENTER);
 
         updateFileIndicatorLabel("Loading: " + compInfo.getDisplayName());
 
         revalidate();
         repaint();
+
+        logger.debug("Navigation Step 4: Loading UI displayed, all buttons disabled");
     }
 
     private void displayCachedFile(int fileIndex, BufferDiffPanel cachedPanel) {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
 
+        logger.debug("Navigation Step 5: Displaying cached file {} and re-enabling control buttons", fileIndex);
+
         var compInfo = fileComparisons.get(fileIndex);
 
-        // Remove loading label if present
-        remove(loadingLabel);
+        // Remove loading panel if present (contains the loading label)
+        // Find and remove any loading panel
+        for (var component : getComponents()) {
+            if (component instanceof JPanel panel && panel.getComponentCount() > 0) {
+                if (panel.getComponent(0) == loadingLabel) {
+                    remove(panel);
+                    break;
+                }
+            }
+        }
 
         // Clear tabs and add the cached panel
         tabbedPane.removeAll();
@@ -505,9 +666,57 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         // Update file indicator
         updateFileIndicatorLabel(compInfo.getDisplayName());
 
+        // Re-enable control buttons after loading is complete
+        updateNavigationButtons();
+
         refreshUI();
+
+        logger.debug("Navigation Step 5: File {} successfully displayed, navigation complete", fileIndex);
     }
 
+
+    /**
+     * Display an error message for a file that cannot be loaded.
+     * Clears the loading state and shows the error message.
+     */
+    public void displayErrorForFile(int fileIndex, String errorMessage) {
+        assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
+
+        logger.error("Cannot display file {}: {}", fileIndex, errorMessage);
+
+        var compInfo = fileComparisons.get(fileIndex);
+
+        // Remove loading panel if present
+        for (var component : getComponents()) {
+            if (component instanceof JPanel panel && panel.getComponentCount() > 0) {
+                if (panel.getComponent(0) == loadingLabel) {
+                    remove(panel);
+                    break;
+                }
+            }
+        }
+
+        // Clear tabs and show error message
+        tabbedPane.removeAll();
+
+        // Create error panel similar to loading panel
+        var errorPanel = new JPanel(new BorderLayout());
+        var errorLabel = createErrorLabel(errorMessage);
+        errorPanel.add(errorLabel, BorderLayout.NORTH);
+
+        tabbedPane.addTab(compInfo.getDisplayName() + " (Too Big)", errorPanel);
+
+        // Update file indicator
+        updateFileIndicatorLabel(compInfo.getDisplayName() + " - Too Big");
+
+        // Re-enable navigation buttons but keep current panel null
+        updateNavigationButtons();
+
+        // Clear the reserved slot in cache
+        panelCache.removeReserved(fileIndex);
+
+        refreshUI();
+    }
 
     @Nullable
     public AbstractContentPanel getCurrentContentPanel() {
@@ -562,28 +771,50 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         var panel = getCurrentContentPanel();
         if (panel == null) return;
 
-        if (panel.isAtLastLogicalChange() && canNavigateToNextFile()) {
-            nextFile();
-        } else {
-            panel.doDown();
+        // Disable change navigation buttons FIRST
+        btnNext.setEnabled(false);
+        btnPrevious.setEnabled(false);
+
+        try {
+            if (panel.isAtLastLogicalChange() && canNavigateToNextFile()) {
+                nextFile();
+            } else {
+                panel.doDown();
+                // Re-enable immediately after navigation within same file
+                SwingUtilities.invokeLater(this::updateNavigationButtons);
+            }
+            refreshAfterNavigation();
+        } catch (Exception e) {
+            logger.error("Error navigating to next change", e);
+            updateNavigationButtons();
         }
-        refreshAfterNavigation();
     }
 
     private void navigateToPreviousChange() {
         var panel = getCurrentContentPanel();
         if (panel == null) return;
 
-        if (panel.isAtFirstLogicalChange() && canNavigateToPreviousFile()) {
-            previousFile();
-            var newPanel = getCurrentContentPanel();
-            if (newPanel != null) {
-                newPanel.goToLastLogicalChange();
+        // Disable change navigation buttons FIRST
+        btnNext.setEnabled(false);
+        btnPrevious.setEnabled(false);
+
+        try {
+            if (panel.isAtFirstLogicalChange() && canNavigateToPreviousFile()) {
+                previousFile();
+                var newPanel = getCurrentContentPanel();
+                if (newPanel != null) {
+                    newPanel.goToLastLogicalChange();
+                }
+            } else {
+                panel.doUp();
+                // Re-enable immediately after navigation within same file
+                SwingUtilities.invokeLater(this::updateNavigationButtons);
             }
-        } else {
-            panel.doUp();
+            refreshAfterNavigation();
+        } catch (Exception e) {
+            logger.error("Error navigating to previous change", e);
+            updateNavigationButtons();
         }
-        refreshAfterNavigation();
     }
 
     private boolean canNavigateToNextFile() {
@@ -618,11 +849,22 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private void performUndoRedo(java.util.function.Consumer<AbstractContentPanel> action) {
         var panel = getCurrentContentPanel();
         if (panel != null) {
-            action.accept(panel);
-            repaint();
-            var diffPanel = getBufferDiffPanel();
-            if (diffPanel != null) {
-                refreshTabTitle(diffPanel);
+            // Disable undo/redo buttons FIRST
+            btnUndo.setEnabled(false);
+            btnRedo.setEnabled(false);
+
+            try {
+                action.accept(panel);
+                repaint();
+                var diffPanel = getBufferDiffPanel();
+                if (diffPanel != null) {
+                    refreshTabTitle(diffPanel);
+                }
+                // Re-enable buttons after operation
+                SwingUtilities.invokeLater(this::updateNavigationButtons);
+            } catch (Exception e) {
+                logger.error("Error performing undo/redo operation", e);
+                updateNavigationButtons();
             }
         }
     }
@@ -688,14 +930,130 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
      * Uses putReserved if the slot was reserved, otherwise regular put.
      */
     public void cachePanel(int fileIndex, BufferDiffPanel panel) {
-        var cachedPanel = panelCache.get(fileIndex);
-        if (cachedPanel == null) {
-            // This was a reserved slot, replace with actual panel
-            panelCache.putReserved(fileIndex, panel);
+        logger.debug("Navigation Step 4.5: File {} loading completed, caching panel", fileIndex);
+
+        // Only cache if within current window
+        if (panelCache.isInWindow(fileIndex)) {
+            var cachedPanel = panelCache.get(fileIndex);
+            if (cachedPanel == null) {
+                // This was a reserved slot, replace with actual panel
+                panelCache.putReserved(fileIndex, panel);
+                logger.debug("Navigation Step 4.5: Panel {} cached in sliding window (reserved slot)", fileIndex);
+            } else {
+                // Direct cache (shouldn't happen in normal flow but handle gracefully)
+                panelCache.put(fileIndex, panel);
+                logger.warn("Navigation Step 4.5: Panel {} cached directly (unexpected path)", fileIndex);
+            }
         } else {
-            // Direct cache (shouldn't happen in normal flow but handle gracefully)
-            panelCache.put(fileIndex, panel);
+            logger.debug("Navigation Step 4.5: Panel {} outside window, not caching but will display", fileIndex);
+            // Still display but don't cache
         }
+    }
+
+    /**
+     * Preload adjacent files in the background for smooth navigation
+     */
+    private void preloadAdjacentFiles(int currentIndex) {
+        contextManager.submitBackgroundTask("Preload adjacent files", () -> {
+            // Preload previous file if not cached and in window
+            int prevIndex = currentIndex - 1;
+            if (prevIndex >= 0 && panelCache.get(prevIndex) == null && panelCache.isInWindow(prevIndex)) {
+                preloadFile(prevIndex);
+            }
+
+            // Preload next file if not cached and in window
+            int nextIndex = currentIndex + 1;
+            if (nextIndex < fileComparisons.size() && panelCache.get(nextIndex) == null && panelCache.isInWindow(nextIndex)) {
+                preloadFile(nextIndex);
+            }
+        });
+    }
+
+    /**
+     * Preload a single file in the background
+     */
+    private void preloadFile(int fileIndex) {
+        try {
+            logger.debug("Preloading file {} in background", fileIndex);
+            var compInfo = fileComparisons.get(fileIndex);
+
+            // Check file sizes before attempting to preload
+            long leftSize = FileComparisonHelper.estimateSourceSize(compInfo.leftSource);
+            long rightSize = FileComparisonHelper.estimateSourceSize(compInfo.rightSource);
+            long maxSize = Math.max(leftSize, rightSize);
+
+            if (maxSize > PerformanceConstants.MAX_FILE_SIZE_BYTES) {
+                logger.warn("Skipping preload of file {} - too large ({}B > {}B)",
+                           fileIndex, maxSize, PerformanceConstants.MAX_FILE_SIZE_BYTES);
+                return;
+            }
+
+            // Create diff node (expensive computation) in background
+            var diffNode = FileComparisonHelper.createDiffNode(
+                compInfo.leftSource, compInfo.rightSource,
+                contextManager, isMultipleCommitsContext);
+
+            // Create and cache panel on EDT
+            SwingUtilities.invokeLater(() -> {
+                // Double-check still needed and in window
+                if (panelCache.get(fileIndex) == null && panelCache.isInWindow(fileIndex)) {
+                    var panel = new BufferDiffPanel(this, theme);
+                    panel.setDiffNode(diffNode);
+
+                    // Cache will automatically check window constraints
+                    panelCache.put(fileIndex, panel);
+                    logger.debug("Preloaded and cached file {}", fileIndex);
+                } else {
+                    logger.debug("Preload cancelled for file {} (cached or outside window)", fileIndex);
+                }
+            });
+
+        } catch (Exception e) {
+            logger.warn("Failed to preload file {}: {}", fileIndex, e.getMessage());
+        }
+    }
+
+    /**
+     * Log current memory usage and window status
+     */
+    private void logMemoryUsage() {
+        var runtime = Runtime.getRuntime();
+        var totalMemory = runtime.totalMemory();
+        var freeMemory = runtime.freeMemory();
+        var usedMemory = totalMemory - freeMemory;
+        var maxMemory = runtime.maxMemory();
+
+        var usedMB = usedMemory / (1024 * 1024);
+        var maxMB = maxMemory / (1024 * 1024);
+        var percentUsed = (usedMemory * 100) / maxMemory;
+
+        logger.debug("Memory: {}MB/{}MB ({}%), {}",
+                    usedMB, maxMB, percentUsed, panelCache.getWindowInfo());
+
+        // Lower threshold for sliding window since we have fewer cached items
+        if (percentUsed > 70) {
+            logger.warn("Memory usage high ({}%) with sliding window cache", percentUsed);
+            performWindowCleanup();
+        }
+    }
+
+    /**
+     * Perform cleanup when memory usage is high
+     */
+    private void performWindowCleanup() {
+        logger.debug("Performing sliding window memory cleanup");
+
+        // Clear caches in all window panels
+        for (var panel : panelCache.nonNullValues()) {
+            if (panel != null) {
+                panel.clearCaches(); // Clear undo history, search results, etc.
+            }
+        }
+
+        // Suggest garbage collection
+        System.gc();
+
+        logger.debug("Window cleanup complete: {}", panelCache.getWindowInfo());
     }
 
     /**
