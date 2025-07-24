@@ -365,9 +365,7 @@ class ScrollSynchronizerTest {
         var synchronizer = new ScrollSynchronizer(null, null, null, true);
         
         // Should throw NPE with null panels (current implementation behavior)
-        assertThrows(NullPointerException.class, () -> {
-            synchronizer.invalidateViewportCacheForBothPanels();
-        });
+        assertThrows(NullPointerException.class, synchronizer::invalidateViewportCacheForBothPanels);
         
         // This verifies the method exists and behaves as currently implemented
         // In a full integration test with real panels, this would work correctly

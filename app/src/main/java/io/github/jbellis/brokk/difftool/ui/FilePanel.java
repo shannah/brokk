@@ -315,10 +315,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * Repaint highlights: we get the patch from BufferDiffPanel, then highlight
      * each delta's relevant lines in *this* panel (ORIGINAL or REVISED).
      */
-    /**
-     * PERFORMANCE OPTIMIZATION: Only highlights deltas visible in the current viewport
-     * for massive performance improvement with large files.
-     */
     private void paintRevisionHighlights()
     {
         assert SwingUtilities.isEventDispatchThread() : "NOT ON EDT";
@@ -809,7 +805,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
 
         var patch = diffPanel.getPatch();
         if (patch != null && !patch.getDeltas().isEmpty()) {
-            var firstDelta = patch.getDeltas().get(0);
+            var firstDelta = patch.getDeltas().getFirst();
             Chunk<String> relevantChunk = BufferDocumentIF.ORIGINAL.equals(name)
                                           ? firstDelta.getSource()
                                           : firstDelta.getTarget();
@@ -1094,7 +1090,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         if (!SwingUtilities.isEventDispatchThread()) {
             logger.warn("doSearch called off EDT, redirecting to EDT");
             try {
-                var result = SwingUtil.runOnEdt(() -> doSearch(), new SearchHits());
+                var result = SwingUtil.runOnEdt(this::doSearch, new SearchHits());
                 return result != null ? result : new SearchHits();
             } catch (Exception e) {
                 logger.error("Failed to run doSearch on EDT", e);

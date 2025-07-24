@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.difftool.ui;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Chunk;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
+import io.github.jbellis.brokk.difftool.utils.Colors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -63,7 +64,26 @@ public final class DeltaHighlighter {
 
         // Get the appropriate painter
         var isDark = panel.getDiffPanel().isDarkTheme();
-        var painter = DiffPainterFactory.create(delta.getType(), isDark, isEmpty, isEndAndNewline);
+        var painter = switch (delta.getType()) {
+            case INSERT -> {
+                var color = Colors.getAdded(isDark);
+                yield isEmpty ? new JMHighlightPainter.JMHighlightLinePainter(color)
+                    : isEndAndNewline ? new JMHighlightPainter.JMHighlightNewLinePainter(color)
+                    : new JMHighlightPainter(color);
+            }
+            case DELETE -> {
+                var color = Colors.getDeleted(isDark);
+                yield isEmpty ? new JMHighlightPainter.JMHighlightLinePainter(color)
+                    : isEndAndNewline ? new JMHighlightPainter.JMHighlightNewLinePainter(color)
+                    : new JMHighlightPainter(color);
+            }
+            case CHANGE -> {
+                var color = Colors.getChanged(isDark);
+                yield isEndAndNewline ? new JMHighlightPainter.JMHighlightNewLinePainter(color)
+                    : new JMHighlightPainter(color);
+            }
+            case EQUAL -> throw new IllegalArgumentException("EQUAL deltas should not be highlighted");
+        };
 
         // Apply the highlight
         try {

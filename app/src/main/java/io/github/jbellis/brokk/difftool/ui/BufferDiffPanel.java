@@ -29,7 +29,6 @@ import java.util.List;
 
 import static java.util.Objects.requireNonNull;
 
-
 /**
  * This panel shows the side-by-side file panels, the diff curves, plus search bars.
  * It no longer depends on custom JMRevision/JMDelta but rather on a Patch<String>.
@@ -86,7 +85,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     */
     private void recalcDirty() {
             // Check if either side has unsaved changes (document changed since last save)
-            boolean newDirty = filePanels.values().stream().anyMatch(fp -> fp.isDocumentChanged());
+            boolean newDirty = filePanels.values().stream().anyMatch(FilePanel::isDocumentChanged);
 
         if (dirtySinceOpen != newDirty) {
             dirtySinceOpen = newDirty;
@@ -912,10 +911,8 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     @Override
     public void dispose() {
         // Dispose of file panels to clean up their timers and listeners
-        for (var fp : filePanels.values()) {
-            if (fp != null) {
-                fp.dispose();
-            }
+        for (@NotNull var fp : filePanels.values()) {
+            fp.dispose();
         }
         filePanels.clear();
 

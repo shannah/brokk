@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.difftool.ui;
 
 import io.github.jbellis.brokk.ContextManager;
-import io.github.jbellis.brokk.difftool.node.JMDiffNode;
 import io.github.jbellis.brokk.difftool.performance.PerformanceConstants;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import org.apache.logging.log4j.LogManager;
@@ -9,18 +8,13 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
-import java.io.IOException;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.atomic.AtomicInteger;
 
 /**
- * Smart hybrid file comparison that uses synchronous processing for small files
+ * hybrid file comparison that uses synchronous processing for small files
  * and asynchronous processing only for large files that benefit from background computation.
- *
- * This replaces the over-engineered SwingWorker approach with intelligent decision-making
- * based on file size and content type.
  */
 public class HybridFileComparison {
     private static final Logger logger = LogManager.getLogger(HybridFileComparison.class);

@@ -5,9 +5,6 @@ import javax.swing.event.AncestorEvent;
 import javax.swing.event.AncestorListener;
 import java.awt.*;
 
-import static javax.swing.SwingUtilities.invokeLater;
-
-import java.util.Objects;
 import io.github.jbellis.brokk.util.ThreadSafeLRUCache;
 
 import io.github.jbellis.brokk.difftool.node.JMDiffNode;
@@ -25,16 +22,12 @@ import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.difftool.performance.PerformanceConstants;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 
 import java.util.ArrayList;
 import java.util.Arrays;
-import java.util.Collections;
 import java.util.List;
-import java.util.Map;
 
 public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(BrokkDiffPanel.class);
@@ -53,7 +46,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     // Thread-safe LRU cache for loaded diff panels
     private static final int MAX_CACHED_PANELS = PerformanceConstants.MAX_CACHED_DIFF_PANELS;
     private final ThreadSafeLRUCache<Integer, BufferDiffPanel> panelCache = new ThreadSafeLRUCache<>(MAX_CACHED_PANELS);
-
 
     /**
      * Inner class to hold a single file comparison metadata
@@ -164,9 +156,8 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             return this;
         }
 
-        public Builder addComparison(BufferSource leftSource, BufferSource rightSource) {
+        public void addComparison(BufferSource leftSource, BufferSource rightSource) {
             this.fileComparisons.add(new FileComparisonInfo(leftSource, rightSource));
-            return this;
         }
 
         public Builder setMultipleCommitsContext(boolean isMultipleCommitsContext) {
@@ -202,15 +193,15 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         return btnUndo;
     }
 
-    private JButton btnUndo = new JButton("Undo"); // Initialize to prevent NullAway issues
-    private JButton btnRedo = new JButton("Redo");
-    private JButton btnSaveAll = new JButton("Save");
-    private JButton captureDiffButton = new JButton("Capture Diff");
-    private JButton btnNext = new JButton("Next Change");
-    private JButton btnPrevious = new JButton("Previous Change");
-    private JButton btnPreviousFile = new JButton("Previous File");
-    private JButton btnNextFile = new JButton("Next File");
-    private JLabel fileIndicatorLabel = new JLabel(""); // Initialize
+    private final JButton btnUndo = new JButton("Undo"); // Initialize to prevent NullAway issues
+    private final JButton btnRedo = new JButton("Redo");
+    private final JButton btnSaveAll = new JButton("Save");
+    private final JButton captureDiffButton = new JButton("Capture Diff");
+    private final JButton btnNext = new JButton("Next Change");
+    private final JButton btnPrevious = new JButton("Previous Change");
+    private final JButton btnPreviousFile = new JButton("Previous File");
+    private final JButton btnNextFile = new JButton("Next File");
+    private final JLabel fileIndicatorLabel = new JLabel(""); // Initialize
     @Nullable private BufferDiffPanel bufferDiffPanel;
 
     public void setBufferDiffPanel(@Nullable BufferDiffPanel bufferDiffPanel) {
@@ -242,9 +233,8 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             return;
         }
 
-        // No automatic save; user must choose “Save All”
+        // No automatic save; user must choose "Save All"
 
-        logger.debug("Switching to file {} of {}", index + 1, fileComparisons.size());
         currentFileIndex = index;
         loadFileOnDemand(currentFileIndex);
     }
@@ -405,7 +395,8 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
      */
     public void saveAll() {
         var visited = new java.util.HashSet<BufferDiffPanel>();
-        if (bufferDiffPanel != null && visited.add(bufferDiffPanel)) {
+        if (bufferDiffPanel != null) {
+            visited.add(bufferDiffPanel);
             bufferDiffPanel.doSave();
             refreshTabTitle(bufferDiffPanel);
         }
@@ -437,8 +428,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     }
 
     public void launchComparison() {
-        logger.info("Starting lazy multi-file comparison for {} files", fileComparisons.size());
-
         // Show the first file immediately
         currentFileIndex = 0;
         loadFileOnDemand(currentFileIndex);
@@ -451,12 +440,10 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         }
 
         var compInfo = fileComparisons.get(fileIndex);
-        logger.debug("Loading file on demand: {} (index {})", compInfo.getDisplayName(), fileIndex);
 
         // First check if panel is already cached (fast read operation)
         var cachedPanel = panelCache.get(fileIndex);
         if (cachedPanel != null) {
-            logger.debug("File panel found in cache: {}", compInfo.getDisplayName());
             displayCachedFile(fileIndex, cachedPanel);
             return;
         }
@@ -466,11 +453,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             // Another thread is already loading this file or it was cached between checks
             var nowCachedPanel = panelCache.get(fileIndex);
             if (nowCachedPanel != null) {
-                logger.debug("File panel loaded by another thread: {}", compInfo.getDisplayName());
                 displayCachedFile(fileIndex, nowCachedPanel);
             } else {
                 // Reserved by another thread, show loading and wait
-                logger.debug("File panel loading in progress by another thread: {}", compInfo.getDisplayName());
                 showLoadingForFile(fileIndex);
             }
             return;
@@ -487,7 +472,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
 
         var compInfo = fileComparisons.get(fileIndex);
-        logger.trace("Showing loading indicator for file: {}", compInfo.getDisplayName());
 
         // Clear existing tabs and show loading label
         tabbedPane.removeAll();
@@ -503,7 +487,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
 
         var compInfo = fileComparisons.get(fileIndex);
-        logger.trace("Displaying cached file: {}", compInfo.getDisplayName());
 
         // Remove loading label if present
         remove(loadingLabel);
@@ -517,7 +500,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         cachedPanel.applyTheme(theme);
 
         // Ensure diff highlights are properly displayed after theme application
-        SwingUtilities.invokeLater(() -> cachedPanel.diff());
+        SwingUtilities.invokeLater(cachedPanel::diff);
 
         // Update file indicator
         updateFileIndicatorLabel(compInfo.getDisplayName());
@@ -536,8 +519,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     }
 
     /**
-     * Shows the diff panel in a frame.
-     *
      * Shows the diff panel in a frame. Window bounds are managed via the ContextManager provided during construction.
      *
      * @param title The frame title
@@ -722,8 +703,6 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
      * This ensures cached panels are properly disposed of to free memory.
      */
     public void dispose() {
-        logger.debug("Disposing BrokkDiffPanel and clearing panel cache");
-
         // Caller is responsible for saving before disposal
 
         // Clear all cached panels and dispose their resources (thread-safe)
