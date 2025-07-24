@@ -313,7 +313,7 @@ public final class BrokkCli implements Callable<Integer> {
         io.systemOutput(summaries);
 
         // --- Run Action ---
-        TaskResult result;
+        TaskResult result = null;
         try {
             if (architectPrompt != null) {
                 var architectModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;
@@ -341,6 +341,9 @@ public final class BrokkCli implements Callable<Integer> {
             io.toolError(getStackTrace(th), "Internal error: " + th.getMessage());
             return 1; // internal error
         }
+
+        // Add the TaskResult to history so it is preserved in subsequent workspace sessions
+        cm.addToHistory(result, false);
 
         if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
             io.toolError(result.stopDetails().explanation(), result.stopDetails().reason().toString());
