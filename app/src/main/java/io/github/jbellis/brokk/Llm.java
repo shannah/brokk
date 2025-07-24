@@ -224,7 +224,7 @@ public class Llm {
         });
 
         try {
-            if (!latch.await(Service.LLM_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
+            if (!latch.await(Service.LLM_MAX_RESPONSE_TIME, TimeUnit.SECONDS)) {
                 lock.lock(); // LockNotBeforeTry
                 try {
                     cancelled.set(true); // Ensure callback stops echoing
