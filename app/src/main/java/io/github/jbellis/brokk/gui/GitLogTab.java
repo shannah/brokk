@@ -117,17 +117,7 @@ public class GitLogTab extends JPanel {
 
         // Local branches panel
         JPanel localBranchPanel = new JPanel(new BorderLayout());
-        branchTableModel = new DefaultTableModel(new Object[]{"", "Branch"}, 0) {
-            @Override
-            public boolean isCellEditable(int row, int column) {
-                return false;
-            }
-
-            @Override
-            public Class<?> getColumnClass(int columnIndex) {
-                return String.class;
-            }
-        };
+        branchTableModel = new LocalBranchTableModel();
         branchTable = new JTable(branchTableModel) {
             @Override
             public Component prepareRenderer(TableCellRenderer renderer, int row, int column) {
@@ -153,6 +143,7 @@ public class GitLogTab extends JPanel {
                 return super.getToolTipText(e);
             }
         };
+        branchTable.setSurrendersFocusOnKeystroke(true);
         branchTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         branchTable.setFont(new Font(Font.MONOSPACED, Font.PLAIN, 13));
         branchTable.setRowHeight(18);
@@ -355,9 +346,12 @@ public class GitLogTab extends JPanel {
         });
         renameItem.addActionListener(e -> {
             int selectedRow = branchTable.getSelectedRow();
-            if (selectedRow != -1) {
-                String branchDisplay = (String) branchTableModel.getValueAt(selectedRow, 1);
-                renameBranch(branchDisplay);
+            if (selectedRow != -1 && branchTable.isCellEditable(selectedRow, 1)) {
+                branchTable.editCellAt(selectedRow, 1);
+                var editor = branchTable.getEditorComponent();
+                if (editor != null) {
+                    editor.requestFocusInWindow();
+                }
             }
         });
         deleteItem.addActionListener(e -> {
@@ -793,33 +787,6 @@ public class GitLogTab extends JPanel {
     }
 
     /**
-     * Rename a local branch.
-     */
-    private void renameBranch(String branchName) {
-        var newName = (String) JOptionPane.showInputDialog(
-                this,
-                "Enter new name for branch '" + branchName + "':",
-                "Rename Branch",
-                JOptionPane.QUESTION_MESSAGE,
-                null, // icon
-                null, // selectionValues
-                branchName // initialSelectionValue
-        );
-        if (newName != null && !newName.trim().isEmpty()) {
-            contextManager.submitUserTask("Renaming branch: " + branchName, () -> {
-                try {
-                    getRepo().renameBranch(branchName, newName);
-                    SwingUtilities.invokeLater(this::update);
-                    chrome.systemOutput("Branch '" + branchName + "' renamed to '" + newName + "' successfully.");
-                } catch (GitAPIException e) {
-                    logger.error("Error renaming branch: {}", branchName, e);
-                    chrome.toolError("Error renaming branch: " + e.getMessage());
-                }
-            });
-        }
-    }
-
-    /**
      * Delete a local branch (with checks for merges).
      */
     private void deleteBranch(String branchName) {
@@ -1075,6 +1042,67 @@ public class GitLogTab extends JPanel {
         @Override
         public void showDuration(boolean enabled) {
             // This basic monitor does not use this information.
+        }
+    }
+
+    /**
+     * A custom table model for the local branches table that allows for inline renaming of branches.
+     */
+    private class LocalBranchTableModel extends DefaultTableModel {
+        public LocalBranchTableModel() {
+            super(new Object[]{"", "Branch"}, 0);
+        }
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            // Only the 'Branch' column is editable, and not for the stashes virtual entry.
+            if (column == 1) {
+                String branchName = (String) getValueAt(row, 1);
+                return !STASHES_VIRTUAL_BRANCH.equals(branchName);
+            }
+            return false;
+        }
+
+        @Override
+        public Class<?> getColumnClass(int columnIndex) {
+            return String.class;
+        }
+
+        @Override
+        public void setValueAt(Object aValue, int row, int column) {
+            if (column != 1) {
+                super.setValueAt(aValue, row, column);
+                return;
+            }
+
+            String oldName = (String) getValueAt(row, 1);
+            String newName = ((String) aValue).trim();
+
+            if (newName.isEmpty() || newName.equals(oldName)) {
+                return; // No change, do nothing.
+            }
+
+            // Immediately update the cell in the UI for responsiveness.
+            // The background task will then attempt the actual rename.
+            super.setValueAt(aValue, row, column);
+
+            contextManager.submitUserTask("Renaming branch: " + oldName, () -> {
+                try {
+                    getRepo().renameBranch(oldName, newName);
+                    SwingUtilities.invokeLater(() -> {
+                        chrome.systemOutput("Branch '" + oldName + "' renamed to '" + newName + "' successfully.");
+                        // On success, a full update ensures UI consistency (e.g., current branch checkmark moves).
+                        update();
+                    });
+                } catch (GitAPIException e) {
+                    SwingUtilities.invokeLater(() -> {
+                        logger.error("Error renaming branch '{}' to '{}'", oldName, newName, e);
+                        chrome.toolError("Error renaming branch: " + e.getMessage());
+                        // On failure, update() will restore the correct state from git, reverting the optimistic UI change.
+                        update();
+                    });
+                }
+            });
         }
     }
 }
