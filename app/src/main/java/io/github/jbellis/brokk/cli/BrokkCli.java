@@ -279,26 +279,22 @@ public final class BrokkCli implements Callable<Integer> {
         // --- Deep Scan ------------------------------------------------------
         if (deepScan) {
             String goalForScan = Stream.of(architectPrompt, codePrompt, askPrompt, searchPrompt)
-                                       .filter(s -> s != null && !s.isBlank())
-                                       .findFirst()
-                                       .orElseThrow();
+                    .filter(s -> s != null && !s.isBlank())
+                    .findFirst()
+                    .orElseThrow();
             var scanModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
             var agent = new ContextAgent(cm, scanModel, goalForScan, true);
             var recommendations = agent.getRecommendations(false);
 
             if (recommendations.success()) {
-                Set<ProjectFile> filesToReadOnly  = new HashSet<>();
+                io.systemOutput("Deep Scan suggested "
+                                + recommendations.fragments().stream().map(ContextFragment::shortDescription).toList());
                 for (var fragment : recommendations.fragments()) {
                     switch (fragment.getType()) {
                         case SKELETON -> cm.addVirtualFragment((ContextFragment.SkeletonFragment) fragment);
-                        default        -> fragment.files().forEach(filesToReadOnly::add);
+                        default       -> cm.addSummaries(fragment.files(), Set.of());
                     }
                 }
-                if (!filesToReadOnly.isEmpty()) {
-                    cm.addReadOnlyFiles(filesToReadOnly);
-                }
-
-                io.systemOutput("Deep Scan added %d recommendation(s) to workspace context.%n".formatted(recommendations.fragments().size()));
             } else {
                 io.toolError("Deep Scan did not complete successfully: " + recommendations.reasoning());
             }
