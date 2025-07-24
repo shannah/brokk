@@ -353,7 +353,7 @@ public class Llm {
             lastError = response.error;
             if (!response.isEmpty() && (lastError == null || allowPartialResponses)) {
                 // Success!
-                return response;
+                return response.withRetryCount(attempt - 1);
             }
 
             // don't retry on bad request errors
@@ -387,9 +387,9 @@ public class Llm {
 
         // If we get here, we failed all attempts
         if (lastError == null) {
-            return new StreamingResult(null, new IllegalStateException("Empty response after max retries"));
+            return new StreamingResult(null, new IllegalStateException("Empty response after max retries"), attempt - 1);
         }
-        return new StreamingResult(null, lastError);
+        return new StreamingResult(null, lastError, attempt - 1);
     }
 
     /**
@@ -529,13 +529,13 @@ public class Llm {
                 }
 
                 // we got tool calls, or they're optional -- we're done
-                finalResult = new StreamingResult(parseResult, null);
+                finalResult = new StreamingResult(parseResult, null, rawResult.retries());
                 break;
             } catch (IllegalArgumentException parseError) {
                 // JSON invalid or lacked tool_calls
                 if (attempt == maxTries) {
                     // create dummy result for failure
-                    finalResult = new StreamingResult(null, parseError);
+                    finalResult = new StreamingResult(null, parseError, rawResult.retries());
                     break; // out of retry loop
                 }
 
@@ -1094,8 +1094,13 @@ public class Llm {
      * inspecting the contents of chatResponse.
      */
     public record StreamingResult(@Nullable NullSafeResponse chatResponse,
-                                  @Nullable Throwable error)
+                                  @Nullable Throwable error,
+                                  int retries)
     {
+        public StreamingResult(@Nullable NullSafeResponse partialResponse, @Nullable Throwable error) {
+            this(partialResponse, error, 0);
+        }
+
         public static StreamingResult fromResponse(@Nullable ChatResponse originalResponse, @Nullable Throwable error) {
             return new StreamingResult(new NullSafeResponse(originalResponse), error);
         }
@@ -1199,6 +1204,10 @@ public class Llm {
             }
 
             return text;
+        }
+
+        public StreamingResult withRetryCount(int retries) {
+            return new StreamingResult(chatResponse, error, retries);
         }
     }
 }

@@ -134,6 +134,7 @@ public class CodeAgent {
                     Optional.ofNullable(streamingResult.originalResponse())
                             .map(ChatResponse::tokenUsage)
                             .ifPresent(metrics::addTokens);
+                    metrics.addRetries(streamingResult.retries());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -1036,6 +1037,7 @@ public class CodeAgent {
         int totalEditBlocks = 0;
         int failedEditBlocks = 0;
         int buildFailures = 0;
+        int retries = 0;
 
         void addTokens(@Nullable TokenUsage usage) {
             if (usage == null || totalInputTokens == null) {
@@ -1045,6 +1047,10 @@ public class CodeAgent {
             var summed = current.add(usage);
             totalInputTokens = summed.inputTokenCount();
             totalOutputTokens = summed.outputTokenCount();
+        }
+
+        void addRetries(int retryCount) {
+            retries += retryCount;
         }
 
         void nullifyTokens() {
@@ -1066,6 +1072,7 @@ public class CodeAgent {
             jsonMap.put("editBlocksTotal", totalEditBlocks);
             jsonMap.put("editBlocksFailed", failedEditBlocks);
             jsonMap.put("buildFailures", buildFailures);
+            jsonMap.put("retries", retries);
             jsonMap.put("changedFiles", changedFilesList);
             jsonMap.put("stopReason", stopDetails.reason().name());
             jsonMap.put("stopExplanation", stopDetails.explanation());
