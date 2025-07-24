@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.cli;
 
 import com.google.common.collect.Streams;
+import io.github.jbellis.brokk.AbstractProject;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.MainProject;
@@ -18,7 +19,6 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.InstructionsPanel;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.context.ContextFragment;
-import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.Service;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import org.jetbrains.annotations.Nullable;
@@ -43,6 +43,7 @@ import java.util.stream.Stream;
 
 import static java.util.Objects.requireNonNull;
 
+@SuppressWarnings("NullAway.Init") // NullAway is upset that some fiels are initialized in picocli's call()
 @CommandLine.Command(name = "brokk-cli", mixinStandardHelpOptions = true,
         description = "One-shot Brokk workspace and task runner.")
 public final class BrokkCli implements Callable<Integer> {
@@ -111,6 +112,8 @@ public final class BrokkCli implements Callable<Integer> {
 
     @CommandLine.Option(names = "--deepscan", description = "Perform a Deep Scan to suggest additional relevant context.")
     private boolean deepScan = false;
+    private ContextManager cm;
+    private AbstractProject project;
 
     public static void main(String[] args) {
         System.err.println("Starting Brokk CLI...");
@@ -157,14 +160,14 @@ public final class BrokkCli implements Callable<Integer> {
             return 1;
         }
 
-        // --- Project Validation ---
+        // --- Validation ---
         projectPath = requireNonNull(projectPath).toAbsolutePath();
         if (!Files.isDirectory(projectPath)) {
             System.err.println("Project path is not a directory: " + projectPath);
             return 1;
         }
         if (!GitRepo.hasGitRepo(projectPath)) {
-            System.err.println("Brokk CLI requires project to have a Git repo");
+            System.err.println("Brokk CLI requires to have a Git repo");
             return 1;
         }
 
@@ -192,8 +195,8 @@ public final class BrokkCli implements Callable<Integer> {
 
         // Create Project + ContextManager
         var mainProject = new MainProject(projectPath);
-        var project = worktreePath == null ? mainProject : new WorktreeProject(projectPath, mainProject);
-        var cm = new ContextManager(project);
+        project = worktreePath == null ? mainProject : new WorktreeProject(worktreePath, mainProject);
+        cm = new ContextManager(project);
         cm.createHeadless();
         var io = cm.getIo();
 
@@ -202,24 +205,31 @@ public final class BrokkCli implements Callable<Integer> {
 
         StreamingChatModel taskModelOverride = null;
         if (modelName != null) {
-            taskModelOverride = service.getModel(modelName, Service.ReasoningLevel.DEFAULT);
-            if (taskModelOverride == null) {
+            Service.FavoriteModel fav;
+            try {
+                fav = MainProject.getFavoriteModel(modelName);
+            } catch (IllegalArgumentException e) {
                 System.err.println("Unknown model specified via --model: " + modelName);
                 return 1;
             }
+            taskModelOverride = service.getModel(fav.modelName(), fav.reasoning());
+            assert taskModelOverride != null : "service.getModel returned null for alias " + modelName;
         }
 
         StreamingChatModel codeModelOverride = null;
         if (codeModelName != null) {
-            codeModelOverride = service.getModel(codeModelName, Service.ReasoningLevel.DEFAULT);
-            if (codeModelOverride == null) {
+            Service.FavoriteModel fav;
+            try {
+                fav = MainProject.getFavoriteModel(codeModelName);
+            } catch (IllegalArgumentException e) {
                 System.err.println("Unknown code model specified via --codemodel: " + codeModelName);
                 return 1;
             }
+            codeModelOverride = service.getModel(fav.modelName(), fav.reasoning());
+            assert codeModelOverride != null : "service.getModel returned null for alias " + codeModelName;
         }
 
         var workspaceTools = new WorkspaceTools(cm);
-        System.out.println("Project opened successfully: " + projectPath);
 
         // --- Name Resolution and Context Building ---
         boolean cpgRequired = !addUsages.isEmpty() || !addCallers.isEmpty() || !addCallees.isEmpty();
@@ -233,8 +243,8 @@ public final class BrokkCli implements Callable<Integer> {
         }
 
         // Resolve files and classes
-        var resolvedEditFiles = resolveFiles(editFiles, project, cm, "editable file");
-        var resolvedReadFiles = resolveFiles(readFiles, project, cm, "read-only file");
+        var resolvedEditFiles = resolveFiles(editFiles, "editable file");
+        var resolvedReadFiles = resolveFiles(readFiles, "read-only file");
         var resolvedClasses = resolveClasses(addClasses, cm.getAnalyzer(), "class");
         var resolvedSummaryClasses = resolveClasses(addSummaryClasses, cm.getAnalyzer(), "summary class");
 
@@ -333,26 +343,25 @@ public final class BrokkCli implements Callable<Integer> {
         }
 
         if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
-            io.toolError(result.stopDetails().explanation(), "Task failure: " + result.stopDetails().reason());
-            return 2; // task failure
+            io.toolError(result.stopDetails().explanation(), result.stopDetails().reason().toString());
+            // exit code is 0 since we ran the task as requested; we print out the metrics from Code Agent to let harness see how we did
         }
 
         return 0;
     }
 
-    private List<String> resolveFiles(List<String> inputs, IProject project, ContextManager cm, String entityType) {
+    private List<String> resolveFiles(List<String> inputs, String entityType) {
         Supplier<Collection<ProjectFile>> primarySource = project::getAllFiles;
-        Supplier<Collection<ProjectFile>> secondarySource = () -> {
-            var trackedFiles = project.getRepo().getTrackedFiles();
-            var result = new ArrayList<ProjectFile>();
-            for (Object pathString : trackedFiles) {
-                result.add(cm.toFile((String) pathString));
-            }
-            return result;
-        };
+        Supplier<Collection<ProjectFile>> secondarySource = () -> project.getRepo().getTrackedFiles();
 
         return inputs.stream()
-                .map(input -> resolve(input, primarySource, secondarySource, ProjectFile::toString, entityType))
+                .map(input -> {
+                    var pf = cm.toFile(input);
+                    if (pf.exists()) {
+                        return Optional.of(pf);
+                    }
+                    return resolve(input, primarySource, secondarySource, ProjectFile::toString, entityType);
+                })
                 .flatMap(Optional::stream)
                 .map(ProjectFile::toString)
                 .toList();
@@ -375,7 +384,8 @@ public final class BrokkCli implements Callable<Integer> {
                                     Supplier<Collection<T>> primarySourceSupplier,
                                     Supplier<Collection<T>> secondarySourceSupplier,
                                     Function<T, String> nameExtractor,
-                                    String entityType) {
+                                    String entityType) 
+    {
         var primarySource = primarySourceSupplier.get();
         var primaryResult = findUnique(userInput, primarySource, nameExtractor, entityType, "primary source");
 

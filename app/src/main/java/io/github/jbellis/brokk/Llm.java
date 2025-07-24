@@ -231,7 +231,7 @@ public class Llm {
                 } finally {
                     lock.unlock();
                 }
-                errorRef.set(new HttpException(500, "LLM timed out"));
+                errorRef.set(new HttpException(504, "LLM timed out"));
             }
         } catch (InterruptedException e) {
             lock.lock(); // LockNotBeforeTry
@@ -1184,7 +1184,7 @@ public class Llm {
          */
         public String getDescription() {
             if (error != null) {
-                return requireNonNull(error.getMessage());
+                return requireNonNull(error.getMessage(), error.toString());
             }
 
             var cr = castNonNull(chatResponse);

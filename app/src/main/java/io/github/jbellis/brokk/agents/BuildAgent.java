@@ -3,12 +3,15 @@ package io.github.jbellis.brokk.agents;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
+import com.github.mustachejava.util.DecoratedCollection;
+import com.google.common.collect.Streams;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.AnalyzerUtil;
+import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.Llm;
@@ -31,6 +34,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.concurrent.CancellationException;
+import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
@@ -229,17 +233,19 @@ public class BuildAgent {
                                        Use the tools to examine build files (like `pom.xml`, `build.gradle`, etc.), configuration files, and linting files,
                                        as necessary, to determine the information needed by `reportBuildDetails`.
                                        
-                                       For the `testSomeCommand` parameter, use Mustache templating with either {{classes}} or {{files}} variables. Examples:
+                                       For the `testSomeCommand` parameter, use Mustache templating with either {{classes}} or {{files}} lists.
+                                       The lists are DecoratedCollection instances, so you get first/last/index/value fields.
+                                       Examples:
                                        
                                        | Build tool        | One-liner a user could write
                                        | ----------------- | ------------------------------------------------------------------------
-                                       | **SBT**           | `sbt "testOnly{{#classes}} {{.}}{{/classes}}"`
-                                       | **Maven**         | `mvn test -Dtest={{#classes}}{{.}}{{^-last}},{{/-last}}{{/classes}}`
-                                       | **Gradle**        | `gradle test{{#classes}} --tests {{.}}{{/classes}}`
-                                       | **Go**            | `go test -run '{{#classes}}{{.}}{{^-last}} | {{/-last}}{{/classes}}`
-                                       | **.NET CLI**      | `dotnet test --filter "{{#classes}}FullyQualifiedName\\~{{.}}{{^-last}} | {{/-last}}{{/classes}}"`
-                                       | **pytest**        | `pytest {{#files}}{{.}}{{^-last}} {{/-last}}{{/files}}`
-                                       | **Jest**          | `jest {{#files}}{{.}}{{^-last}} {{/-last}}{{/files}}`
+                                       | **SBT**           | `sbt "testOnly{{#classes}} {{value}}{{/classes}}"`
+                                       | **Maven**         | `mvn test -Dtest={{#classes}}{{value}}{{^-last}},{{/-last}}{{/classes}}`
+                                       | **Gradle**        | `gradle test{{#classes}} --tests {{value}}{{/classes}}`
+                                       | **Go**            | `go test -run '{{#classes}}{{value}}{{^-last}} | {{/-last}}{{/classes}}`
+                                       | **.NET CLI**      | `dotnet test --filter "{{#classes}}FullyQualifiedName\\~{{value}}{{^-last}} | {{/-last}}{{/classes}}"`
+                                       | **pytest**        | `pytest {{#files}}{{value}}{{^-last}} {{/-last}}{{/files}}`
+                                       | **Jest**          | `jest {{#files}}{{value}}{{^-last}} {{/-last}}{{/files}}`
                                        
                                        A baseline set of excluded directories has been established from build conventions and .gitignore.
                                        When you use `reportBuildDetails`, the `excludedDirectories` parameter should contain *additional* directories
@@ -360,16 +366,36 @@ public class BuildAgent {
 
         // Decide which command to use
         if (workspaceTestFiles.isEmpty()) {
-            logger.debug("No relevant test files found in workspace, using build/lint command: {}", details.buildLintCommand());
+            var ctx = cm.topContext();
+            var summaries = Streams.concat(ctx.getReadOnlyFragments(), ctx.getEditableFragments())
+                    .map(ContextFragment::formatSummary)
+                    .filter(s -> !s.isBlank())
+                    .collect(Collectors.joining(", "));
+            logger.debug("No relevant test files found; using build/lint command: {}. Workspace is [%s]",
+                         details.buildLintCommand(), summaries);
             return details.buildLintCommand();
         }
 
         return getBuildLintCommand(cm, details, workspaceTestFiles);
     }
 
+    /**
+     * Runs {@link #determineVerificationCommand(IContextManager)} on the
+     * {@link ContextManager} background pool and delivers the result asynchronously.
+     *
+     * @return a {@link CompletableFuture} that completes on the background thread.
+     */
+    public static CompletableFuture<@Nullable String> determineVerificationCommandAsync(ContextManager cm)
+    {
+        return cm.submitBackgroundTask("Determine build verification command",
+                                       () -> determineVerificationCommand(cm));
+    }
+
     public static String getBuildLintCommand(IContextManager cm, BuildDetails details, Collection<ProjectFile> workspaceTestFiles) {
         // Determine if template is files-based or classes-based
-        String testSomeTemplate = details.testSomeCommand();
+        String testSomeTemplate = System.getenv("BRK_TESTSOME_CMD") == null 
+                                  ? details.testSomeCommand() 
+                                  : System.getenv("BRK_TESTSOME_CMD");
         boolean isFilesBased = testSomeTemplate.contains("{{#files}}");
         boolean isClassesBased = testSomeTemplate.contains("{{#classes}}");
 
@@ -429,7 +455,7 @@ public class BuildAgent {
         Map<String, Object> context = new HashMap<>();
         String listKey = isFilesBased ? "files" : "classes";
         // Mustache.java handles null or empty lists correctly for {{#section}} blocks.
-        context.put(listKey, items);
+        context.put(listKey, new DecoratedCollection<>(items));
 
         StringWriter writer = new StringWriter();
         // This can throw MustacheException, which will propagate as a RuntimeException
