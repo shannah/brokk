@@ -48,7 +48,7 @@ public class ContextAgent {
     // if the entire project fits in the Skip Pruning budget, just include it all and call it good
     private final int skipPruningBudget;
     // if our to-prune context is larger than the Pruning budget then we give up
-    private final int budgetPruning;
+    private int budgetPruning;
 
     // Rule 1: Use all available summaries if they fit the smallest budget and meet the limit (if not deepScan)
     private int QUICK_TOPK = 10;
@@ -65,23 +65,10 @@ public class ContextAgent {
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
 
         // non-openai models often use more tokens than our estimation so cap this conservatively
-        var location = model.defaultRequestParameters().modelName();
-        double allowed;
-        if (location.contains("openai")) {
-            allowed = 0.8; // even openai's models aren't consistent
-        } else if (location.contains("deepseek")) {
-            // particularly low since deepseek's 8k output window is a material chunk
-            // out of the 64k total budget
-            allowed = 0.6;
-        } else if (location.contains("anthropic")) {
-            // Anthropic's tokenizer generates a lot more tokens than most
-            // TODO if we could override the max_output_tokens here then we could reclaim at least 10% of this
-            // but langchain4j's fucking brain dead api won't let us do that without rewriting a dozen call sites
-            allowed = 0.55;
-        } else {
-            allowed = 0.7;
-        }
-        this.budgetPruning = (int) (maxInputTokens * allowed);
+        int outputTokens = model.defaultRequestParameters().maxOutputTokens(); // TODO override this when we can
+        int actualInputTokens = contextManager.getService().getMaxInputTokens(model) - outputTokens;
+        // god, our estimation is so bad (yes we do observe the ratio being this far off)
+        this.budgetPruning = (int) (actualInputTokens * 0.75);
 
         debug("ContextAgent initialized. Budgets: SkipPruning={}, Pruning={}", skipPruningBudget, budgetPruning);
     }
@@ -187,6 +174,7 @@ public class ContextAgent {
         workspaceRepresentation = deepScan 
                                   ? CodePrompts.instance.getWorkspaceContentsMessages(contextManager.liveContext()) 
                                   : CodePrompts.instance.getWorkspaceSummaryMessages(contextManager.liveContext());
+        budgetPruning -= Messages.getApproximateTokens(workspaceRepresentation);
         var allFiles = contextManager.getProject().getAllFiles().stream().sorted().toList();
 
         // try single-pass mode first
