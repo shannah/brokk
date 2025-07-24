@@ -9,8 +9,6 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import java.nio.charset.StandardCharsets;
-import java.util.concurrent.atomic.AtomicLong;
-import java.util.concurrent.atomic.AtomicInteger;
 
 /**
  * hybrid file comparison that uses synchronous processing for small files
@@ -19,23 +17,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 public class HybridFileComparison {
     private static final Logger logger = LogManager.getLogger(HybridFileComparison.class);
 
-    // Performance monitoring
-    private static final AtomicLong totalSyncOperations = new AtomicLong(0);
-    private static final AtomicLong totalAsyncOperations = new AtomicLong(0);
-    private static final AtomicLong totalSyncTime = new AtomicLong(0);
-    private static final AtomicLong totalAsyncTime = new AtomicLong(0);
-    private static final AtomicInteger sizeEstimationErrors = new AtomicInteger(0);
-
     /**
      * Creates and displays a diff panel using the optimal sync/async strategy.
-     *
-     * @param leftSource left side content source
-     * @param rightSource right side content source
-     * @param mainPanel parent panel for display
-     * @param theme GUI theme to apply
-     * @param contextManager context manager for operations
-     * @param isMultipleCommitsContext whether this is a multi-commit comparison
-     * @param fileIndex index for caching the result panel
      */
     public static void createDiffPanel(BufferSource leftSource, BufferSource rightSource,
                                      BrokkDiffPanel mainPanel, GuiTheme theme,
@@ -62,11 +45,9 @@ public class HybridFileComparison {
 
         if (useAsync) {
             logger.info("Using async processing: size={}B, lowConfidence={}", maxSize, isLowConfidence);
-            totalAsyncOperations.incrementAndGet();
             createAsyncDiffPanel(leftSource, rightSource, mainPanel, theme, contextManager, isMultipleCommitsContext, fileIndex, startTime);
         } else {
             logger.debug("Using sync processing: size={}B", maxSize);
-            totalSyncOperations.incrementAndGet();
             createSyncDiffPanel(leftSource, rightSource, mainPanel, theme, contextManager, isMultipleCommitsContext, fileIndex, startTime);
         }
     }
@@ -95,9 +76,7 @@ public class HybridFileComparison {
                 // Display using the proper method that updates navigation buttons
                 mainPanel.displayAndRefreshPanel(fileIndex, panel);
 
-                // Performance monitoring
                 long elapsedTime = System.currentTimeMillis() - startTime;
-                totalSyncTime.addAndGet(elapsedTime);
 
                 if (elapsedTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS) {
                     logger.warn("Slow sync diff creation: {}ms", elapsedTime);
@@ -147,7 +126,6 @@ public class HybridFileComparison {
 
                         // Performance monitoring
                         long elapsedTime = System.currentTimeMillis() - startTime;
-                        totalAsyncTime.addAndGet(elapsedTime);
 
                         if (elapsedTime > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS * 5) {
                             logger.warn("Slow async diff creation: {}ms", elapsedTime);
@@ -184,7 +162,6 @@ public class HybridFileComparison {
                     return new SizeEstimation(fileSize, SizeConfidence.HIGH, "file.length()");
                 } else {
                     // File doesn't exist or isn't a regular file
-                    sizeEstimationErrors.incrementAndGet();
                     logger.warn("File does not exist or is not regular file: {}", file);
                     return new SizeEstimation(0L, SizeConfidence.LOW, "file not found");
                 }
@@ -197,61 +174,16 @@ public class HybridFileComparison {
 
             } else {
                 // Unknown BufferSource type - use conservative estimate
-                sizeEstimationErrors.incrementAndGet();
                 logger.warn("Unknown BufferSource type: {}", source.getClass().getName());
                 return new SizeEstimation(PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES / 8,
                                         SizeConfidence.LOW, "unknown source type");
             }
 
         } catch (RuntimeException ex) {
-            sizeEstimationErrors.incrementAndGet();
             logger.error("Error estimating size for source: {}", source, ex);
             return new SizeEstimation(PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES / 4,
                                     SizeConfidence.LOW, "estimation error: " + ex.getMessage());
         }
-    }
-
-    /**
-     * Gets performance statistics for monitoring and optimization.
-     */
-    public static String getPerformanceStats() {
-        long syncOps = totalSyncOperations.get();
-        long asyncOps = totalAsyncOperations.get();
-        long totalOps = syncOps + asyncOps;
-
-        if (totalOps == 0) {
-            return "No operations performed yet";
-        }
-
-        long avgSyncTime = syncOps > 0 ? totalSyncTime.get() / syncOps : 0;
-        long avgAsyncTime = asyncOps > 0 ? totalAsyncTime.get() / asyncOps : 0;
-        int errors = sizeEstimationErrors.get();
-
-        return String.format("""
-                Hybrid File Comparison Performance:
-                - Total operations: %d (%.1f%% sync, %.1f%% async)
-                - Average sync time: %dms
-                - Average async time: %dms
-                - Size estimation errors: %d
-                """,
-                totalOps,
-                (syncOps * 100.0 / totalOps),
-                (asyncOps * 100.0 / totalOps),
-                avgSyncTime,
-                avgAsyncTime,
-                errors);
-    }
-
-    /**
-     * Resets performance counters for testing or monitoring periods.
-     */
-    public static void resetPerformanceStats() {
-        totalSyncOperations.set(0);
-        totalAsyncOperations.set(0);
-        totalSyncTime.set(0);
-        totalAsyncTime.set(0);
-        sizeEstimationErrors.set(0);
-        logger.info("Performance statistics reset");
     }
 
     /**

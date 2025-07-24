@@ -19,13 +19,6 @@ public final class DeltaHighlighter {
 
     private DeltaHighlighter() {} // Utility class
 
-    /**
-     * Highlights a delta in the specified FilePanel.
-     *
-     * @param panel The FilePanel to highlight in
-     * @param delta The delta to highlight
-     * @param originalSide true if this is the original/left side, false for revised/right side
-     */
     public static void highlight(FilePanel panel, AbstractDelta<String> delta, boolean originalSide) {
         @Nullable BufferDocumentIF bufferDocument = panel.getBufferDocument();
         if (bufferDocument == null) {
