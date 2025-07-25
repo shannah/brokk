@@ -232,7 +232,7 @@ public interface ContextFragment {
             try {
                 return file().read();
             } catch (IOException e) {
-                throw new UncheckedIOException(e);
+                return ""; // let freeze() clean it out later
             }
         }
 
