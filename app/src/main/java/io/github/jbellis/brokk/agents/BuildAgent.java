@@ -371,7 +371,7 @@ public class BuildAgent {
                     .map(ContextFragment::formatSummary)
                     .filter(s -> !s.isBlank())
                     .collect(Collectors.joining(", "));
-            logger.debug("No relevant test files found; using build/lint command: {}. Workspace is [%s]",
+            logger.debug("No relevant test files found; using build/lint command: {}. Workspace is {}",
                          details.buildLintCommand(), summaries);
             return details.buildLintCommand();
         }
