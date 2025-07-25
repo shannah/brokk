@@ -371,12 +371,12 @@ public class BuildAgent {
                     .map(ContextFragment::formatSummary)
                     .filter(s -> !s.isBlank())
                     .collect(Collectors.joining(", "));
-            logger.debug("No relevant test files found; using build/lint command: {}. Workspace is {}",
-                         details.buildLintCommand(), summaries);
-            return details.buildLintCommand();
+            logger.debug("No relevant test files found for {} with Workspace {}; using build/lint command: {}",
+                         cm.getProject().getRoot(), summaries, getBuildLintAllCommand(details));
+            return getBuildLintAllCommand(details);
         }
 
-        return getBuildLintCommand(cm, details, workspaceTestFiles);
+        return getBuildLintSomeCommand(cm, details, workspaceTestFiles);
     }
 
     /**
@@ -390,18 +390,18 @@ public class BuildAgent {
         return cm.submitBackgroundTask("Determine build verification command",
                                        () -> determineVerificationCommand(cm));
     }
-
-    public static String getBuildLintCommand(IContextManager cm, BuildDetails details, Collection<ProjectFile> workspaceTestFiles) {
+    
+    public static String getBuildLintSomeCommand(IContextManager cm, BuildDetails details, Collection<ProjectFile> workspaceTestFiles) {
         // Determine if template is files-based or classes-based
-        String testSomeTemplate = System.getenv("BRK_TESTSOME_CMD") == null 
+        String testSomeTemplate = System.getenv("BRK_TESTSOME_CMD") == null
                                   ? details.testSomeCommand() 
                                   : System.getenv("BRK_TESTSOME_CMD");
         boolean isFilesBased = testSomeTemplate.contains("{{#files}}");
         boolean isClassesBased = testSomeTemplate.contains("{{#classes}}");
 
         if (!isFilesBased && !isClassesBased) {
-            logger.debug("Test template doesn't use {{#files}} or {{#classes}}, using build/lint command: {}", details.buildLintCommand());
-            return details.buildLintCommand();
+            logger.debug("Test template doesn't use {{#files}} or {{#classes}}, using build/lint command: {}", getBuildLintAllCommand(details));
+            return getBuildLintAllCommand(details);
         }
 
         List<String> targetItems;
@@ -437,6 +437,13 @@ public class BuildAgent {
         String interpolatedCommand = interpolateMustacheTemplate(testSomeTemplate, targetItems, isFilesBased);
         logger.debug("Interpolated test command: '{}'", interpolatedCommand);
         return interpolatedCommand;
+    }
+
+    private static String getBuildLintAllCommand(BuildDetails details) {
+        if (System.getenv("BRK_TESTSOME_CMD") != null) {
+            return System.getenv("BRK_TESTSOME_CMD");
+        }
+        return details.buildLintCommand();
     }
 
     /**
