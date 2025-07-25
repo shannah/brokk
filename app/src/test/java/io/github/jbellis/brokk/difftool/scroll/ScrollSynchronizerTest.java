@@ -1,17 +1,13 @@
 package io.github.jbellis.brokk.difftool.scroll;
 
 import com.github.difflib.DiffUtils;
-import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Patch;
 import io.github.jbellis.brokk.difftool.performance.PerformanceConstants;
-import io.github.jbellis.brokk.difftool.ui.BufferDiffPanel;
-import io.github.jbellis.brokk.difftool.ui.FilePanel;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.DisplayName;
 
 import javax.swing.*;
-import java.awt.event.AdjustmentEvent;
 import java.awt.event.AdjustmentListener;
 import java.lang.reflect.Method;
 import java.util.List;

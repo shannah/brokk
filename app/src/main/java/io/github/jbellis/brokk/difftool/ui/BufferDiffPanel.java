@@ -17,7 +17,6 @@ import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
@@ -110,7 +109,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     @Nullable
     private ScrollSynchronizer scrollSynchronizer;
 
-    public BufferDiffPanel(@NotNull BrokkDiffPanel mainPanel, @NotNull GuiTheme theme)
+    public BufferDiffPanel(BrokkDiffPanel mainPanel, GuiTheme theme)
     {
         this.mainPanel = mainPanel;
         this.guiTheme = theme;
@@ -223,7 +222,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * Find the closest delta by line position when the previously selected delta is no longer valid.
      */
     @Nullable
-    private AbstractDelta<String> findClosestDelta(@NotNull AbstractDelta<String> previousDelta, @NotNull List<AbstractDelta<String>> availableDeltas) {
+    private AbstractDelta<String> findClosestDelta(AbstractDelta<String> previousDelta, List<AbstractDelta<String>> availableDeltas) {
         if (availableDeltas.isEmpty()) {
             return null;
         }
@@ -251,7 +250,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         mainPanel.repaint();
     }
 
-    @NotNull
     public String getTitle()
     {
         if (diffNode != null && !diffNode.getName().isBlank()) {
@@ -292,7 +290,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Do not try incremental updates. We just re-diff the whole thing.
      */
-    public boolean revisionChanged(@NotNull JMDocumentEvent de)
+    public boolean revisionChanged(JMDocumentEvent de)
     {
         // Old incremental logic removed
         diff();
@@ -333,8 +331,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Build the top row that holds search bars.
      */
-    @NotNull
-    public JPanel activateBarDialog(@NotNull String columns)
+    public JPanel activateBarDialog(String columns)
     {
         // Use the same FormLayout structure as the file panels to align search bars with text areas
         var rows = "6px, pref";
@@ -366,8 +363,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Build the actual file-panels and the center "diff scroll curves".
      */
-    @NotNull
-    private JPanel buildFilePanel(@NotNull String columns, @NotNull String rows)
+    private JPanel buildFilePanel(String columns, String rows)
     {
         var layout = new FormLayout(columns, rows);
         var cc = new CellConstraints();
@@ -403,7 +399,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     {   return scrollSynchronizer;
     }
 
-    @NotNull
     public BrokkDiffPanel getMainPanel()
     {
         return mainPanel;
@@ -453,7 +448,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * @return the FilePanel for the specified side, or null if not set
      */
     @Nullable
-    public FilePanel getFilePanel(@NotNull PanelSide side)
+    public FilePanel getFilePanel(PanelSide side)
     {
         return filePanels.get(side);
     }
@@ -464,8 +459,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * @return the FilePanel for the specified side
      * @throws IllegalStateException if the panel is not initialized
      */
-    @NotNull
-    public FilePanel requireFilePanel(@NotNull PanelSide side)
+    public FilePanel requireFilePanel(PanelSide side)
     {
         var panel = filePanels.get(side);
         if (panel == null) {
@@ -477,7 +471,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Gets the currently selected panel side.
      */
-    @NotNull
     public PanelSide getSelectedPanelSide()
     {
         return selectedPanelSide;
@@ -486,7 +479,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Gets the currently selected file panel.
      */
-    @NotNull
     public FilePanel getSelectedFilePanel()
     {
         return requireFilePanel(selectedPanelSide);
@@ -505,7 +497,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         return filePanels.get(side);
     }
 
-    void setSelectedPanel(@NotNull FilePanel fp)
+    void setSelectedPanel(FilePanel fp)
     {
         var oldSide = selectedPanelSide;
         PanelSide newSide = null;
@@ -526,7 +518,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Type-safe method to set the selected panel by side.
      */
-    public void setSelectedPanel(@NotNull PanelSide side) {
+    public void setSelectedPanel(PanelSide side) {
         this.selectedPanelSide = side;
     }
 
@@ -765,7 +757,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * when the global GUI theme changes.
      */
     @Override
-    public void applyTheme(@NotNull GuiTheme guiTheme)
+    public void applyTheme(GuiTheme guiTheme)
     {
         assert javax.swing.SwingUtilities.isEventDispatchThread()
                 : "applyTheme must be invoked on the EDT";
@@ -790,7 +782,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         reDisplay();
     }
 
-    @NotNull
     public GuiTheme getTheme() {
         return guiTheme;
     }
@@ -911,7 +902,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     @Override
     public void dispose() {
         // Dispose of file panels to clean up their timers and listeners
-        for (@NotNull var fp : filePanels.values()) {
+        for (var fp : filePanels.values()) {
             fp.dispose();
         }
         filePanels.clear();

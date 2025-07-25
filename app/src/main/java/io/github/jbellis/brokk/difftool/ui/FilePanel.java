@@ -18,7 +18,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 import java.util.Objects;
@@ -84,7 +83,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     // Viewport cache for thread-safe access
     private final AtomicReference<ViewportCache> viewportCache = new AtomicReference<>();
 
-    public FilePanel(@NotNull BufferDiffPanel diffPanel, @NotNull String name) {
+    public FilePanel(BufferDiffPanel diffPanel, String name) {
         this.diffPanel = diffPanel;
         this.name = name;
         init();
@@ -360,7 +359,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     /**
      * Fallback method to paint all deltas (original behavior).
      */
-    private void paintAllDeltas(@NotNull com.github.difflib.patch.Patch<String> patch, boolean isOriginal) {
+    private void paintAllDeltas(com.github.difflib.patch.Patch<String> patch, boolean isOriginal) {
         patch.getDeltas().forEach(delta -> DeltaHighlighter.highlight(this, delta, isOriginal));
     }
 
@@ -418,7 +417,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     /**
      * Check if a delta intersects with the visible line range.
      */
-    private boolean deltaIntersectsViewport(@NotNull AbstractDelta<String> delta, int startLine, int endLine)
+    private boolean deltaIntersectsViewport(AbstractDelta<String> delta, int startLine, int endLine)
     {
         boolean originalSide = BufferDocumentIF.ORIGINAL.equals(name);
         var result = DiffHighlightUtil.isChunkVisible(delta, startLine, endLine, originalSide);
@@ -559,7 +558,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     private record VisibleRange(int start, int end) {}
 
     @Override
-    public void applyTheme(@NotNull GuiTheme guiTheme) {
+    public void applyTheme(GuiTheme guiTheme) {
         // Apply current theme
         GuiTheme.loadRSyntaxTheme(guiTheme.isDarkTheme()).ifPresent(theme -> {
             // Ensure syntax style is set before applying theme
@@ -595,8 +594,8 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         jmhl.removeHighlights(JMHighlighter.LAYER2);
     }
 
-    private void setHighlight(@NotNull Integer layer, int offset, int size,
-                              @NotNull Highlighter.HighlightPainter highlight) {
+    private void setHighlight(Integer layer, int offset, int size,
+                              Highlighter.HighlightPainter highlight) {
         try {
             getHighlighter().addHighlight(layer, offset, size, highlight);
         } catch (BadLocationException ex) {
@@ -613,7 +612,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * PERFORMANCE OPTIMIZATION: Unified update handler to coordinate diff and highlight updates.
      * Reduces timer overhead and prevents conflicting operations.
      */
-    private void handleUnifiedUpdate(@NotNull java.awt.event.ActionEvent e) {
+    private void handleUnifiedUpdate(java.awt.event.ActionEvent e) {
         if (!initialSetupComplete) return;
 
         // Skip updates while actively typing to prevent flickering
@@ -664,7 +663,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     }
 
     @Override
-    public void documentChanged(@NotNull JMDocumentEvent de) {
+    public void documentChanged(JMDocumentEvent de) {
         // Don't trigger timer during initial setup
         if (!initialSetupComplete) return;
 
@@ -714,7 +713,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     public FocusListener getFocusListener() {
         return new FocusAdapter() {
             @Override
-            public void focusGained(@NotNull FocusEvent fe) {
+            public void focusGained(FocusEvent fe) {
                 diffPanel.setSelectedPanel(FilePanel.this);
             }
         };
@@ -836,7 +835,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * the model and the RSyntaxDocument shown in the editor in sync. Uses a
      * guard flag to avoid infinite recursion.
      */
-    private void installMirroring(@NotNull Document newPlainDoc) {
+    private void installMirroring(Document newPlainDoc) {
         removeMirroring();
 
         this.plainDocument = newPlainDoc;
@@ -859,11 +858,11 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * @param runDestinationUpdateOnEdt If true, updates to the destination document will be scheduled on the EDT.
      * @return A configured DocumentListener.
      */
-    private DocumentListener createMirroringListener(@NotNull Document sourceDoc, @NotNull Document destinationDoc,
-                                                     @NotNull java.util.concurrent.atomic.AtomicBoolean guard,
+    private DocumentListener createMirroringListener(Document sourceDoc, Document destinationDoc,
+                                                     java.util.concurrent.atomic.AtomicBoolean guard,
                                                      boolean runDestinationUpdateOnEdt) {
         return new DocumentListener() {
-            private void performIncrementalSync(@NotNull DocumentEvent e) {
+            private void performIncrementalSync(DocumentEvent e) {
                 Runnable syncTask = () -> {
                     if (!guard.compareAndSet(false, true)) { // Attempt to acquire lock
                         return; // Lock not acquired, another sync operation is in progress
@@ -883,7 +882,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 }
             }
 
-            private void syncChange(@NotNull DocumentEvent e) {
+            private void syncChange(DocumentEvent e) {
                 if (runDestinationUpdateOnEdt && !SwingUtilities.isEventDispatchThread()) {
                     // Updates to the destination document (e.g., editor's document) must occur on the EDT.
                     SwingUtilities.invokeLater(() -> performIncrementalSync(e));
@@ -893,9 +892,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 }
             }
 
-            @Override public void insertUpdate(@NotNull DocumentEvent e) { syncChange(e); }
-            @Override public void removeUpdate(@NotNull DocumentEvent e)  { syncChange(e); }
-            @Override public void changedUpdate(@NotNull DocumentEvent e){ syncChange(e); }
+            @Override public void insertUpdate(DocumentEvent e) { syncChange(e); }
+            @Override public void removeUpdate(DocumentEvent e)  { syncChange(e); }
+            @Override public void changedUpdate(DocumentEvent e){ syncChange(e); }
         };
     }
 
@@ -981,7 +980,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * Synchronizes a specific document change incrementally to preserve cursor position
      * and avoid replacing the entire document content.
      */
-    private static void syncDocumentChange(@NotNull DocumentEvent e, @NotNull Document sourceDoc, @NotNull Document destinationDoc) {
+    private static void syncDocumentChange(DocumentEvent e, Document sourceDoc, Document destinationDoc) {
         try {
             int offset = e.getOffset();
             int length = e.getLength();
@@ -1034,7 +1033,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * Fallback method for full document synchronization when incremental sync fails.
      * This preserves the original behavior but should only be used as a last resort.
      */
-    private static void copyTextFallback(@NotNull Document src, @NotNull Document dst) {
+    private static void copyTextFallback(Document src, Document dst) {
         try {
             // Only perform fallback if documents are significantly out of sync
             String srcText = src.getText(0, src.getLength());
@@ -1076,7 +1075,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     public static class LeftScrollPaneLayout
             extends ScrollPaneLayout {
         @Override
-        public void layoutContainer(@NotNull Container parent) {
+        public void layoutContainer(Container parent) {
             ComponentOrientation originalOrientation;
 
             // Dirty trick to get the vertical scrollbar to the left side of
@@ -1198,7 +1197,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         scrollToSearch(this, sh);
     }
 
-    private void scrollToSearch(@NotNull FilePanel fp, @NotNull SearchHits searchHitsToScroll) {
+    private void scrollToSearch(FilePanel fp, SearchHits searchHitsToScroll) {
         SearchHit currentHit = searchHitsToScroll.getCurrent();
         if (currentHit != null) {
             int line = currentHit.getLine();

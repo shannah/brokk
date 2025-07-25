@@ -20,21 +20,6 @@ import static org.junit.jupiter.api.Assertions.*;
  */
 class DeltaHighlighterTest {
 
-    
-    @Test
-    void testHighlight_NullFilePanel_ThrowsNPE() {
-        // The current implementation does not handle null panels - verify this behavior
-        List<String> original = List.of("A");
-        List<String> revised = List.of("A", "B");
-        Patch<String> patch = DiffUtils.diff(original, revised);
-        AbstractDelta<String> delta = patch.getDeltas().getFirst();
-        
-        // Should throw NullPointerException with null file panel (current behavior)
-        assertThrows(NullPointerException.class, () -> {
-            DeltaHighlighter.highlight(null, delta, true);
-        });
-    }
-    
     @Test 
     void testDeltaTypesHandled() {
         // Verify that all delta types produce distinct behavior
@@ -60,24 +45,6 @@ class DeltaHighlighterTest {
         Patch<String> changePatch = DiffUtils.diff(original3, revised3);
         var changeDelta = changePatch.getDeltas().getFirst();
         assertEquals(DeltaType.CHANGE, changeDelta.getType());
-        
-        // All delta types should be handled (would throw NPE with null panel, as expected)
-        assertThrows(NullPointerException.class, () -> DeltaHighlighter.highlight(null, insertDelta, true));
-        assertThrows(NullPointerException.class, () -> DeltaHighlighter.highlight(null, deleteDelta, true));
-        assertThrows(NullPointerException.class, () -> DeltaHighlighter.highlight(null, changeDelta, true));
-    }
-
-    @Test
-    void testBothSides() {
-        // Verify that both original (true) and revised (false) sides are accepted
-        List<String> original = List.of("A", "B");
-        List<String> revised = List.of("A", "X");
-        Patch<String> patch = DiffUtils.diff(original, revised);
-        AbstractDelta<String> delta = patch.getDeltas().getFirst();
-        
-        // Both sides should accept the call (would throw NPE with null panel, as expected)
-        assertThrows(NullPointerException.class, () -> DeltaHighlighter.highlight(null, delta, true));  // original side
-        assertThrows(NullPointerException.class, () -> DeltaHighlighter.highlight(null, delta, false)); // revised side
     }
 
 

@@ -121,7 +121,6 @@ class FilePanelSimpleTest {
         InMemoryDocument doc = new InMemoryDocument("reader.java", "Reader test content");
         
         try (var reader = doc.getReader()) {
-            assertNotNull(reader);
             
             char[] buffer = new char[1024];
             int charsRead = reader.read(buffer);

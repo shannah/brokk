@@ -129,7 +129,9 @@ class ScrollSyncStateTest
         programmaticThread.join(1000);
         pendingThread.join(1000);
         
-        // Should not crash and state should be consistent
-        assertNotNull(state.shouldSuppressSync(100), "Should be able to check suppression after concurrent access");
+        // Should not crash and state should be consistent.
+        // We can't assert on the final state, because it's non-deterministic.
+        // So we just call a method to make sure the state is valid enough to be used without throwing an exception.
+        state.shouldSuppressSync(100);
     }
 }
