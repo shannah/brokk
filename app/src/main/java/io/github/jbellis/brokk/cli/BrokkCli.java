@@ -265,16 +265,14 @@ public final class BrokkCli implements Callable<Integer> {
             cm.addReadOnlyFiles(resolvedReadFiles.stream().map(cm::toFile).toList());
         if (!resolvedClasses.isEmpty())
             workspaceTools.addClassesToWorkspace(resolvedClasses);
-        if (!addUrls.isEmpty())
-            addUrls.forEach(workspaceTools::addUrlContentsToWorkspace);
-        if (!addUsages.isEmpty())
-            addUsages.forEach(workspaceTools::addSymbolUsagesToWorkspace);
         if (!resolvedSummaryClasses.isEmpty())
             workspaceTools.addClassSummariesToWorkspace(resolvedSummaryClasses);
         if (!addSummaryFiles.isEmpty())
             workspaceTools.addFileSummariesToWorkspace(addSummaryFiles);
         if (!addMethodSources.isEmpty())
             workspaceTools.addMethodSourcesToWorkspace(addMethodSources);
+        addUrls.forEach(workspaceTools::addUrlContentsToWorkspace);
+        addUsages.forEach(workspaceTools::addSymbolUsagesToWorkspace);
         addCallers.forEach(workspaceTools::addCallGraphInToWorkspace);
         addCallees.forEach(workspaceTools::addCallGraphOutToWorkspace);
 
