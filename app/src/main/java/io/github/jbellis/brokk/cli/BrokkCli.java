@@ -302,10 +302,7 @@ public final class BrokkCli implements Callable<Integer> {
 
         io.systemOutput("# Workspace");
         var ctx = cm.topContext();
-        var summaries = Streams.concat(ctx.getReadOnlyFragments(), ctx.getEditableFragments())
-                .map(ContextFragment::formatSummary)
-                .filter(s -> !s.isBlank())
-                .collect(Collectors.joining("\n"));
+        var summaries = ContextFragment.getSummary(ctx.allFragments());
         io.systemOutput(summaries);
 
         // --- Run Action ---

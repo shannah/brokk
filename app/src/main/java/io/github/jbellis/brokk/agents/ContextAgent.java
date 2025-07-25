@@ -445,17 +445,19 @@ public class ContextAgent {
         var pathFragments = recommendedFiles.stream()
                 .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f, cm))
                 .toList();
-        var combinedStream = Stream.concat(skeletonFragments.stream(), pathFragments.stream());
         // Remove fragments that correspond to in-Workspace context
         var existingFiles = cm.liveContext().allFragments()
                 .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
-        combinedStream = combinedStream
+        var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream())
                 .filter(f -> {
                     Set<ProjectFile> fragmentFiles = f.files();
                     return fragmentFiles.stream().noneMatch(existingFiles::contains);
-                });
-        var combinedFragments = combinedStream.toList();
+                }).toList();
+        if (combinedFragments.size() < skeletonFragments.size() + pathFragments.size()) {
+            logger.debug("After removing fragments already in Workspace {}, remaining are {}",
+                         ContextFragment.getSummary(cm.liveContext().allFragments()), combinedFragments);
+        }
 
         return new RecommendationResult(true, combinedFragments, reasoning);
     }

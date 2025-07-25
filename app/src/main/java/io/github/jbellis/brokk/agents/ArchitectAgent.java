@@ -778,10 +778,7 @@ public class ArchitectAgent {
         int finalBudget = contextManager.getService().getMaxInputTokens(model) / 2;
         if (totalTokens > finalBudget) {
             logger.warn("Recommended context ({} tokens) exceeds final budget ({} tokens). Adding summary isntead.", totalTokens, finalBudget);
-            var summaries = recommendationResult.fragments().stream()
-                    .map(ContextFragment::formatSummary)
-                    .filter(s -> !s.isBlank())
-                    .collect(Collectors.joining("\n"));
+            var summaries = ContextFragment.getSummary(recommendationResult.fragments());
             var messages = new ArrayList<>(List.of(new UserMessage("Scan for relevant files"),
                                                    new AiMessage("Potentially relevant files:\n" + summaries)));
             contextManager.addToHistory(new TaskResult(contextManager, "Scan for relevant files", messages, Set.of(), TaskResult.StopReason.SUCCESS), false);
