@@ -45,17 +45,22 @@ public final class AdaptiveExecutor {
 
         @Override
         protected void beforeExecute(Thread t, Runnable r) {
-            if (!(r instanceof TokenAware ta)) {
-                throw new IllegalArgumentException("Expected TokenAware Runnable, got " + r);
-            }
-
+            // Determine the token cost; falls back to 0 when the wrapper doesn't expose it.
+            int tokens = extractTokens(r);
             try {
-                rateLimiter.acquire(ta.tokens());
+                rateLimiter.acquire(tokens);
             } catch (InterruptedException e) {
                 t.interrupt();
                 throw new RuntimeException("Interrupted while waiting for rate limiter", e);
             }
             super.beforeExecute(t, r);
+        }
+
+        /**
+         * Return the token cost of the task, or 0 if the outer wrapper doesn't expose it.
+         */
+        private static int extractTokens(Runnable r) {
+            return (r instanceof TokenAware ta) ? ta.tokens() : 0;
         }
 
         @Override
@@ -65,6 +70,15 @@ public final class AdaptiveExecutor {
             }
             return super.newTaskFor(callable);
         }
+
+        @Override
+        protected <T> RunnableFuture<T> newTaskFor(Runnable runnable, T value) {
+            if (runnable instanceof TokenAware ta) {
+                return new TokenAwareFutureTask<>(Executors.callable(runnable, value), ta.tokens());
+            }
+            return super.newTaskFor(runnable, value);
+        }
+
 
         private static final class TokenAwareFutureTask<V> extends FutureTask<V> implements TokenAware {
             private final int tokens;
