@@ -420,7 +420,11 @@ public class ContextAgent {
 
     private RecommendationResult createResult(LlmRecommendation llmRecommendation) {
         var recommendedFiles = llmRecommendation.recommendedFiles();
-        var recommendedClasses = llmRecommendation.recommendedClasses();
+        // LLM might recommend both a file and a summary of a class in that file. r/m any such redundant classes
+        var recommendedClasses = llmRecommendation.recommendedClasses().stream()
+                .filter(cu -> !llmRecommendation.recommendedFiles.contains(cu.source()))
+                .toList();
+
         var reasoning = llmRecommendation.reasoning();
 
         // Get summaries for recommended classes
