@@ -4,6 +4,7 @@ import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.ChatMessage;
+import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import org.jetbrains.annotations.Nullable;
 import dev.langchain4j.data.message.SystemMessage;
@@ -38,7 +39,7 @@ import static java.util.Objects.requireNonNull;
 public class ContextAgent {
     private static final Logger logger = LogManager.getLogger(ContextAgent.class);
 
-    private final ContextManager contextManager;
+    private final ContextManager cm;
     private final StreamingChatModel model;
     private final Llm llm;
     private final String goal;
@@ -54,7 +55,7 @@ public class ContextAgent {
     private int QUICK_TOPK = 10;
 
     public ContextAgent(ContextManager contextManager, StreamingChatModel model, String goal, boolean deepScan) throws InterruptedException {
-        this.contextManager = contextManager;
+        this.cm = contextManager;
         this.model = model;
         this.llm = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
         this.goal = goal;
@@ -68,7 +69,7 @@ public class ContextAgent {
         int outputTokens = model.defaultRequestParameters().maxOutputTokens(); // TODO override this when we can
         int actualInputTokens = contextManager.getService().getMaxInputTokens(model) - outputTokens;
         // god, our estimation is so bad (yes we do observe the ratio being this far off)
-        this.budgetPruning = (int) (actualInputTokens * 0.75);
+        this.budgetPruning = (int) (actualInputTokens * 0.65);
 
         debug("ContextAgent initialized. Budgets: SkipPruning={}, Pruning={}", skipPruningBudget, budgetPruning);
     }
@@ -172,10 +173,10 @@ public class ContextAgent {
     public RecommendationResult getRecommendations(boolean allowSkipPruning) throws InterruptedException {
         Collection<ChatMessage> workspaceRepresentation;
         workspaceRepresentation = deepScan 
-                                  ? CodePrompts.instance.getWorkspaceContentsMessages(contextManager.liveContext()) 
-                                  : CodePrompts.instance.getWorkspaceSummaryMessages(contextManager.liveContext());
+                                  ? CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()) 
+                                  : CodePrompts.instance.getWorkspaceSummaryMessages(cm.liveContext());
         budgetPruning -= Messages.getApproximateTokens(workspaceRepresentation);
-        var allFiles = contextManager.getProject().getAllFiles().stream().sorted().toList();
+        var allFiles = cm.getProject().getAllFiles().stream().sorted().toList();
 
         // try single-pass mode first
         if (analyzer.isEmpty()) {
@@ -247,12 +248,11 @@ public class ContextAgent {
                                                       boolean allowSkipPruning) throws InterruptedException
     {
         Map<CodeUnit, String> rawSummaries;
-        var ctx = contextManager.liveContext();
-        var codeInWorkspace = ctx.allFragments().flatMap(f -> f.sources().stream()).findAny().isPresent();
+        var ctx = cm.liveContext();
 
-        if (codeInWorkspace && !deepScan) {
+        if (isCodeInWorkspace(ctx) && !deepScan) {
             // If the workspace isn't empty, use pagerank candidates for Quick context
-            var ac = contextManager.liveContext().buildAutoContext(50);
+            var ac = cm.liveContext().buildAutoContext(50);
             // fetchSkeletons() is private in SkeletonFragment. We need to use its sources() or text().
             // For now, let's get the target FQNs and then fetch summaries for them.
             List<String> targetFqns = ac.getTargetIdentifiers();
@@ -299,12 +299,16 @@ public class ContextAgent {
 
         // Else, split the recommendation task across multiple calls
         debug("Summaries too large for a single call ({} tokens), splitting into chunks.", summaryTokens);
-        return recommendInChunks(rawSummaries, codeInWorkspace, workspaceRepresentation);
+        return createResult(recommendInChunks(rawSummaries, workspaceRepresentation, budgetPruning));
     }
 
-    private RecommendationResult recommendInChunks(Map<CodeUnit, String> rawSummaries,
-                                                   boolean codeInWorkspace,
-                                                   Collection<ChatMessage> workspaceRepresentation) 
+    private static boolean isCodeInWorkspace(Context ctx) {
+        return ctx.allFragments().flatMap(f -> f.sources().stream()).findAny().isPresent();
+    }
+
+    private LlmRecommendation recommendInChunks(Map<CodeUnit, String> rawSummaries,
+                                                   Collection<ChatMessage> workspaceRepresentation, 
+                                                   int tokensPerMessage) 
             throws InterruptedException
     {
         // A record to hold a chunk of summaries and its token count
@@ -317,7 +321,7 @@ public class ContextAgent {
         for (var entry : rawSummaries.entrySet()) {
             String summaryText = entry.getValue();
             int summaryTokensCount = Messages.getApproximateTokens(summaryText);
-            if (!currentChunkSummaries.isEmpty() && currentChunkTokens + summaryTokensCount > budgetPruning) {
+            if (!currentChunkSummaries.isEmpty() && currentChunkTokens + summaryTokensCount > tokensPerMessage) {
                 chunks.add(new SummaryChunk(new LinkedHashMap<>(currentChunkSummaries), currentChunkTokens));
                 currentChunkSummaries = new LinkedHashMap<>();
                 currentChunkTokens = 0;
@@ -334,19 +338,19 @@ public class ContextAgent {
         int parallelStartIndex = 0;
 
         // If workspace is not empty, process the first chunk synchronously to warm up the prefix cache.
-        if (codeInWorkspace && !chunks.isEmpty()) {
+        if (isCodeInWorkspace(cm.liveContext()) && !chunks.isEmpty()) {
             debug("Warming up prefix cache with first chunk.");
             var firstChunk = chunks.getFirst();
             var firstRecommendation = askLlmToRecommendContext(List.of(), firstChunk.summaries(), Map.of(), workspaceRepresentation);
             recommendations.add(firstRecommendation);
             parallelStartIndex = 1;
             if (Thread.currentThread().isInterrupted()) {
-                return new RecommendationResult(false, List.of(), "Interrupted during context recommendation.");
+                return new LlmRecommendation(List.of(), List.of(), "Interrupted during context recommendation.");
             }
         }
 
         if (chunks.size() > parallelStartIndex) {
-            var service = contextManager.getService();
+            var service = cm.getService();
             var executorService = AdaptiveExecutor.create(service, model, chunks.size() - parallelStartIndex);
 
             interface TokenAwareLlmRecommendationCallable extends Callable<LlmRecommendation>, TokenAware {}
@@ -391,7 +395,7 @@ public class ContextAgent {
         }
 
         if (Thread.currentThread().isInterrupted()) {
-            return new RecommendationResult(false, List.of(), "Interrupted during context recommendation.");
+            return new LlmRecommendation(List.of(), List.of(), "Interrupted during context recommendation.");
         }
 
         // Merge recommendations from all chunks
@@ -411,7 +415,7 @@ public class ContextAgent {
         var finalRecommendation = new LlmRecommendation(mergedFiles, mergedClasses, mergedReasoning);
         debug("Merged recommendations from all chunks. Files: {}, Classes: {}", finalRecommendation.recommendedFiles().size(), finalRecommendation.recommendedClasses().size());
 
-        return createResult(finalRecommendation);
+        return finalRecommendation;
     }
 
     private RecommendationResult createResult(LlmRecommendation llmRecommendation) {
@@ -433,13 +437,13 @@ public class ContextAgent {
               recommendedFiles.size(), recommendedContentTokens, totalRecommendedTokens);
 
         // Create fragments
-        var skeletonFragments = skeletonPerSummary(contextManager, recommendedSummaries);
+        var skeletonFragments = skeletonPerSummary(cm, recommendedSummaries);
         var pathFragments = recommendedFiles.stream()
-                .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f, contextManager))
+                .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f, cm))
                 .toList();
         var combinedStream = Stream.concat(skeletonFragments.stream(), pathFragments.stream());
         // Remove fragments that correspond to in-Workspace context
-        var existingFiles = contextManager.liveContext().allFragments()
+        var existingFiles = cm.liveContext().allFragments()
                 .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
         combinedStream = combinedStream
@@ -576,15 +580,23 @@ public class ContextAgent {
         // *** Execute LLM call with required tool ***
         var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
         if (result.error() != null || result.isEmpty()) {
+            var error = result.error();
+            // litellm does an inconsistent job translating into ContextWindowExceededError. https://github.com/BrokkAi/brokk/issues/540
+            if (error != null && error.getMessage() != null && error.getMessage().contains("context")) {
+                // we don't have the original raw budget available here, and we don't want to split into more than
+                // two messages, so 0.6 is a reasonable value
+                debug("Context window exceeded, splitting recursively");
+                return recommendInChunks(summaries, workspaceRepresentation, (int) (promptTokens * 0.6));
+            }
             logger.warn("Error or empty response from LLM during context recommendation: {}. Returning empty.",
-                        result.error() != null ? result.error().getMessage() : "Empty response");
+                        error != null ? error.getMessage() : "Empty response");
             return LlmRecommendation.EMPTY;
         }
         var toolRequests = result.toolRequests();
         debug("LLM ToolRequests: {}", toolRequests);
         // only one call is necessary but handle LLM making multiple calls
         for (var request : toolRequests) {
-            contextManager.getToolRegistry().executeTool(contextTool, request);
+            cm.getToolRegistry().executeTool(contextTool, request);
         }
 
         String reasoning = result.text();
@@ -592,7 +604,7 @@ public class ContextAgent {
         var projectFiles = contextTool.getRecommendedFiles().stream()
                 .map(fname -> {
                     try {
-                        return contextManager.toFile(fname);
+                        return cm.toFile(fname);
                     } catch (IllegalArgumentException e) {
                         // absolute or malformed path
                         return null;
@@ -684,7 +696,7 @@ public class ContextAgent {
             responseLines = simpleRecommendItems(ContextInputType.FILE_PATHS, filenameString, null, workspaceRepresentation); // No topK for pruning
 
             // Convert response strings back to ProjectFile objects
-            var allFilesMap = contextManager.getProject().getAllFiles().stream()
+            var allFilesMap = cm.getProject().getAllFiles().stream()
                     .collect(Collectors.toMap(ProjectFile::toString, pf -> pf));
             recommendedFiles = responseLines.stream()
                     .map(allFilesMap::get)
@@ -762,7 +774,7 @@ public class ContextAgent {
                                                          boolean allowSkipPruning) throws InterruptedException
     {
         // If the workspace isn't empty and we have no analyzer, don't suggest adding whole files.
-        if (analyzer.isEmpty() && !contextManager.getEditableFiles().isEmpty()) {
+        if (analyzer.isEmpty() && !cm.getEditableFiles().isEmpty()) {
             debug("Non-empty context and no analyzer present, skipping file content suggestions");
             return new RecommendationResult(true, List.of(), "Skipping file content suggestions for non-empty context without analyzer.");
         }
