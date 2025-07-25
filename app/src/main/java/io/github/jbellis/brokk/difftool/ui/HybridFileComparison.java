@@ -44,20 +44,15 @@ public class HybridFileComparison {
                     rightSizeStr, rightEstimation.confidence(),
                     maxSizeStr);
 
-        // Check for files too large to handle safely
-        if (maxSize > PerformanceConstants.MAX_FILE_SIZE_BYTES) {
-            logger.error("File too large to process safely: {} (max allowed: {})",
-                        maxSizeStr, formatFileSize(PerformanceConstants.MAX_FILE_SIZE_BYTES));
+        // Use consistent file size validation from FileComparisonHelper
+        var sizeValidationError = FileComparisonHelper.validateFileSizes(leftSource, rightSource);
+        if (sizeValidationError != null) {
+            logger.error("File size validation failed: {}", sizeValidationError);
 
             // Show error on EDT and clear loading state
             SwingUtilities.invokeLater(() -> {
-                String message = String.format(
-                    "File is too large to display safely: %s (maximum: %s)",
-                    maxSizeStr, formatFileSize(PerformanceConstants.MAX_FILE_SIZE_BYTES)
-                );
-
                 // Clear the loading state and re-enable buttons
-                mainPanel.displayErrorForFile(fileIndex, message);
+                mainPanel.displayErrorForFile(fileIndex, sizeValidationError);
             });
             return; // Don't process the file
         }

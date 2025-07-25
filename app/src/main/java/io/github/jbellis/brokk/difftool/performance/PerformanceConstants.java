@@ -51,5 +51,9 @@ public final class PerformanceConstants {
     // Background preloading
     public static final int PRELOAD_DELAY_MS = 500; // Delay before preloading adjacent files
 
+    // Memory management thresholds
+    public static final int MEMORY_HIGH_THRESHOLD_PERCENT = 70; // Memory usage threshold for cleanup
+    public static final int MEMORY_CRITICAL_THRESHOLD_PERCENT = 85; // Critical memory usage threshold
+
     private PerformanceConstants() {} // Prevent instantiation
 }

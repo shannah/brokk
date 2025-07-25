@@ -977,19 +977,14 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             logger.debug("Preloading file {} in background", fileIndex);
             var compInfo = fileComparisons.get(fileIndex);
 
-            // Check file sizes before attempting to preload
-            long leftSize = FileComparisonHelper.estimateSourceSize(compInfo.leftSource);
-            long rightSize = FileComparisonHelper.estimateSourceSize(compInfo.rightSource);
-            long maxSize = Math.max(leftSize, rightSize);
-
-            if (maxSize > PerformanceConstants.MAX_FILE_SIZE_BYTES) {
-                logger.warn("Skipping preload of file {} - too large ({}B > {}B)",
-                           fileIndex, maxSize, PerformanceConstants.MAX_FILE_SIZE_BYTES);
+            // Use extracted file validation logic
+            if (!FileComparisonHelper.isValidForPreload(compInfo.leftSource, compInfo.rightSource)) {
+                logger.warn("Skipping preload of file {} - too large for preload", fileIndex);
                 return;
             }
 
-            // Create diff node (expensive computation) in background
-            var diffNode = FileComparisonHelper.createDiffNode(
+            // Create file loading result (includes size validation and error handling)
+            var loadingResult = FileComparisonHelper.createFileLoadingResult(
                 compInfo.leftSource, compInfo.rightSource,
                 contextManager, isMultipleCommitsContext);
 
@@ -997,12 +992,16 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             SwingUtilities.invokeLater(() -> {
                 // Double-check still needed and in window
                 if (panelCache.get(fileIndex) == null && panelCache.isInWindow(fileIndex)) {
-                    var panel = new BufferDiffPanel(this, theme);
-                    panel.setDiffNode(diffNode);
+                    if (loadingResult.isSuccess()) {
+                        var panel = new BufferDiffPanel(this, theme);
+                        panel.setDiffNode(loadingResult.getDiffNode());
 
-                    // Cache will automatically check window constraints
-                    panelCache.put(fileIndex, panel);
-                    logger.debug("Preloaded and cached file {}", fileIndex);
+                        // Cache will automatically check window constraints
+                        panelCache.put(fileIndex, panel);
+                        logger.debug("Preloaded and cached file {}", fileIndex);
+                    } else {
+                        logger.warn("Skipping preload of file {} - {}", fileIndex, loadingResult.getErrorMessage());
+                    }
                 } else {
                     logger.debug("Preload cancelled for file {} (cached or outside window)", fileIndex);
                 }
@@ -1030,8 +1029,8 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         logger.debug("Memory: {}MB/{}MB ({}%), {}",
                     usedMB, maxMB, percentUsed, panelCache.getWindowInfo());
 
-        // Lower threshold for sliding window since we have fewer cached items
-        if (percentUsed > 70) {
+        // Use configurable threshold for memory cleanup
+        if (percentUsed > PerformanceConstants.MEMORY_HIGH_THRESHOLD_PERCENT) {
             logger.warn("Memory usage high ({}%) with sliding window cache", percentUsed);
             performWindowCleanup();
         }
