@@ -131,7 +131,7 @@ public class CodeAgent {
                 if (metrics != null) {
                     Optional.ofNullable(streamingResult.tokenUsage())
                             .ifPresent(metrics::addTokens);
-                    metrics.addRetries(streamingResult.retries());
+                    metrics.addApiRetries(streamingResult.retries());
                 }
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
@@ -152,6 +152,9 @@ public class CodeAgent {
             switch (parseOutcome) {
                 case Step.Continue(var newLoopContext) -> loopContext = newLoopContext;
                 case Step.Retry(var newLoopContext) -> {
+                    if (metrics != null) {
+                        metrics.parseRetries++;
+                    }
                     loopContext = newLoopContext;
                     continue; // Restart main loop
                 }
@@ -246,7 +249,7 @@ public class CodeAgent {
         var loopContext = new LoopContext(conversationState, editState, instructions);
 
         logger.debug("Code Agent engaged in single-file mode for %s: `%s…`"
-                                .formatted(file.getFileName(), LogDescription.getShortDescription(instructions)));
+                             .formatted(file.getFileName(), LogDescription.getShortDescription(instructions)));
 
         TaskResult.StopDetails stopDetails;
 
@@ -333,7 +336,7 @@ public class CodeAgent {
                               loopContext.editState().changedFiles(),
                               stopDetails);
     }
-    
+
     void report(String message) {
         logger.debug(message);
         io.llmOutput("\n" + message, ChatMessageType.CUSTOM);
@@ -360,12 +363,12 @@ public class CodeAgent {
             int updatedConsecutiveParseFailures = ws.consecutiveParseFailures();
             UserMessage messageForRetry;
             String consoleLogForRetry;
-            if (newlyParsedBlocks.isEmpty()) { 
+            if (newlyParsedBlocks.isEmpty()) {
                 // Pure parse failure
                 updatedConsecutiveParseFailures++;
                 messageForRetry = new UserMessage(parseResult.parseError());
                 consoleLogForRetry = "Failed to parse LLM response; retrying";
-            } else { 
+            } else {
                 // Partial parse, then an error
                 updatedConsecutiveParseFailures = 0; // Reset, as we got some good blocks.
                 messageForRetry = new UserMessage(getContinueFromLastBlockPrompt(newlyParsedBlocks.getLast()));
@@ -480,7 +483,7 @@ public class CodeAgent {
         }
 
         report("Attempting full file replacement for: " + failuresByFile.keySet().stream().map(ProjectFile::toString).collect(Collectors.joining(", ")));
-        
+
         // Prepare tasks for parallel execution
         var tasks = failuresByFile.entrySet().stream().map(entry -> (Callable<Optional<String>>) () -> {
             var file = entry.getKey();
@@ -547,7 +550,7 @@ public class CodeAgent {
      * @return an error message, or empty if successful
      */
     public static Optional<String> executeReplace(ProjectFile file, Llm coder, List<ChatMessage> messages)
-    throws InterruptedException, IOException
+            throws InterruptedException, IOException
     {
         // Send request
         StreamingResult result = coder.sendRequest(messages, false);
@@ -817,9 +820,9 @@ public class CodeAgent {
             }
             UserMessage nextRequestForBuildFailure = new UserMessage(formatBuildErrorsForLLM(latestBuildError));
             var newCs = new ConversationState(
-                cs.taskMessages(),
-                nextRequestForBuildFailure,
-                cs.originalWorkspaceEditableMessages()
+                    cs.taskMessages(),
+                    nextRequestForBuildFailure,
+                    cs.originalWorkspaceEditableMessages()
             );
             var newWs = ws.afterBuildFailure(latestBuildError);
             report("Asking LLM to fix build/lint failures");
@@ -876,16 +879,19 @@ public class CodeAgent {
                     // Update changedFiles with files modified by fallback
                     Set<ProjectFile> updatedChangedFiles = new HashSet<>(ws.changedFiles());
                     blocksForFallback.stream()
-                        .filter(fb -> fb.block().filename() != null) // Ensure filename is not null
-                        .map(fb -> contextManager.toFile(requireNonNull(fb.block().filename()))) // Now safe to call requireNonNull
-                        .forEach(updatedChangedFiles::add);
-                    
+                            .filter(fb -> fb.block().filename() != null) // Ensure filename is not null
+                            .map(fb -> contextManager.toFile(requireNonNull(fb.block().filename()))) // Now safe to call requireNonNull
+                            .forEach(updatedChangedFiles::add);
+
                     UserMessage placeholderPrompt = new UserMessage("[Placeholder: Build errors will be inserted here by verifyPhase if build fails after this full file replacement]");
                     csForStep = new ConversationState(cs.taskMessages(), placeholderPrompt, cs.originalWorkspaceEditableMessages());
-                    
+
                     wsForStep = ws.afterFallbackSuccess(nextPendingBlocks, updatedChangedFiles, nextOriginalFileContents);
                     return new Step.Continue(new LoopContext(csForStep, wsForStep, currentLoopContext.userGoal()));
                 } else { // Apply failed, but not yet time for full fallback -> ask LLM to retry
+                    if (metrics != null) {
+                        metrics.applyRetries++;
+                    }
                     String retryPromptText = CodePrompts.getApplyFailureMessage(failedBlocks, parser, succeededCount, contextManager);
                     UserMessage retryRequest = new UserMessage(retryPromptText);
                     csForStep = new ConversationState(cs.taskMessages(), retryRequest, cs.originalWorkspaceEditableMessages());
@@ -993,7 +999,7 @@ public class CodeAgent {
             return new EditState(newPendingBlocks, newParseFailures, consecutiveApplyFailures,
                                  blocksAppliedWithoutBuild, lastBuildError, changedFiles, originalFileContents);
         }
-        
+
         /**
          * Returns a new WorkspaceState after a build failure, updating the error message.
          */
@@ -1035,8 +1041,10 @@ public class CodeAgent {
         int totalOutputTokens = 0;
         int totalEditBlocks = 0;
         int failedEditBlocks = 0;
+        int parseRetries = 0;
         int buildFailures = 0;
-        int retries = 0;
+            int applyRetries = 0;
+            int apiRetries = 0;
 
         void addTokens(@Nullable Llm.RichTokenUsage usage) {
             if (usage == null) {
@@ -1048,8 +1056,8 @@ public class CodeAgent {
             totalOutputTokens += usage.outputTokens();
         }
 
-        void addRetries(int retryCount) {
-            retries += retryCount;
+        void addApiRetries(int retryCount) {
+            apiRetries += retryCount;
         }
 
         void print(Set<ProjectFile> changedFiles, TaskResult.StopDetails stopDetails) {
@@ -1064,7 +1072,9 @@ public class CodeAgent {
             jsonMap.put("editBlocksTotal", totalEditBlocks);
             jsonMap.put("editBlocksFailed", failedEditBlocks);
             jsonMap.put("buildFailures", buildFailures);
-            jsonMap.put("retries", retries);
+            jsonMap.put("parseRetries", parseRetries);
+            jsonMap.put("applyRetries", applyRetries);
+            jsonMap.put("apiRetries", apiRetries);
             jsonMap.put("changedFiles", changedFilesList);
             jsonMap.put("stopReason", stopDetails.reason().name());
             jsonMap.put("stopExplanation", stopDetails.explanation());
