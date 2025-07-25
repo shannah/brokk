@@ -14,6 +14,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ProgressMonitor;
 
 import javax.swing.*;
+import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableCellRenderer;
 import java.awt.*;
@@ -54,7 +55,7 @@ public class GitLogTab extends JPanel {
 
     // Branches
     private JTable branchTable;
-    private DefaultTableModel branchTableModel;
+    private AbstractTableModel branchTableModel;
     private JTable remoteBranchTable;
     private DefaultTableModel remoteBranchTableModel;
 
@@ -567,19 +568,20 @@ public class GitLogTab extends JPanel {
                         .map(t -> new Object[]{t})
                         .toList();
 
+                var branchRows = localBranchRows.stream()
+                        .map(arr -> new LocalBranchTableModel.BranchRow((String) arr[0], (String) arr[1]))
+                        .toList();
+
                 final int finalTargetSelectionIndex = targetSelectionIndex;
                 final String finalSelectedBranchName = targetBranchToSelect; // The branch name we actually selected/targeted
 
                 SwingUtilities.invokeLater(() -> {
                     // gitCommitBrowserPanel.clearCommitView(); // This will be handled by updateCommitsForBranch or if no branch selected
 
-                    branchTableModel.setRowCount(0);
+                    ((LocalBranchTableModel) branchTableModel).setRows(branchRows);
                     remoteBranchTableModel.setRowCount(0);
                     tagsTableModel.setRowCount(0);
 
-                    for (var rowData : localBranchRows) {
-                        branchTableModel.addRow(rowData);
-                    }
                     for (var rowData : remoteBranchRows) {
                         remoteBranchTableModel.addRow(rowData);
                     }
@@ -602,8 +604,8 @@ public class GitLogTab extends JPanel {
             } catch (Exception e) {
                 logger.error("Error fetching branches", e);
                 SwingUtilities.invokeLater(() -> {
-                    branchTableModel.setRowCount(0);
-                    branchTableModel.addRow(new Object[]{"", "Error fetching branches: " + e.getMessage()});
+                    var errorRow = new LocalBranchTableModel.BranchRow("", "Error fetching branches: " + e.getMessage());
+                    ((LocalBranchTableModel) branchTableModel).setRows(List.of(errorRow));
                     remoteBranchTableModel.setRowCount(0);
                     gitCommitBrowserPanel.clearCommitView();
                 });
@@ -1048,19 +1050,31 @@ public class GitLogTab extends JPanel {
     /**
      * A custom table model for the local branches table that allows for inline renaming of branches.
      */
-    private class LocalBranchTableModel extends DefaultTableModel {
-        public LocalBranchTableModel() {
-            super(new Object[]{"", "Branch"}, 0);
+    private class LocalBranchTableModel extends AbstractTableModel {
+        private static final int COL_MARK = 0;
+        private static final int COL_NAME = 1;
+
+        record BranchRow(String mark, String name) {}
+        private List<BranchRow> rows = List.of();
+
+        public void setRows(List<BranchRow> newRows) {
+            this.rows = List.copyOf(newRows);
+            fireTableDataChanged();
         }
 
         @Override
-        public boolean isCellEditable(int row, int column) {
-            // Only the 'Branch' column is editable, and not for the stashes virtual entry.
-            if (column == 1) {
-                String branchName = (String) getValueAt(row, 1);
-                return !STASHES_VIRTUAL_BRANCH.equals(branchName);
-            }
-            return false;
+        public int getRowCount() {
+            return rows.size();
+        }
+
+        @Override
+        public int getColumnCount() {
+            return 2;
+        }
+
+        @Override
+        public String getColumnName(int column) {
+            return column == COL_MARK ? "" : "Branch";
         }
 
         @Override
@@ -1069,22 +1083,32 @@ public class GitLogTab extends JPanel {
         }
 
         @Override
+        public Object getValueAt(int rowIndex, int columnIndex) {
+            var row = rows.get(rowIndex);
+            return columnIndex == COL_MARK ? row.mark() : row.name();
+        }
+
+        @Override
+        public boolean isCellEditable(int row, int column) {
+            if (column == COL_NAME) {
+                String branchName = rows.get(row).name();
+                return !STASHES_VIRTUAL_BRANCH.equals(branchName);
+            }
+            return false;
+        }
+
+        @Override
         public void setValueAt(Object aValue, int row, int column) {
-            if (column != 1) {
-                super.setValueAt(aValue, row, column);
+            if (column != COL_NAME) {
                 return;
             }
 
-            String oldName = (String) getValueAt(row, 1);
+            String oldName = rows.get(row).name();
             String newName = ((String) aValue).trim();
 
             if (newName.isEmpty() || newName.equals(oldName)) {
                 return; // No change, do nothing.
             }
-
-            // Immediately update the cell in the UI for responsiveness.
-            // The background task will then attempt the actual rename.
-            super.setValueAt(aValue, row, column);
 
             contextManager.submitUserTask("Renaming branch: " + oldName, () -> {
                 try {
@@ -1098,7 +1122,7 @@ public class GitLogTab extends JPanel {
                     SwingUtilities.invokeLater(() -> {
                         logger.error("Error renaming branch '{}' to '{}'", oldName, newName, e);
                         chrome.toolError("Error renaming branch: " + e.getMessage());
-                        // On failure, update() will restore the correct state from git, reverting the optimistic UI change.
+                        // On failure, update() will restore the correct state from git.
                         update();
                     });
                 }
