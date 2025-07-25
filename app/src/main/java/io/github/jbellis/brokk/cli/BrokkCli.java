@@ -117,6 +117,8 @@ public final class BrokkCli implements Callable<Integer> {
 
     public static void main(String[] args) {
         System.err.println("Starting Brokk CLI...");
+        System.setProperty("java.awt.headless", "true");
+
         int exitCode = new CommandLine(new BrokkCli()).execute(args);
         System.exit(exitCode);
     }
