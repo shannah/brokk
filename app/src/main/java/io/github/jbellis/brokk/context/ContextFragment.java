@@ -1243,7 +1243,7 @@ public interface ContextFragment {
             if (graphData.isEmpty()) {
                 return "No call graph available for " + methodName;
             }
-            return AnalyzerUtil.formatCallGraph(graphData, methodName, isCalleeGraph);
+            return AnalyzerUtil.formatCallGraph(graphData, methodName, !isCalleeGraph);
         }
 
         @Override
