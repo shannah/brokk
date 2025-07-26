@@ -350,13 +350,12 @@ public class ContextAgent {
         }
 
         if (chunks.size() > parallelStartIndex) {
-            var service = cm.getService();
-            var executorService = AdaptiveExecutor.create(service, model, chunks.size() - parallelStartIndex);
-
             interface TokenAwareLlmRecommendationCallable extends Callable<LlmRecommendation>, TokenAware {}
-
             List<Future<LlmRecommendation>> futures = new ArrayList<>();
-            try {
+            // this isn't ideal, since if we estimate token counts wrong and call recommendInChunks recursively,
+            // we create multiple executors (and potentially exceed the intended rate limits). In this case
+            // we'll have to just let the underlying Llm class deal with the vendor rate limits and retry as necessary.
+            try (var executorService = AdaptiveExecutor.create(cm.getService(), model, chunks.size() - parallelStartIndex)) {
                 for (int i = parallelStartIndex; i < chunks.size(); i++) {
                     if (Thread.currentThread().isInterrupted()) {
                         break;
@@ -389,8 +388,6 @@ public class ContextAgent {
                         break;
                     }
                 }
-            } finally {
-                executorService.shutdownNow();
             }
         }
 

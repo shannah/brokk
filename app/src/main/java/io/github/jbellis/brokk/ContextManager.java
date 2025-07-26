@@ -2015,26 +2015,25 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         ContextHistory loadedCh = sessionManager.loadHistory(currentSessionId, this);
 
-        if (loadedCh != null) {
-            final ContextHistory nnLoadedCh = loadedCh; // Introduce nnLoadedCh for the non-null scope
-            if (nnLoadedCh.getHistory().isEmpty()) {
+        if (loadedCh == null) {
+            // Case: loadedCh is null
+            liveContext = new Context(this, "Welcome to session: " + sessionName);
+            contextHistory.setInitialContext(liveContext.freezeAndCleanup().frozenContext());
+            sessionManager.saveHistory(contextHistory, currentSessionId);
+        } else {
+            if (loadedCh.getHistory().isEmpty()) {
                 // Case: loadedCh exists but its history is empty
                 liveContext = new Context(this, "Welcome to session: " + sessionName);
                 contextHistory.setInitialContext(liveContext.freezeAndCleanup().frozenContext());
                 sessionManager.saveHistory(contextHistory, currentSessionId);
             } else {
                 // Case: loadedCh exists and has history
-                contextHistory.setInitialContext(nnLoadedCh.getHistory().getFirst());
-                for (int i = 1; i < nnLoadedCh.getHistory().size(); i++) {
-                    contextHistory.addFrozenContextAndClearRedo(nnLoadedCh.getHistory().get(i));
+                contextHistory.setInitialContext(loadedCh.getHistory().getFirst());
+                for (int i = 1; i < loadedCh.getHistory().size(); i++) {
+                    contextHistory.addFrozenContextAndClearRedo(loadedCh.getHistory().get(i));
                 }
                 liveContext = Context.unfreeze(topContext());
             }
-        } else {
-            // Case: loadedCh is null
-            liveContext = new Context(this, "Welcome to session: " + sessionName);
-            contextHistory.setInitialContext(liveContext.freezeAndCleanup().frozenContext());
-            sessionManager.saveHistory(contextHistory, currentSessionId);
         }
         notifyContextListeners(topContext());
         io.updateContextHistoryTable(topContext());
