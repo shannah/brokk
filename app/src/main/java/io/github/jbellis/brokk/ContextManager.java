@@ -746,14 +746,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Add read-only path fragments.
-     */
-    public void addReadOnlyFragments(List<PathFragment> fragments) {
-        pushContext(currentLiveCtx -> applyReadOnlyPathFragmentChanges(currentLiveCtx, fragments));
-        io.systemOutput("Read " + joinForOutput(fragments));
-    }
-
-    /**
      * Add read-only files.
      */
     public void addReadOnlyFiles(Collection<? extends BrokkFile> files)
@@ -761,8 +753,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var proposedReadOnlyFragments = files.stream()
                 .map(bf -> ContextFragment.toPathFragment(bf, this))
                 .toList();
-        addReadOnlyFragments(proposedReadOnlyFragments);
-        // io.systemOutput is handled by addReadOnlyFragments
+        pushContext(currentLiveCtx -> applyReadOnlyPathFragmentChanges(currentLiveCtx, proposedReadOnlyFragments));
+        io.systemOutput("Read " + joinForOutput(proposedReadOnlyFragments));
     }
 
     /**
