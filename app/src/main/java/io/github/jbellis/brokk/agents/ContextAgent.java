@@ -456,7 +456,7 @@ public class ContextAgent {
                 }).toList();
         if (combinedFragments.size() < skeletonFragments.size() + pathFragments.size()) {
             logger.debug("After removing fragments already in Workspace {}, remaining are {}",
-                         ContextFragment.getSummary(cm.liveContext().allFragments()), combinedFragments);
+                         ContextFragment.getSummary(cm.topContext().allFragments()), combinedFragments);
         }
 
         return new RecommendationResult(true, combinedFragments, reasoning);
