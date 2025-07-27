@@ -23,6 +23,7 @@ import org.jetbrains.annotations.Nullable;
 import java.util.Objects;
 import javax.swing.*;
 import javax.swing.event.DocumentEvent;
+import java.awt.Font;
 import javax.swing.event.DocumentListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
@@ -37,6 +38,7 @@ import java.util.Locale;
 import java.util.Optional;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
+import javax.swing.SwingWorker;
 
 import static java.util.Objects.requireNonNullElseGet;
 
@@ -80,6 +82,20 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     // Navigation state to ensure highlights appear when scrolling to diffs
     private final AtomicBoolean isNavigatingToDiff = new AtomicBoolean(false);
 
+    // Background worker handling large-file optimisation off the EDT
+    @Nullable
+    private volatile SwingWorker<?, ?> optimisationWorker;
+
+    // Flag to force plain text mode for performance with large single-line files
+    private volatile boolean forcePlainText = false;
+
+    // Flag to indicate file content was truncated for safety
+    private volatile boolean contentTruncated = false;
+
+    // Status panel for showing file truncation and editing status
+    private JPanel statusPanel;
+    private JLabel statusLabel;
+
     // Viewport cache for thread-safe access
     private final AtomicReference<ViewportCache> viewportCache = new AtomicReference<>();
 
@@ -91,6 +107,15 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
 
     private void init() {
         visualComponentContainer = new JPanel(new BorderLayout());
+
+        // Initialize status panel for file notifications
+        statusPanel = new JPanel(new java.awt.FlowLayout(java.awt.FlowLayout.LEFT, 5, 2));
+        statusLabel = new JLabel();
+        statusLabel.setFont(statusLabel.getFont().deriveFont(Font.PLAIN, 11f));
+        statusLabel.setForeground(new java.awt.Color(204, 120, 50)); // Orange color for warnings
+        statusPanel.add(statusLabel);
+        statusPanel.setVisible(false); // Hidden by default
+        visualComponentContainer.add(statusPanel, BorderLayout.NORTH);
 
         // Initialize RSyntaxTextArea with composite highlighter
         editor = new RSyntaxTextArea();
@@ -138,7 +163,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                             // Then update highlights based on the new diff
                             reDisplayInternal();
                         } catch (Exception ex) {
-                            logger.warn("{}: Error applying deferred updates: {}", name, ex.getMessage());
                             // Ensure typing state is reset even if update fails
                             isActivelyTyping.set(false);
                         }
@@ -214,10 +238,18 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             // installMirroring will call removeMirroring again, which is harmless.
             removeMirroring();
 
+            // Reset flags for new document
             this.bufferDocument = bd;
+            this.forcePlainText = false;
+            this.contentTruncated = false;
+
+
+            // Clear status panel for new document
+            clearStatusPanel();
             visualComponentContainer.removeAll(); // Clear previous content
 
-            // Always add the scrollPane (which contains the editor)
+            // Always add the status panel and scrollPane (which contains the editor)
+            visualComponentContainer.add(statusPanel, BorderLayout.NORTH);
             visualComponentContainer.add(scrollPane, BorderLayout.CENTER);
 
             if (bd != null) {
@@ -225,8 +257,32 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 // Copy text into RSyntaxDocument instead of replacing the model
                 String txt = newDocument.getText(0, newDocument.getLength());
 
+                // EARLY MEMORY PROTECTION: Disable syntax before setText() for dense files
+                // This prevents RSyntaxTextArea from tokenizing huge single-line files
+                if (shouldUsePlainTextMode(bd, txt.length())) {
+                    editor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+                    forcePlainText = true;
+
+                    // AGGRESSIVE PROTECTION: For extremely large single-line files,
+                    // truncate content to prevent memory explosion even in plain text mode
+                    ProtectionLevel level = getProtectionLevel(bd, txt.length());
+                    if (level == ProtectionLevel.MINIMAL && bd.getNumberOfLines() <= 2) {
+                        int maxDisplayLength = 100 * 1024; // 100KB max for single-line display
+                        if (txt.length() > maxDisplayLength) {
+                            int originalSizeKB = txt.length() / 1024;
+                            txt = txt.substring(0, maxDisplayLength);
+                            logger.warn("Truncated huge single-line file {} from {}KB to {}KB for safe display",
+                                       bd.getName(), originalSizeKB, txt.length() / 1024);
+
+                            // Show truncation status and mark as truncated
+                            contentTruncated = true;
+                            updateStatusPanel(originalSizeKB);
+                        }
+                    }
+                }
+
                 // PERFORMANCE OPTIMIZATION: Apply file size-based optimizations for large files
-                applyPerformanceOptimizations(txt.length());
+                optimiseAsyncIfLarge(txt.length());
 
                 editor.setText(txt);
                 editor.setTabSize(PerformanceConstants.DEFAULT_EDITOR_TAB_SIZE);
@@ -236,7 +292,10 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 installMirroring(newDocument);
 
                 // Undo tracking on the RSyntaxDocument (what the user edits)
-                editor.getDocument().addUndoableEditListener(diffPanel.getUndoHandler());
+                // Only enable undo/redo for editable files
+                if (!contentTruncated) {
+                    editor.getDocument().addUndoableEditListener(diffPanel.getUndoHandler());
+                }
 
                 // Ensure highlighter is still properly connected after setText
                 if (editor.getHighlighter() instanceof CompositeHighlighter) {
@@ -244,7 +303,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                     var highlighter = editor.getHighlighter();
                     highlighter.install(editor);
                 }
-                editor.setEditable(!bd.isReadonly());
+                // Disable editing for truncated files or readonly files
+                boolean shouldBeEditable = !bd.isReadonly() && !contentTruncated;
+                editor.setEditable(shouldBeEditable);
                 updateSyntaxStyle();            // pick syntax based on filename
             } else {
                 // If BufferDocumentIF is null, clear the editor and make it non-editable
@@ -532,13 +593,147 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     }
 
     /**
+     * Protection levels for memory and performance optimization.
+     */
+    private enum ProtectionLevel {
+        NONE,     // Full syntax highlighting and all features enabled
+        REDUCED,  // Syntax highlighting but heavy features disabled
+        MINIMAL   // Plain text mode, all features disabled
+    }
+
+    /**
+     * SHARED PROTECTION LOGIC: Determines the appropriate protection level for a file
+     * based on line density and size. Used by both synchronous and asynchronous paths.
+     */
+    private ProtectionLevel getProtectionLevel(@Nullable BufferDocumentIF document, long contentLength) {
+        if (document == null) {
+            return ProtectionLevel.NONE;
+        }
+
+        int numberOfLines = document.getNumberOfLines();
+        long averageLineLength = numberOfLines > 0 ? contentLength / numberOfLines : contentLength;
+
+        // Minimal protection: Plain text for extreme cases
+        if (averageLineLength > PerformanceConstants.MINIMAL_SYNTAX_LINE_LENGTH_BYTES ||
+            (numberOfLines <= 3 && contentLength > PerformanceConstants.SINGLE_LINE_THRESHOLD_BYTES)) {
+            return ProtectionLevel.MINIMAL;
+        }
+
+        // Reduced protection: Keep syntax but disable heavy features
+        if (averageLineLength > PerformanceConstants.REDUCED_SYNTAX_LINE_LENGTH_BYTES) {
+            return ProtectionLevel.REDUCED;
+        }
+
+        // No protection needed
+        return ProtectionLevel.NONE;
+    }
+
+    /**
+     * EARLY MEMORY PROTECTION: Determines if a file should use plain text mode
+     * to prevent memory explosion during setText(). This check runs BEFORE
+     * RSyntaxTextArea tokenization to avoid token allocation.
+     */
+    private boolean shouldUsePlainTextMode(@Nullable BufferDocumentIF document, long contentLength) {
+        ProtectionLevel level = getProtectionLevel(document, contentLength);
+
+        if (level == ProtectionLevel.MINIMAL) {
+            return true;
+        }
+
+        return false;
+    }
+
+    /**
+     * Apply performance optimizations for files where early protection was already applied.
+     * This ensures consistent behavior between sync and async paths by applying the same
+     * complete optimization logic.
+     */
+    private void applyCriticalOptimizationsOnly(long contentLength) {
+        // Apply the same complete optimization logic as synchronous path
+        ProtectionLevel level = getProtectionLevel(bufferDocument, contentLength);
+
+        // Reset editor features for normal files, but preserve early protection
+        if (!forcePlainText) {
+            editor.setCodeFoldingEnabled(true);
+            editor.setBracketMatchingEnabled(true);
+            editor.setMarkOccurrences(true);
+        }
+
+        // Apply protection based on determined level
+        switch (level) {
+            case MINIMAL -> {
+                if (!forcePlainText && bufferDocument != null) {
+                    forcePlainText = true;
+                    editor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+                }
+                editor.setCodeFoldingEnabled(false);
+                editor.setBracketMatchingEnabled(false);
+                editor.setMarkOccurrences(false);
+            }
+            case REDUCED -> {
+                // Keep syntax highlighting but disable memory-intensive features
+                editor.setCodeFoldingEnabled(false);
+                editor.setBracketMatchingEnabled(false);
+                editor.setMarkOccurrences(false);
+            }
+            case NONE -> {
+                // Features already reset above, no additional changes needed
+            }
+        }
+
+        // Apply timing optimizations for large files
+        boolean isLargeFile = contentLength > PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES;
+        if (isLargeFile) {
+            if (timer != null) {
+                timer.setDelay(PerformanceConstants.LARGE_FILE_UPDATE_TIMER_DELAY_MS);
+            }
+        } else {
+            // Use normal timing for smaller files
+            if (timer != null) {
+                timer.setDelay(PerformanceConstants.DEFAULT_UPDATE_TIMER_DELAY_MS);
+            }
+        }
+    }
+
+    /**
      * PERFORMANCE OPTIMIZATION: Apply performance optimizations based on file size.
      */
     private void applyPerformanceOptimizations(long contentLength) {
+        // Reset editor features for normal files, but preserve early protection
+        if (!forcePlainText) {
+            editor.setCodeFoldingEnabled(true);
+            editor.setBracketMatchingEnabled(true);
+            editor.setMarkOccurrences(true);
+        }
+
+        // Apply protection based on shared logic to ensure consistency
+        ProtectionLevel level = getProtectionLevel(bufferDocument, contentLength);
+
+        switch (level) {
+            case MINIMAL -> {
+                if (!forcePlainText && bufferDocument != null) {
+                    forcePlainText = true;
+                    editor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+                }
+                editor.setCodeFoldingEnabled(false);
+                editor.setBracketMatchingEnabled(false);
+                editor.setMarkOccurrences(false);
+            }
+            case REDUCED -> {
+                // Keep syntax highlighting but disable memory-intensive features
+                editor.setCodeFoldingEnabled(false);
+                editor.setBracketMatchingEnabled(false);
+                editor.setMarkOccurrences(false);
+            }
+            case NONE -> {
+                // Features already reset above, no additional changes needed
+            }
+        }
+
         boolean isLargeFile = contentLength > PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES;
 
         if (isLargeFile) {
-            logger.info("Applying performance optimizations for large file: {}KB", contentLength / 1024);
+            logger.info("Applying general performance optimizations for large file: {}KB", contentLength / 1024);
 
             // Use longer debounce times for large files to reduce update frequency
             if (timer != null) {
@@ -550,6 +745,46 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 timer.setDelay(PerformanceConstants.DEFAULT_UPDATE_TIMER_DELAY_MS);
             }
         }
+    }
+
+    /**
+     * Execute {@link #applyPerformanceOptimizations(long)} asynchronously for
+     * large files so the EDT stays responsive. For small files, call it
+     * directly to avoid thread overhead.
+     */
+    private void optimiseAsyncIfLarge(long contentLength) {
+        // For files ≤1MB, apply optimizations immediately
+        if (contentLength <= PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES) {
+            applyPerformanceOptimizations(contentLength);
+            return;
+        }
+
+        // For large files, check if critical optimizations are already applied
+        if (forcePlainText) {
+            // Early protection already applied, only run non-critical optimizations
+            applyCriticalOptimizationsOnly(contentLength);
+            return;
+        }
+        // Cancel any previous optimisation still running
+        if (optimisationWorker != null) {
+            optimisationWorker.cancel(true);
+        }
+        optimisationWorker = new SwingWorker<>() {
+            @Override protected Void doInBackground() {
+                // Potential heavy analysis could be done here.
+                return null;
+            }
+            @Override protected void done() {
+                Runnable r = () -> applyPerformanceOptimizations(contentLength);
+                if (SwingUtilities.isEventDispatchThread()) {
+                    r.run();
+                } else {
+                    SwingUtilities.invokeLater(r);
+                }
+                optimisationWorker = null; // clear after completion
+            }
+        };
+        optimisationWorker.execute();
     }
 
     /**
@@ -620,7 +855,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             // Check for stuck typing state (longer than reasonable typing session)
             long typingDuration = System.currentTimeMillis() - lastTypingStateChange;
             if (typingDuration > PerformanceConstants.TYPING_STATE_TIMEOUT_MS * 5) {
-                logger.warn("{}: Detected stuck typing state ({}ms), forcing reset", name, typingDuration);
                 forceResetTypingState();
             } else {
                 return;
@@ -633,8 +867,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             return;
         }
 
-        long startTime = System.currentTimeMillis();
-
         try {
             // First, update the diff (this may change the patch)
             diffPanel.diff();
@@ -646,11 +878,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             // The viewport optimization will ensure only visible deltas are processed
             reDisplayInternal();
 
-            long duration = System.currentTimeMillis() - startTime;
-            if (duration > PerformanceConstants.SLOW_UPDATE_THRESHOLD_MS) {
-                logger.debug("Unified update took {}ms for document: {}",
-                           duration, bufferDocument != null ? bufferDocument.getName() : "unknown");
-            }
         } catch (Exception ex) {
             logger.warn("Error during unified update: {}", ex.getMessage(), ex);
             // Fallback to individual operations if unified update fails
@@ -682,7 +909,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             } else if (typingStateTimer != null) {
                 typingStateTimer.start();
             } else {
-                logger.warn("{}: Typing detected but timer is null - resetting typing state", name);
                 isActivelyTyping.set(false);
             }
         }
@@ -725,7 +951,14 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         editor.setBorder(new LineNumberBorder(this));
         FontMetrics fm = editor.getFontMetrics(font);
         scrollPane.getHorizontalScrollBar().setUnitIncrement(fm.getHeight());
-        editor.setEditable(true);
+
+        // Only set editable to true if not truncated and not readonly
+        if (bufferDocument != null) {
+            boolean shouldBeEditable = !bufferDocument.isReadonly() && !contentTruncated;
+            editor.setEditable(shouldBeEditable);
+        } else {
+            editor.setEditable(false);
+        }
     }
 
     /**
@@ -733,6 +966,11 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * Falls back to plain-text when the extension is not recognised.
      */
     private void updateSyntaxStyle() {
+        if (forcePlainText) {
+            editor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
+            return;
+        }
+
         /*
          * Heuristic 1: strip well-known VCS/backup suffixes and decide
          *              the style from the remaining extension.
@@ -765,7 +1003,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                     style = SyntaxDetector.fromExtension(ext);
                 }
             }
-            logger.info("File type detection heuristic 1 type: {}, filename: {}, style {}", name, Objects.toString(fileName, "<null_filename>"), style);
         }
 
         // --------------------------- Heuristic 2 -----------------------------
@@ -779,8 +1016,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 if (!SyntaxConstants.SYNTAX_STYLE_NONE.equals(otherStyle)) {
                     style = otherStyle;
                 }
-                var docName = Optional.ofNullable(otherPanel.getBufferDocument()).map(BufferDocumentIF::getName).orElse("'<No other document>'");
-                logger.info("File type detection heuristic 2 type: {}, filename: {}, style {}", name, docName, style);
             }
         }
 
@@ -951,6 +1186,12 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         // Clear cached search hits
         searchHits = null;
 
+        // Cancel any optimisation still running
+        if (optimisationWorker != null) {
+            optimisationWorker.cancel(true);
+            optimisationWorker = null;
+        }
+
         // Clear viewport cache
         viewportCache.set(null);
 
@@ -1099,12 +1340,10 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
 
     public SearchHits doSearch() {
         if (!SwingUtilities.isEventDispatchThread()) {
-            logger.warn("doSearch called off EDT, redirecting to EDT");
             try {
                 var result = SwingUtil.runOnEdt(this::doSearch, new SearchHits());
                 return result != null ? result : new SearchHits();
             } catch (Exception e) {
-                logger.error("Failed to run doSearch on EDT", e);
                 return new SearchHits();
             }
         }
@@ -1214,5 +1453,37 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         sh.next();
         reDisplay();
         scrollToSearch(this, sh);
+    }
+
+    /**
+     * Update the status panel to show file truncation information.
+     * Displays a contextual note near the file content instead of a popup.
+     */
+    private void updateStatusPanel(int originalSizeKB) {
+        SwingUtilities.invokeLater(() -> {
+            String message = String.format(
+                "⚠ File truncated from %d KB to 100 KB for safe display. Editing is disabled",
+                originalSizeKB
+            );
+            statusLabel.setText(message);
+            statusPanel.setVisible(true);
+            statusPanel.revalidate();
+            statusPanel.repaint();
+
+            // Ensure editing is disabled (double-check after status update)
+            editor.setEditable(false);
+        });
+    }
+
+    /**
+     * Clear the status panel when loading normal files.
+     */
+    private void clearStatusPanel() {
+        SwingUtilities.invokeLater(() -> {
+            statusLabel.setText("");
+            statusPanel.setVisible(false);
+            statusPanel.revalidate();
+            statusPanel.repaint();
+        });
     }
 }

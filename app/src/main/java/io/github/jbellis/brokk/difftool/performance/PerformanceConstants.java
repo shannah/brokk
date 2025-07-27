@@ -10,7 +10,15 @@ public final class PerformanceConstants {
     public static final long LARGE_FILE_THRESHOLD_BYTES = 1024 * 1024; // 1MB - responsive UI threshold
     public static final long MEDIUM_FILE_THRESHOLD_BYTES = 256 * 1024; // 256KB - caution threshold
     public static final long HUGE_FILE_THRESHOLD_BYTES = 5 * 1024 * 1024; // 5MB - memory warning threshold
-    public static final long MAX_FILE_SIZE_BYTES = 2 * 1024 * 1024; // 2MB - absolute maximum to prevent OOM
+    public static final long MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024; // 10MB - absolute maximum to prevent OOM
+    public static final long SINGLE_LINE_THRESHOLD_BYTES = 5 * 1024; // 5KB - threshold for single-line file optimizations
+
+    // Performance degradation thresholds for line density
+    public static final long REDUCED_SYNTAX_LINE_LENGTH_BYTES = 2 * 1024; // 2KB - reduce syntax features per line
+    public static final long MINIMAL_SYNTAX_LINE_LENGTH_BYTES = 5 * 1024; // 5KB - minimal syntax features per line
+
+    // Diff computation limits
+    public static final long MAX_DIFF_LINE_LENGTH_BYTES = 50 * 1024; // 50KB - maximum line length for diff computation
 
     // Timer delays (milliseconds)
     public static final int DEFAULT_UPDATE_TIMER_DELAY_MS = 400;

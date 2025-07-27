@@ -682,13 +682,11 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
             // Check if document is read-only before attempting to save
             if (doc.isReadonly()) {
-                logger.debug("Skipping save for read-only document: {}", doc.getName());
                 continue;
             }
 
             try {
                 doc.write();
-                logger.debug("Successfully saved file: {}", doc.getName());
             } catch (Exception ex) {
                 logger.error("Failed to save file: {} - {}", doc.getName(), ex.getMessage(), ex);
                 mainPanel.getConsoleIO().systemNotify(
@@ -917,6 +915,17 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         diffNode = null;
         patch = null;
         selectedDelta = null;
+    }
+
+    @Override
+    public boolean hasUnsavedChanges() {
+        // Check if any file panel has unsaved changes
+        for (var fp : filePanels.values()) {
+            if (fp.isDocumentChanged()) {
+                return true;
+            }
+        }
+        return false;
     }
 
     /**

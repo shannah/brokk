@@ -25,6 +25,7 @@ class SlidingWindowCacheTest {
     private static class TestDisposable implements SlidingWindowCache.Disposable {
         private final String id;
         private final AtomicBoolean disposed = new AtomicBoolean(false);
+        private final AtomicBoolean hasUnsavedChanges = new AtomicBoolean(false);
 
         TestDisposable(String id) {
             this.id = id;
@@ -33,6 +34,15 @@ class SlidingWindowCacheTest {
         @Override
         public void dispose() {
             disposed.set(true);
+        }
+
+        @Override
+        public boolean hasUnsavedChanges() {
+            return hasUnsavedChanges.get();
+        }
+
+        void setHasUnsavedChanges(boolean hasChanges) {
+            hasUnsavedChanges.set(hasChanges);
         }
 
         boolean isDisposed() {
@@ -481,68 +491,68 @@ class SlidingWindowCacheTest {
         // Should be able to reserve the previously reserved key again
         assertTrue(cache.tryReserve("reserved"));
     }
-    
+
     // ============= SLIDING WINDOW TESTS =============
-    
+
     @Test
     void testSlidingWindowBasicBehavior() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(5, 3); // Max 5, window 3
-        
+
         // Create test items
         var item0 = new TestDisposable("item0");
-        var item1 = new TestDisposable("item1"); 
+        var item1 = new TestDisposable("item1");
         var item2 = new TestDisposable("item2");
         var item3 = new TestDisposable("item3");
         var item4 = new TestDisposable("item4");
-        
+
         // Start at position 1, window should be [0,1,2]
         cache.updateWindowCenter(1, 5);
-        
+
         cache.put(0, item0);
         cache.put(1, item1);
         cache.put(2, item2);
-        
+
         assertNotNull(cache.get(0));
-        assertNotNull(cache.get(1)); 
+        assertNotNull(cache.get(1));
         assertNotNull(cache.get(2));
-        
+
         // Move to position 3, window should be [2,3,4]
         cache.updateWindowCenter(3, 5);
-        
+
         // Items 0,1 should be evicted, 2 should remain
         assertTrue(item0.isDisposed());
         assertTrue(item1.isDisposed());
         assertFalse(item2.isDisposed());
-        
+
         assertNull(cache.get(0));
         assertNull(cache.get(1));
         assertNotNull(cache.get(2));
-        
+
         // Add items in new window
         cache.put(3, item3);
         cache.put(4, item4);
-        
+
         assertNotNull(cache.get(2));
         assertNotNull(cache.get(3));
         assertNotNull(cache.get(4));
     }
-    
+
     @Test
     void testSlidingWindowBoundaries() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3);
-        
+
         // Test at start boundary (position 0)
         cache.updateWindowCenter(0, 5);
         assertTrue(cache.isInWindow(0));
-        assertTrue(cache.isInWindow(1)); 
+        assertTrue(cache.isInWindow(1));
         assertFalse(cache.isInWindow(2)); // Only 0,1 at start for window size 3
-        
-        // Test at end boundary (position 4)  
+
+        // Test at end boundary (position 4)
         cache.updateWindowCenter(4, 5);
         assertFalse(cache.isInWindow(2)); // Outside window at end
         assertTrue(cache.isInWindow(3));
         assertTrue(cache.isInWindow(4));
-        
+
         // Test middle position
         cache.updateWindowCenter(2, 5);
         assertTrue(cache.isInWindow(1));
@@ -551,119 +561,119 @@ class SlidingWindowCacheTest {
         assertFalse(cache.isInWindow(0));
         assertFalse(cache.isInWindow(4));
     }
-    
+
     @ParameterizedTest
     @ValueSource(ints = {1, 3, 5, 7, 9})
     void testDifferentWindowSizes(int windowSize) {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(windowSize * 2, windowSize);
         int totalFiles = 20;
-        
+
         // Test window behavior at different positions
         for (int center = 0; center < totalFiles; center++) {
             cache.updateWindowCenter(center, totalFiles);
             var expectedIndices = calculateExpectedWindow(center, totalFiles, windowSize);
-            
+
             // Verify only expected indices are valid
             for (int i = 0; i < totalFiles; i++) {
                 boolean shouldBeInWindow = expectedIndices.contains(i);
-                assertEquals(shouldBeInWindow, cache.isInWindow(i), 
+                assertEquals(shouldBeInWindow, cache.isInWindow(i),
                             String.format("Window size %d, center %d, index %d", windowSize, center, i));
             }
         }
     }
-    
+
     private java.util.Set<Integer> calculateExpectedWindow(int center, int total, int windowSize) {
         var indices = new java.util.HashSet<Integer>();
         int halfWindow = windowSize / 2;
         int start = Math.max(0, center - halfWindow);
         int end = Math.min(total - 1, center + halfWindow);
-        
+
         for (int i = start; i <= end; i++) {
             indices.add(i);
         }
         return indices;
     }
-    
+
     @Test
     void testSlidingWindowPutOutsideWindow() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3);
         cache.updateWindowCenter(5, 10); // Window [4,5,6]
-        
+
         var item = new TestDisposable("outside");
-        
+
         // Try to put item outside window
         var result = cache.put(0, item); // 0 is outside window [4,5,6]
-        
+
         assertNull(result); // Should not cache
         assertNull(cache.get(0)); // Should not be in cache
         assertFalse(item.isDisposed()); // Should not dispose (caller handles)
     }
-    
+
     @Test
     void testSlidingWindowPreservesReservations() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3);
         cache.updateWindowCenter(5, 10); // Window [4,5,6]
-        
+
         // Reserve key in window
         assertTrue(cache.tryReserve(5));
-        
+
         // Move window
         cache.updateWindowCenter(7, 10); // Window [6,7,8]
-        
+
         // Original reservation should be cleared since 5 is outside new window
         assertTrue(cache.tryReserve(5)); // Should be able to reserve again
     }
-    
+
     @Test
     void testWindowInfoAndDebugging() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3);
-        
+
         // Before window is set
         String info = cache.getWindowInfo();
         assertTrue(info.contains("Not set"));
-        
+
         // After setting window
         cache.updateWindowCenter(2, 5);
         info = cache.getWindowInfo();
         assertTrue(info.contains("center=2"));
         assertTrue(info.contains("[1, 2, 3]") || info.contains("[2, 1, 3]") || info.contains("[3, 2, 1]"));
-        
+
         // Add some cached items
         cache.put(1, new TestDisposable("1"));
         cache.put(2, new TestDisposable("2"));
-        
+
         var cachedKeys = cache.getCachedKeys();
         assertTrue(cachedKeys.contains(1));
         assertTrue(cachedKeys.contains(2));
         assertEquals(2, cachedKeys.size());
     }
-    
+
     @Test
     void testSlidingWindowWithSmallCollections() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 5); // Window size 5
-        
+
         // Only 2 files with window size 5
         cache.updateWindowCenter(0, 2);
         assertTrue(cache.isInWindow(0));
         assertTrue(cache.isInWindow(1));
         assertFalse(cache.isInWindow(2)); // Doesn't exist
-        
+
         cache.updateWindowCenter(1, 2);
         assertTrue(cache.isInWindow(0));
         assertTrue(cache.isInWindow(1));
-        
+
         // Only 1 file with window size 5
         cache.updateWindowCenter(0, 1);
         assertTrue(cache.isInWindow(0));
         assertFalse(cache.isInWindow(1)); // Doesn't exist
     }
-    
+
     @Test
     void testEvenWindowSizes() {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 4); // Even window size
-        
+
         cache.updateWindowCenter(5, 10);
-        
+
         // For window size 4, halfWindow = 2
         // start = max(0, 5-2) = 3, end = min(9, 5+2) = 7
         // So window should be [3,4,5,6,7] (5 items due to integer division)
@@ -674,5 +684,129 @@ class SlidingWindowCacheTest {
         assertTrue(cache.isInWindow(7));
         assertFalse(cache.isInWindow(2));
         assertFalse(cache.isInWindow(8));
+    }
+
+    @Test
+    void testEditedFilesRetainedOutsideWindow() {
+        var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3); // Max 10, window 3
+
+        // Create test items
+        var editedFile = new TestDisposable("edited");
+        var normalFile1 = new TestDisposable("normal1");
+        var normalFile2 = new TestDisposable("normal2");
+        var normalFile3 = new TestDisposable("normal3");
+
+        // Start at position 1, window is [0,1,2]
+        cache.updateWindowCenter(1, 10);
+
+        // Add files to cache
+        cache.put(0, editedFile);     // Will be edited
+        cache.put(1, normalFile1);   // Normal file
+        cache.put(2, normalFile2);   // Normal file
+
+        // Mark file at index 0 as having unsaved changes
+        editedFile.setHasUnsavedChanges(true);
+
+        // Verify initial state
+        assertNotNull(cache.get(0));
+        assertNotNull(cache.get(1));
+        assertNotNull(cache.get(2));
+        assertEquals(3, cache.getCachedKeys().size());
+
+        // Move window to position 5, new window is [4,5,6]
+        // Normal behavior: files 0,1,2 should be evicted
+        // With our enhancement: file 0 should be retained because it has unsaved changes
+        cache.updateWindowCenter(5, 10);
+
+        // Check results
+        assertNotNull(cache.get(0));  // RETAINED: edited file stays in cache
+        assertNull(cache.get(1));     // EVICTED: normal file removed from cache
+        assertNull(cache.get(2));     // EVICTED: normal file removed from cache
+
+        // Check disposal status
+        assertFalse(editedFile.isDisposed());   // NOT disposed because retained
+        assertTrue(normalFile1.isDisposed());   // Disposed because evicted
+        assertTrue(normalFile2.isDisposed());   // Disposed because evicted
+
+        // Cache should now contain only the edited file (outside window)
+        assertEquals(1, cache.getCachedKeys().size());
+        assertTrue(cache.getCachedKeys().contains(0));
+
+        // Add new files within the window [4,5,6]
+        cache.put(4, normalFile3);
+        assertEquals(2, cache.getCachedKeys().size()); // edited file + new file
+
+        // Verify that we can still access the edited file
+        assertEquals(editedFile, cache.get(0));
+        assertTrue(editedFile.hasUnsavedChanges());
+
+        // When file is saved (no longer has unsaved changes), it should be evictable
+        editedFile.setHasUnsavedChanges(false);
+
+        // Move window again to trigger eviction
+        cache.updateWindowCenter(8, 10); // Window [7,8,9]
+
+        // Now the edited file should be evicted since it no longer has unsaved changes
+        assertNull(cache.get(0));
+        assertTrue(editedFile.isDisposed());
+    }
+
+    @Test
+    void testMultipleEditedFilesRetainedOutsideWindow() {
+        var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3);
+
+        // Create test items
+        var editedFile1 = new TestDisposable("edited1");
+        var editedFile2 = new TestDisposable("edited2");
+        var normalFile = new TestDisposable("normal");
+
+        // Start at position 1, window is [0,1,2] - this allows all files to be added initially
+        cache.updateWindowCenter(1, 10);
+
+        // Add files - all are initially within window [0,1,2]
+        cache.put(0, editedFile1);  // In window, will be edited
+        cache.put(1, editedFile2);  // In window, will be edited
+        cache.put(2, normalFile);   // In window, normal file
+
+        // Mark both files as edited
+        editedFile1.setHasUnsavedChanges(true);
+        editedFile2.setHasUnsavedChanges(true);
+
+        // Verify initial state
+        assertNotNull(cache.get(0));
+        assertNotNull(cache.get(1));
+        assertNotNull(cache.get(2));
+        assertEquals(3, cache.getCachedKeys().size());
+
+        // Move window far away to [7,8,9] - now all files are outside window
+        cache.updateWindowCenter(8, 10);
+
+        // Both edited files should be retained despite being outside window
+        assertNotNull(cache.get(0));  // editedFile1 - retained
+        assertNotNull(cache.get(1));  // editedFile2 - retained
+        assertNull(cache.get(2));     // normalFile - evicted
+
+        // Check disposal status
+        assertFalse(editedFile1.isDisposed());
+        assertFalse(editedFile2.isDisposed());
+        assertTrue(normalFile.isDisposed());
+
+        // Cache contains both edited files outside the normal window
+        assertEquals(2, cache.getCachedKeys().size());
+        assertTrue(cache.getCachedKeys().contains(0));
+        assertTrue(cache.getCachedKeys().contains(1));
+
+        // When files are saved, they become evictable
+        editedFile1.setHasUnsavedChanges(false);
+        editedFile2.setHasUnsavedChanges(false);
+
+        // Trigger eviction by moving window
+        cache.updateWindowCenter(5, 10); // Window [4,5,6]
+
+        // Now both should be evicted
+        assertNull(cache.get(0));
+        assertNull(cache.get(1));
+        assertTrue(editedFile1.isDisposed());
+        assertTrue(editedFile2.isDisposed());
     }
 }

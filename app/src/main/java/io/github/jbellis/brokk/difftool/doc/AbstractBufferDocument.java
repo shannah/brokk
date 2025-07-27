@@ -24,6 +24,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     @Nullable private String shortName;
     @Nullable private Line[] lineArray;
     @Nullable private int[] lineOffsetArray;
+    @Nullable private List<String> cachedLineList;
     @Nullable private PlainDocument document;
     @Nullable private MyGapContent content;
     private final List<BufferDocumentChangeListenerIF> listeners;
@@ -196,6 +197,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     protected void resetLineCache() {
         lineArray = null; // Field is @Nullable
         lineOffsetArray = null; // Field is @Nullable
+        cachedLineList = null;
     }
 
     @Override
@@ -285,6 +287,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
 
     public class Line implements Comparable<Line> {
         final Element element;
+        @Nullable private String cachedText;
 
         Line(Element element) {
             this.element = element;
@@ -344,45 +347,54 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
          */
         @Override
         public String toString() {
+            if (cachedText != null) {
+                return cachedText;
+            }
             try {
                 int start = getStartOffset();
                 int end = getEndOffset();
-                if (document == null || content == null) return "<DOCUMENT_NOT_INITIALIZED>";
-            int docLen = document.getLength();
-
-            if (start < 0 || end < 0 || start > docLen) {
-                return "<INVALID RANGE>";
-            }
-
-            // If end is docLen+1, that usually indicates a final trailing newline in PlainDocument
-            if (end > docLen) {
-                if (end == docLen + 1 && docLen > 0 && content.charAtOffset(docLen -1) == '\n') {
-                    // This is the common case of the last line having a newline that PlainDocument counts beyond length.
-                    // Return the content up to docLen, including the newline.
-                    return content.getString(start, docLen - start);
-                } else if (end == docLen && start == docLen) { // empty last line
-                    return "";
+                if (document == null || content == null) {
+                    return "<DOCUMENT_NOT_INITIALIZED>";
                 }
-                // Other cases of end > docLen are unexpected or represent empty trailing lines.
-                // For simplicity, clamp to docLen. If it's truly just the newline char for last line,
-                // it will be included if start < docLen.
-                // An empty string for an "empty" last line is usually fine.
-                log.warn("Line end offset {} > docLen {}. Clamping. Start={}, Doc: {}", end, docLen, start, name);
-                end = docLen;
-            }
+                int docLen = document.getLength();
 
-            int length = end - start;
-            if (length <= 0) {
-                return "";
-            }
-            return content.getString(start, length);
+                if (start < 0 || end < 0 || start > docLen) {
+                    return "<INVALID RANGE>";
+                }
 
-        } catch (BadLocationException ex) {
-            throw new RuntimeException(ex);
-        } catch (NullPointerException npe) { // Catch NPE if getContent() returns null
-            log.error("NPE in Line.toString() for doc {}, likely content not initialized.", name, npe);
-            return "<CONTENT_ERROR>";
-        }
+                // If end is docLen+1, that usually indicates a final trailing newline in PlainDocument
+                if (end > docLen) {
+                    if (end == docLen + 1 && docLen > 0 && content.charAtOffset(docLen - 1) == '\n') {
+                        // This is the common case of the last line having a newline that PlainDocument counts beyond length.
+                        // Return the content up to docLen, including the newline.
+                        cachedText = content.getString(start, docLen - start);
+                        return cachedText;
+                    } else if (end == docLen && start == docLen) { // empty last line
+                        cachedText = "";
+                        return cachedText;
+                    }
+                    // Other cases of end > docLen are unexpected or represent empty trailing lines.
+                    // For simplicity, clamp to docLen. If it's truly just the newline char for last line,
+                    // it will be included if start < docLen.
+                    // An empty string for an "empty" last line is usually fine.
+                    log.warn("Line end offset {} > docLen {}. Clamping. Start={}, Doc: {}", end, docLen, start, name);
+                    end = docLen;
+                }
+
+                int length = end - start;
+                if (length <= 0) {
+                    cachedText = "";
+                    return cachedText;
+                }
+                cachedText = content.getString(start, length);
+                return cachedText;
+
+            } catch (BadLocationException ex) {
+                throw new RuntimeException(ex);
+            } catch (NullPointerException npe) { // Catch NPE if getContent() returns null
+                log.error("NPE in Line.toString() for doc {}, likely content not initialized.", name, npe);
+                return "<CONTENT_ERROR>";
+            }
         }
 
         @Override
@@ -467,17 +479,24 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     /**
      * Returns the entire document as a list of strings, one per line.
      * This is used directly by the diff logic.
+     * The result is cached until the document is changed.
      */
     @Override
     public List<String> getLineList() {
+        if (cachedLineList != null) {
+            return cachedLineList;
+        }
+
         initLines();
         if (lineArray == null) {
-            return List.of();
+            cachedLineList = List.of();
+            return cachedLineList;
         }
         List<String> result = new ArrayList<>(lineArray.length);
         for (Line line : lineArray) {
             result.add(line.toString());
         }
+        cachedLineList = result;
         return result;
     }
 
