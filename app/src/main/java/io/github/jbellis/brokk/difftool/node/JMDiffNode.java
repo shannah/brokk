@@ -15,18 +15,15 @@ import org.slf4j.LoggerFactory;
 
 import javax.swing.tree.TreeNode;
 import java.io.File;
-import java.util.ArrayList;
-import java.util.Collections;
-import java.util.Enumeration;
-import java.util.List;
+import java.util.*;
 
 public class JMDiffNode implements TreeNode
 {
     private static final Logger logger = LoggerFactory.getLogger(JMDiffNode.class);
 
-    private String name;
+    private final String name;
     @Nullable private String shortName;
-    private List<JMDiffNode> children; // Consider final if populated once
+    private final List<JMDiffNode> children; // Consider final if populated once
     @Nullable private BufferNode nodeLeft;
     @Nullable private BufferNode nodeRight;
     private final boolean leaf;
@@ -87,12 +84,8 @@ public class JMDiffNode implements TreeNode
         if (shouldSkipDiffForMemoryProtection(leftDoc, rightDoc)) {
              logger.warn("Skipping diff computation for {} due to memory protection (huge single-line files)", name);
              var computedPatch = computeHeuristicPatch(leftDoc, rightDoc);
-             if (computedPatch == null) {
-                 // Ensure callers can rely on a non-null Patch instance
-                 this.patch = new Patch<>();
-             } else {
-               this.patch = computedPatch;
-             }
+            // Ensure callers can rely on a non-null Patch instance
+            this.patch = Objects.requireNonNullElseGet(computedPatch, Patch::new);
              return;
          }
 

@@ -635,11 +635,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     private boolean shouldUsePlainTextMode(@Nullable BufferDocumentIF document, long contentLength) {
         ProtectionLevel level = getProtectionLevel(document, contentLength);
 
-        if (level == ProtectionLevel.MINIMAL) {
-            return true;
-        }
-
-        return false;
+        return level == ProtectionLevel.MINIMAL;
     }
 
 
@@ -1281,90 +1277,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         reDisplay();
     }
 
-    SearchCommand getSearchCommand() {
-        // Default to case insensitive - GenericSearchBar handles case sensitivity through its own toggle
-        return new SearchCommand("", false);
-    }
-
-    public SearchHits doSearch() {
-        if (!SwingUtilities.isEventDispatchThread()) {
-            try {
-                var result = SwingUtil.runOnEdt(this::doSearch, new SearchHits());
-                return result != null ? result : new SearchHits();
-            } catch (Exception e) {
-                return new SearchHits();
-            }
-        }
-
-        int numberOfLines;
-        BufferDocumentIF doc;
-        String text;
-        int index, fromIndex;
-        boolean caseSensitive;
-        String searchText, searchTextToCompare, textToSearch;
-        SearchHit searchHit;
-        int offset;
-        SearchCommand searchCommand;
-
-        searchCommand = getSearchCommand();
-        // If searchText is empty, return empty hits. getSearchCommand() always returns non-null.
-        if (searchCommand.searchText().isEmpty()) {
-            this.searchHits = new SearchHits(); // Ensure searchHits is non-null for getSearchHits()
-            reDisplay(); // Clear previous highlights
-            return this.searchHits;
-        }
-
-        searchText = searchCommand.searchText();
-        caseSensitive = searchCommand.isCaseSensitive(); // Get case-sensitive flag
-
-        doc = getBufferDocument();
-        if (doc == null) { // Should not happen if isDisplayingEditor is true and doc set
-            this.searchHits = new SearchHits();
-            return this.searchHits;
-        }
-        numberOfLines = doc.getNumberOfLines();
-
-        this.searchHits = new SearchHits();
-        for (int line = 0; line < numberOfLines; line++) {
-            text = doc.getLineText(line);
-            var nonNullText = Objects.requireNonNullElse(text, "");
-
-            // Adjust case based on case-sensitive flag
-            if (!caseSensitive) {
-                textToSearch = nonNullText.toLowerCase(Locale.ROOT);
-                searchTextToCompare = searchText.toLowerCase(Locale.ROOT);
-            } else {
-                textToSearch = nonNullText;
-                searchTextToCompare = searchText;
-            }
-
-            fromIndex = 0;
-            while ((index = textToSearch.indexOf(searchTextToCompare, fromIndex)) != -1) {
-                // Use the local 'doc' variable which is already null-checked for this search operation.
-                offset = doc.getOffsetForLine(line);
-                if (offset < 0) {
-                    // Can this actually happen?
-                    fromIndex = index + searchTextToCompare.length(); // Advance past this match to avoid infinite loop on bad offset
-                    continue;
-                }
-
-                searchHit = new SearchHit(line, offset + index, searchText.length());
-                this.searchHits.add(searchHit);
-
-                fromIndex = index + searchHit.getSize();
-            }
-        }
-
-        reDisplay(); // This will also check isDisplayingEditor
-        scrollToSearch(this, this.searchHits);
-        return getSearchHits();
-    }
-
-
-    SearchHits getSearchHits() {
-        return requireNonNullElseGet(searchHits, SearchHits::new);
-    }
-
     private void paintSearchHighlights() {
         if (searchHits == null) {
             return;
@@ -1375,32 +1287,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                          searchHits.isCurrent(sh)
                                  ? JMHighlightPainter.CURRENT_SEARCH : JMHighlightPainter.SEARCH);
         }
-    }
-
-    public void doPreviousSearch() {
-        SearchHits sh = getSearchHits();
-        sh.previous();
-        reDisplay();
-        scrollToSearch(this, sh);
-    }
-
-    private void scrollToSearch(FilePanel fp, SearchHits searchHitsToScroll) {
-        SearchHit currentHit = searchHitsToScroll.getCurrent();
-        if (currentHit != null) {
-            int line = currentHit.getLine();
-            var scrollSync = diffPanel.getScrollSynchronizer();
-            if (scrollSync != null) {
-                scrollSync.scrollToLineAndSync(fp, line);
-            }
-            diffPanel.setSelectedLine(line);
-        }
-    }
-
-    public void doNextSearch() {
-        SearchHits sh = getSearchHits();
-        sh.next();
-        reDisplay();
-        scrollToSearch(this, sh);
     }
 
     /**

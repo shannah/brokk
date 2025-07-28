@@ -1052,9 +1052,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
 
         // Clear caches in all window panels
         for (var panel : panelCache.nonNullValues()) {
-            if (panel != null) {
-                panel.clearCaches(); // Clear undo history, search results, etc.
-            }
+            panel.clearCaches(); // Clear undo history, search results, etc.
         }
 
         // Suggest garbage collection

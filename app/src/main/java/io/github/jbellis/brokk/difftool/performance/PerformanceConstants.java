@@ -24,9 +24,7 @@ public final class PerformanceConstants {
 
     // Timer delays (milliseconds)
     public static final int DEFAULT_UPDATE_TIMER_DELAY_MS = 400;
-    public static final int DEFAULT_REDISPLAY_TIMER_DELAY_MS = 200;
     public static final int LARGE_FILE_UPDATE_TIMER_DELAY_MS = 800;
-    public static final int LARGE_FILE_REDISPLAY_TIMER_DELAY_MS = 400;
 
     // Viewport optimization
     public static final long VIEWPORT_CACHE_VALIDITY_MS = 100;
@@ -49,8 +47,6 @@ public final class PerformanceConstants {
 
     // Sliding window cache configuration
     public static final int SMALL_SLIDING_WINDOW = 3;   // Memory-focused: current + 2 adjacent
-    public static final int MEDIUM_SLIDING_WINDOW = 5;  // Balanced: current + 4 adjacent
-    public static final int LARGE_SLIDING_WINDOW = 7;   // Performance-focused: current + 6 adjacent
 
     // Default choice - can be made configurable via settings
     public static final int DEFAULT_SLIDING_WINDOW = SMALL_SLIDING_WINDOW;
@@ -58,12 +54,8 @@ public final class PerformanceConstants {
     // Maximum cache size should match or exceed window size
     public static final int MAX_CACHED_DIFF_PANELS = Math.max(10, DEFAULT_SLIDING_WINDOW);
 
-    // Background preloading
-    public static final int PRELOAD_DELAY_MS = 500; // Delay before preloading adjacent files
-
     // Memory management thresholds
     public static final int MEMORY_HIGH_THRESHOLD_PERCENT = 70; // Memory usage threshold for cleanup
-    public static final int MEMORY_CRITICAL_THRESHOLD_PERCENT = 85; // Critical memory usage threshold
 
     private PerformanceConstants() {} // Prevent instantiation
 }
