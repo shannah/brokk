@@ -3,6 +3,10 @@ package io.github.jbellis.brokk.difftool.node;
 import com.github.difflib.DiffUtils;
 import com.github.difflib.patch.Chunk;
 import com.github.difflib.patch.Patch;
+import com.github.difflib.patch.Chunk;
+import com.github.difflib.patch.ChangeDelta;
+import com.github.difflib.patch.InsertDelta;
+import com.github.difflib.patch.DeleteDelta;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
 import io.github.jbellis.brokk.difftool.doc.StringDocument;
 import io.github.jbellis.brokk.difftool.performance.PerformanceConstants;
@@ -82,10 +86,10 @@ public class JMDiffNode implements TreeNode
 
         // MEMORY PROTECTION: Check for huge single-line files that would cause memory explosion
         if (shouldSkipDiffForMemoryProtection(leftDoc, rightDoc)) {
-            logger.warn("Skipping diff computation for {} due to memory protection (huge single-line files)", name);
-            this.patch = null; // No diff computed - will appear as no differences
-            return;
-        }
+             logger.warn("Skipping diff computation for {} due to memory protection (huge single-line files)", name);
+             this.patch = computeHeuristicPatch(leftDoc, rightDoc); // may still be null if no visible difference
+             return;
+         }
 
         // Get line lists. getLineList() should be safe now due to eager initialization.
         var leftLines = leftDoc.getLineList();
@@ -146,7 +150,68 @@ public class JMDiffNode implements TreeNode
         }
     }
 
-    private static boolean isBlankChunk(Chunk<String> chunk) {
+    /**
+      * Compute a lightweight heuristic Patch when a full diff is skipped.
+      * Returns {@code null} if heuristics detect no meaningful difference.
+      */
+     @Nullable
+     private Patch<String> computeHeuristicPatch(BufferDocumentIF leftDoc, BufferDocumentIF rightDoc) {
+         try {
+             long leftLen  = leftDoc.getDocument().getLength();
+             long rightLen = rightDoc.getDocument().getLength();
+ 
+             // Both sides empty -> identical
+             if (leftLen == 0 && rightLen == 0) {
+                 return null;
+             }
+ 
+             Patch<String> heuristicPatch = new Patch<>();
+ 
+             // One side empty -> whole file added / removed
+             if (leftLen == 0) {
+                 heuristicPatch.addDelta(
+                     new InsertDelta<>(
+                         new Chunk<>(0, List.of()),
+                         new Chunk<>(0, List.of("<FILE ADDED - heuristic>"))
+                     )
+                 );
+                 return heuristicPatch;
+             }
+             if (rightLen == 0) {
+                 heuristicPatch.addDelta(
+                     new DeleteDelta<>(
+                         new Chunk<>(0, List.of("<FILE REMOVED - heuristic>")),
+                         new Chunk<>(0, List.of())
+                     )
+                 );
+                 return heuristicPatch;
+             }
+ 
+             // Compare first N bytes
+             int prefixLen = (int) Math.min(
+                 PerformanceConstants.HEURISTIC_PREFIX_BYTES,
+                 Math.min(leftLen, rightLen)
+             );
+             String leftPrefix  = leftDoc.getDocument().getText(0, prefixLen);
+             String rightPrefix = rightDoc.getDocument().getText(0, prefixLen);
+ 
+             if (!leftPrefix.equals(rightPrefix)) {
+                 heuristicPatch.addDelta(
+                     new ChangeDelta<>(
+                         new Chunk<>(0, List.of("<CONTENT DIFFERS - heuristic>")),
+                         new Chunk<>(0, List.of("<CONTENT DIFFERS - heuristic>"))
+                     )
+                 );
+                 return heuristicPatch;
+             }
+         } catch (Exception e) {
+             logger.debug("Failed to build heuristic diff for {}: {}", name, e.getMessage(), e);
+         }
+         // identical prefix (likely identical files) or error
+         return null;
+     }
+ 
+     private static boolean isBlankChunk(Chunk<String> chunk) {
         return chunk.getLines().stream().allMatch(l -> l.trim().isEmpty());
     }
 

@@ -19,6 +19,8 @@ public final class PerformanceConstants {
 
     // Diff computation limits
     public static final long MAX_DIFF_LINE_LENGTH_BYTES = 50 * 1024; // 50KB - maximum line length for diff computation
+     // Heuristic comparison
+     public static final int HEURISTIC_PREFIX_BYTES = 4 * 1024; // Compare first 4KB when skipping diff
 
     // Timer delays (milliseconds)
     public static final int DEFAULT_UPDATE_TIMER_DELAY_MS = 400;
