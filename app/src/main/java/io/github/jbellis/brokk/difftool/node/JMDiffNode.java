@@ -3,7 +3,6 @@ package io.github.jbellis.brokk.difftool.node;
 import com.github.difflib.DiffUtils;
 import com.github.difflib.patch.Chunk;
 import com.github.difflib.patch.Patch;
-import com.github.difflib.patch.Chunk;
 import com.github.difflib.patch.ChangeDelta;
 import com.github.difflib.patch.InsertDelta;
 import com.github.difflib.patch.DeleteDelta;
@@ -33,7 +32,7 @@ public class JMDiffNode implements TreeNode
     private final boolean leaf;
 
     // We now store the diff result here instead of JMRevision.
-    @Nullable private Patch<String> patch;
+    private Patch<String> patch = new Patch<>();
 
     // Whether to ignore blank-line-only differences (default: true)
     private static boolean ignoreBlankLineDiffs = true;
@@ -87,7 +86,13 @@ public class JMDiffNode implements TreeNode
         // MEMORY PROTECTION: Check for huge single-line files that would cause memory explosion
         if (shouldSkipDiffForMemoryProtection(leftDoc, rightDoc)) {
              logger.warn("Skipping diff computation for {} due to memory protection (huge single-line files)", name);
-             this.patch = computeHeuristicPatch(leftDoc, rightDoc); // may still be null if no visible difference
+             var computedPatch = computeHeuristicPatch(leftDoc, rightDoc);
+             if (computedPatch == null) {
+                 // Ensure callers can rely on a non-null Patch instance
+                 this.patch = new Patch<>();
+             } else {
+               this.patch = computedPatch;
+             }
              return;
          }
 
@@ -97,7 +102,7 @@ public class JMDiffNode implements TreeNode
 
         // Compute the diff
         this.patch = DiffUtils.diff(leftLines, rightLines);
-        if (ignoreBlankLineDiffs && this.patch != null) {
+        if (ignoreBlankLineDiffs) {
             this.patch.getDeltas().removeIf(d -> isBlankChunk(d.getSource()) && isBlankChunk(d.getTarget()));
         }
     }
@@ -110,14 +115,14 @@ public class JMDiffNode implements TreeNode
     private boolean shouldSkipDiffForMemoryProtection(BufferDocumentIF leftDoc, BufferDocumentIF rightDoc) {
         boolean leftSkip = isHugeSingleLineFile(leftDoc);
         boolean rightSkip = isHugeSingleLineFile(rightDoc);
-        boolean shouldSkip = leftSkip || rightSkip;
 
-        if (shouldSkip) {
+        if (leftSkip || rightSkip) {
             logger.info("JMDiffNode protection triggered for {}: left={}, right={}",
-                       name, leftSkip, rightSkip);
+                        name, leftSkip, rightSkip);
+            return true;
         }
 
-        return shouldSkip;
+        return false;
     }
 
     /**
@@ -159,14 +164,14 @@ public class JMDiffNode implements TreeNode
          try {
              long leftLen  = leftDoc.getDocument().getLength();
              long rightLen = rightDoc.getDocument().getLength();
- 
+
              // Both sides empty -> identical
              if (leftLen == 0 && rightLen == 0) {
                  return null;
              }
- 
+
              Patch<String> heuristicPatch = new Patch<>();
- 
+
              // One side empty -> whole file added / removed
              if (leftLen == 0) {
                  heuristicPatch.addDelta(
@@ -186,7 +191,7 @@ public class JMDiffNode implements TreeNode
                  );
                  return heuristicPatch;
              }
- 
+
              // Compare first N bytes
              int prefixLen = (int) Math.min(
                  PerformanceConstants.HEURISTIC_PREFIX_BYTES,
@@ -194,7 +199,7 @@ public class JMDiffNode implements TreeNode
              );
              String leftPrefix  = leftDoc.getDocument().getText(0, prefixLen);
              String rightPrefix = rightDoc.getDocument().getText(0, prefixLen);
- 
+
              if (!leftPrefix.equals(rightPrefix)) {
                  heuristicPatch.addDelta(
                      new ChangeDelta<>(
@@ -210,7 +215,7 @@ public class JMDiffNode implements TreeNode
          // identical prefix (likely identical files) or error
          return null;
      }
- 
+
      private static boolean isBlankChunk(Chunk<String> chunk) {
         return chunk.getLines().stream().allMatch(l -> l.trim().isEmpty());
     }

@@ -236,53 +236,22 @@ public class SlidingWindowCache<K, V extends SlidingWindowCache.Disposable> {
             this.currentWindowCenter = centerIndex;
             this.totalItems = totalItemCount;
 
-            // Calculate valid window indices
-            var validIndices = calculateWindowIndices(centerIndex, totalItemCount);
-
-            // Find entries to evict (outside window)
-            var keysToRemove = new ArrayList<K>();
-            var retainedKeys = new ArrayList<K>();
-            for (var entry : cache.entrySet()) {
-                K key = entry.getKey();
-                if (key instanceof Integer intKey && !validIndices.contains(intKey)) {
-                    // Check if the item has unsaved changes
-                    if (entry.getValue().hasUnsavedChanges()) {
-                        retainedKeys.add(key);
-                    } else {
-                        keysToRemove.add(key);
-                        toDispose.add(entry.getValue());
-                    }
-                }
-            }
-
-            // Remove evicted entries
-            for (K key : keysToRemove) {
-                cache.remove(key);
-            }
-
-            // Log warning if we're retaining files outside the window
-            if (!retainedKeys.isEmpty()) {
-                logger.warn("Memory usage increased: retaining {} edited files outside sliding window",
-                           retainedKeys.size());
-            }
+            // Centralised eviction logic
+            evictOutsideWindow(toDispose);
 
             // Clear reservations outside the new window
+            var validIndices = calculateWindowIndices(centerIndex, totalItemCount);
             var reservationsToRemove = new ArrayList<K>();
             for (K key : reservedKeys) {
                 if (key instanceof Integer intKey && !validIndices.contains(intKey)) {
                     reservationsToRemove.add(key);
                 }
             }
-
-            for (K key : reservationsToRemove) {
-                reservedKeys.remove(key);
-            }
-
+            reservationsToRemove.forEach(reservedKeys::remove);
         } finally {
             writeLock.unlock();
         }
 
-        // Dispose outside of lock
         disposeDeferred(toDispose);
     }
 
@@ -338,12 +307,13 @@ public class SlidingWindowCache<K, V extends SlidingWindowCache.Disposable> {
     public String getWindowInfo() {
         readLock.lock();
         try {
+            var cachedKeys = new ArrayList<>(cache.keySet());
             if (currentWindowCenter == -1) {
-                return "Window: Not set, cached keys: " + new ArrayList<>(cache.keySet());
+                return "Window: Not set, cached keys: " + cachedKeys;
             }
             var validIndices = calculateWindowIndices(currentWindowCenter, totalItems);
             return String.format("Window: center=%d, valid=%s, cached=%s",
-                                currentWindowCenter, validIndices, new ArrayList<>(cache.keySet()));
+                                 currentWindowCenter, validIndices, cachedKeys);
         } finally {
             readLock.unlock();
         }

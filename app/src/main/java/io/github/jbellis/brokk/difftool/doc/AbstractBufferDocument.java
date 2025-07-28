@@ -24,7 +24,6 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     @Nullable private String shortName;
     @Nullable private Line[] lineArray;
     @Nullable private int[] lineOffsetArray;
-    @Nullable private List<String> cachedLineList;
     @Nullable private PlainDocument document;
     @Nullable private MyGapContent content;
     private final List<BufferDocumentChangeListenerIF> listeners;
@@ -197,7 +196,6 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     protected void resetLineCache() {
         lineArray = null; // Field is @Nullable
         lineOffsetArray = null; // Field is @Nullable
-        cachedLineList = null;
     }
 
     @Override
@@ -287,7 +285,6 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
 
     public class Line implements Comparable<Line> {
         final Element element;
-        @Nullable private String cachedText;
 
         Line(Element element) {
             this.element = element;
@@ -347,53 +344,24 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
          */
         @Override
         public String toString() {
-            if (cachedText != null) {
-                return cachedText;
+            if (document == null || content == null) {
+                return "<DOCUMENT_NOT_INITIALIZED>";
+            }
+
+            int start = getStartOffset();
+            int end   = Math.min(getEndOffset(), document.getLength());
+
+            if (start < 0 || start > end) {
+                return "<INVALID RANGE>";
+            }
+            int len = end - start;
+            if (len == 0) {
+                return "";
             }
             try {
-                int start = getStartOffset();
-                int end = getEndOffset();
-                if (document == null || content == null) {
-                    return "<DOCUMENT_NOT_INITIALIZED>";
-                }
-                int docLen = document.getLength();
-
-                if (start < 0 || end < 0 || start > docLen) {
-                    return "<INVALID RANGE>";
-                }
-
-                // If end is docLen+1, that usually indicates a final trailing newline in PlainDocument
-                if (end > docLen) {
-                    if (end == docLen + 1 && docLen > 0 && content.charAtOffset(docLen - 1) == '\n') {
-                        // This is the common case of the last line having a newline that PlainDocument counts beyond length.
-                        // Return the content up to docLen, including the newline.
-                        cachedText = content.getString(start, docLen - start);
-                        return cachedText;
-                    } else if (end == docLen && start == docLen) { // empty last line
-                        cachedText = "";
-                        return cachedText;
-                    }
-                    // Other cases of end > docLen are unexpected or represent empty trailing lines.
-                    // For simplicity, clamp to docLen. If it's truly just the newline char for last line,
-                    // it will be included if start < docLen.
-                    // An empty string for an "empty" last line is usually fine.
-                    log.warn("Line end offset {} > docLen {}. Clamping. Start={}, Doc: {}", end, docLen, start, name);
-                    end = docLen;
-                }
-
-                int length = end - start;
-                if (length <= 0) {
-                    cachedText = "";
-                    return cachedText;
-                }
-                cachedText = content.getString(start, length);
-                return cachedText;
-
-            } catch (BadLocationException ex) {
-                throw new RuntimeException(ex);
-            } catch (NullPointerException npe) { // Catch NPE if getContent() returns null
-                log.error("NPE in Line.toString() for doc {}, likely content not initialized.", name, npe);
-                return "<CONTENT_ERROR>";
+                return content.getString(start, len);
+            } catch (BadLocationException e) {
+                throw new RuntimeException(e);
             }
         }
 
@@ -482,23 +450,15 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
      * The result is cached until the document is changed.
      */
     @Override
-    public List<String> getLineList() {
-        if (cachedLineList != null) {
-            return cachedLineList;
-        }
-
-        initLines();
-        if (lineArray == null) {
-            cachedLineList = List.of();
-            return cachedLineList;
-        }
-        List<String> result = new ArrayList<>(lineArray.length);
-        for (Line line : lineArray) {
-            result.add(line.toString());
-        }
-        cachedLineList = result;
-        return result;
+public List<String> getLineList() {
+    initLines();
+    if (lineArray == null || lineArray.length == 0) {
+        return List.of();
     }
+    return Arrays.stream(lineArray)
+                 .map(Line::toString)
+                 .toList();
+}
 
     @Override
     public String toString() {

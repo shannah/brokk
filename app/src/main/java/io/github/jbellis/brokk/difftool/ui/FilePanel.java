@@ -115,7 +115,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         statusLabel.setForeground(new java.awt.Color(204, 120, 50)); // Orange color for warnings
         statusPanel.add(statusLabel);
         statusPanel.setVisible(false); // Hidden by default
-        visualComponentContainer.add(statusPanel, BorderLayout.NORTH);
 
         // Initialize RSyntaxTextArea with composite highlighter
         editor = new RSyntaxTextArea();
@@ -643,57 +642,6 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         return false;
     }
 
-    /**
-     * Apply performance optimizations for files where early protection was already applied.
-     * This ensures consistent behavior between sync and async paths by applying the same
-     * complete optimization logic.
-     */
-    private void applyCriticalOptimizationsOnly(long contentLength) {
-        // Apply the same complete optimization logic as synchronous path
-        ProtectionLevel level = getProtectionLevel(bufferDocument, contentLength);
-
-        // Reset editor features for normal files, but preserve early protection
-        if (!forcePlainText) {
-            editor.setCodeFoldingEnabled(true);
-            editor.setBracketMatchingEnabled(true);
-            editor.setMarkOccurrences(true);
-        }
-
-        // Apply protection based on determined level
-        switch (level) {
-            case MINIMAL -> {
-                if (!forcePlainText && bufferDocument != null) {
-                    forcePlainText = true;
-                    editor.setSyntaxEditingStyle(SyntaxConstants.SYNTAX_STYLE_NONE);
-                }
-                editor.setCodeFoldingEnabled(false);
-                editor.setBracketMatchingEnabled(false);
-                editor.setMarkOccurrences(false);
-            }
-            case REDUCED -> {
-                // Keep syntax highlighting but disable memory-intensive features
-                editor.setCodeFoldingEnabled(false);
-                editor.setBracketMatchingEnabled(false);
-                editor.setMarkOccurrences(false);
-            }
-            case NONE -> {
-                // Features already reset above, no additional changes needed
-            }
-        }
-
-        // Apply timing optimizations for large files
-        boolean isLargeFile = contentLength > PerformanceConstants.LARGE_FILE_THRESHOLD_BYTES;
-        if (isLargeFile) {
-            if (timer != null) {
-                timer.setDelay(PerformanceConstants.LARGE_FILE_UPDATE_TIMER_DELAY_MS);
-            }
-        } else {
-            // Use normal timing for smaller files
-            if (timer != null) {
-                timer.setDelay(PerformanceConstants.DEFAULT_UPDATE_TIMER_DELAY_MS);
-            }
-        }
-    }
 
     /**
      * PERFORMANCE OPTIMIZATION: Apply performance optimizations based on file size.
@@ -759,10 +707,10 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             return;
         }
 
-        // For large files, check if critical optimizations are already applied
+        // For large files, if early plain-text protection is already active we
+        // still want to run the full optimisation pass (it is safe-idempotent).
         if (forcePlainText) {
-            // Early protection already applied, only run non-critical optimizations
-            applyCriticalOptimizationsOnly(contentLength);
+            applyPerformanceOptimizations(contentLength);
             return;
         }
         // Cancel any previous optimisation still running

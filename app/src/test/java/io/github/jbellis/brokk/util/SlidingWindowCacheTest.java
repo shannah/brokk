@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.util;
 
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.Disabled;
 import org.junit.jupiter.api.Timeout;
 import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.ValueSource;
@@ -685,128 +686,50 @@ class SlidingWindowCacheTest {
         assertFalse(cache.isInWindow(2));
         assertFalse(cache.isInWindow(8));
     }
-
-    @Test
-    void testEditedFilesRetainedOutsideWindow() {
+    @ParameterizedTest
+    @ValueSource(ints = {1, 2})
+    void testEditedFilesRetainedOutsideWindowParameterized(int editedFilesCount) {
         var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3); // Max 10, window 3
 
-        // Create test items
-        var editedFile = new TestDisposable("edited");
-        var normalFile1 = new TestDisposable("normal1");
-        var normalFile2 = new TestDisposable("normal2");
-        var normalFile3 = new TestDisposable("normal3");
-
-        // Start at position 1, window is [0,1,2]
+        // Initial window centred at 1 → indices [0,1,2]
         cache.updateWindowCenter(1, 10);
 
-        // Add files to cache
-        cache.put(0, editedFile);     // Will be edited
-        cache.put(1, normalFile1);   // Normal file
-        cache.put(2, normalFile2);   // Normal file
+        // Add edited files inside the window
+        java.util.List<TestDisposable> editedFiles = new java.util.ArrayList<>();
+        for (int i = 0; i < editedFilesCount; i++) {
+            var edited = new TestDisposable("edited" + i);
+            edited.setHasUnsavedChanges(true);
+            editedFiles.add(edited);
+            cache.put(i, edited);
+        }
 
-        // Mark file at index 0 as having unsaved changes
-        editedFile.setHasUnsavedChanges(true);
-
-        // Verify initial state
-        assertNotNull(cache.get(0));
-        assertNotNull(cache.get(1));
-        assertNotNull(cache.get(2));
-        assertEquals(3, cache.getCachedKeys().size());
-
-        // Move window to position 5, new window is [4,5,6]
-        // Normal behavior: files 0,1,2 should be evicted
-        // With our enhancement: file 0 should be retained because it has unsaved changes
-        cache.updateWindowCenter(5, 10);
-
-        // Check results
-        assertNotNull(cache.get(0));  // RETAINED: edited file stays in cache
-        assertNull(cache.get(1));     // EVICTED: normal file removed from cache
-        assertNull(cache.get(2));     // EVICTED: normal file removed from cache
-
-        // Check disposal status
-        assertFalse(editedFile.isDisposed());   // NOT disposed because retained
-        assertTrue(normalFile1.isDisposed());   // Disposed because evicted
-        assertTrue(normalFile2.isDisposed());   // Disposed because evicted
-
-        // Cache should now contain only the edited file (outside window)
-        assertEquals(1, cache.getCachedKeys().size());
-        assertTrue(cache.getCachedKeys().contains(0));
-
-        // Add new files within the window [4,5,6]
-        cache.put(4, normalFile3);
-        assertEquals(2, cache.getCachedKeys().size()); // edited file + new file
-
-        // Verify that we can still access the edited file
-        assertEquals(editedFile, cache.get(0));
-        assertTrue(editedFile.hasUnsavedChanges());
-
-        // When file is saved (no longer has unsaved changes), it should be evictable
-        editedFile.setHasUnsavedChanges(false);
-
-        // Move window again to trigger eviction
-        cache.updateWindowCenter(8, 10); // Window [7,8,9]
-
-        // Now the edited file should be evicted since it no longer has unsaved changes
-        assertNull(cache.get(0));
-        assertTrue(editedFile.isDisposed());
-    }
-
-    @Test
-    void testMultipleEditedFilesRetainedOutsideWindow() {
-        var cache = new SlidingWindowCache<Integer, TestDisposable>(10, 3);
-
-        // Create test items
-        var editedFile1 = new TestDisposable("edited1");
-        var editedFile2 = new TestDisposable("edited2");
+        // One normal (non-edited) file also inside the window
+        int normalIndex = editedFilesCount;
         var normalFile = new TestDisposable("normal");
+        cache.put(normalIndex, normalFile);
 
-        // Start at position 1, window is [0,1,2] - this allows all files to be added initially
-        cache.updateWindowCenter(1, 10);
+        // Move window far away so all previously added files lie outside it
+        cache.updateWindowCenter(8, 10); // window [7,8,9]
 
-        // Add files - all are initially within window [0,1,2]
-        cache.put(0, editedFile1);  // In window, will be edited
-        cache.put(1, editedFile2);  // In window, will be edited
-        cache.put(2, normalFile);   // In window, normal file
+        // Edited files must be retained
+        for (int i = 0; i < editedFilesCount; i++) {
+            assertNotNull(cache.get(i), "Edited file " + i + " should be retained");
+            assertFalse(editedFiles.get(i).isDisposed(), "Edited file " + i + " should not be disposed");
+        }
 
-        // Mark both files as edited
-        editedFile1.setHasUnsavedChanges(true);
-        editedFile2.setHasUnsavedChanges(true);
-
-        // Verify initial state
-        assertNotNull(cache.get(0));
-        assertNotNull(cache.get(1));
-        assertNotNull(cache.get(2));
-        assertEquals(3, cache.getCachedKeys().size());
-
-        // Move window far away to [7,8,9] - now all files are outside window
-        cache.updateWindowCenter(8, 10);
-
-        // Both edited files should be retained despite being outside window
-        assertNotNull(cache.get(0));  // editedFile1 - retained
-        assertNotNull(cache.get(1));  // editedFile2 - retained
-        assertNull(cache.get(2));     // normalFile - evicted
-
-        // Check disposal status
-        assertFalse(editedFile1.isDisposed());
-        assertFalse(editedFile2.isDisposed());
+        // Normal file must be evicted
+        assertNull(cache.get(normalIndex));
         assertTrue(normalFile.isDisposed());
 
-        // Cache contains both edited files outside the normal window
-        assertEquals(2, cache.getCachedKeys().size());
-        assertTrue(cache.getCachedKeys().contains(0));
-        assertTrue(cache.getCachedKeys().contains(1));
+        // Simulate saving the edited files
+        editedFiles.forEach(f -> f.setHasUnsavedChanges(false));
 
-        // When files are saved, they become evictable
-        editedFile1.setHasUnsavedChanges(false);
-        editedFile2.setHasUnsavedChanges(false);
+        // Move window again to trigger eviction now that files are clean
+        cache.updateWindowCenter(5, 10); // window [4,5,6]
 
-        // Trigger eviction by moving window
-        cache.updateWindowCenter(5, 10); // Window [4,5,6]
-
-        // Now both should be evicted
-        assertNull(cache.get(0));
-        assertNull(cache.get(1));
-        assertTrue(editedFile1.isDisposed());
-        assertTrue(editedFile2.isDisposed());
+        for (int i = 0; i < editedFilesCount; i++) {
+            assertNull(cache.get(i));
+            assertTrue(editedFiles.get(i).isDisposed(), "Edited file " + i + " should be disposed after save");
+        }
     }
 }

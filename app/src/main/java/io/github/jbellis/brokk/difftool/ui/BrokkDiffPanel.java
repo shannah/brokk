@@ -484,6 +484,14 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         btnUndo.setEnabled(currentPanel != null && currentPanel.isUndoEnabled());
         btnRedo.setEnabled(currentPanel != null && currentPanel.isRedoEnabled());
 
+        // Hide undo/redo completely when both sides are read-only
+        boolean showUndoRedo = false;
+        if (currentPanel instanceof BufferDiffPanel bp) {
+            showUndoRedo = bp.atLeastOneSideEditable();
+        }
+        btnUndo.setVisible(showUndoRedo);
+        btnRedo.setVisible(showUndoRedo);
+
         if (currentPanel != null) {
             var isFirstChangeOverall = currentFileIndex == 0 && currentPanel.isAtFirstLogicalChange();
             var isLastChangeOverall = currentFileIndex == fileComparisons.size() - 1 && currentPanel.isAtLastLogicalChange();

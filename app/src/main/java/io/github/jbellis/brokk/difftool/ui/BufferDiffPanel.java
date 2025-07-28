@@ -929,6 +929,18 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     }
 
     /**
+     * Returns {@code true} if at least one side is editable (not read-only).
+     * Used by the main toolbar to decide whether undo/redo buttons should be shown.
+     */
+    public boolean atLeastOneSideEditable() {
+        return filePanels.values().stream()
+                         .anyMatch(fp -> {
+                             var doc = fp.getBufferDocument();
+                             return doc != null && !doc.isReadonly();
+                         });
+    }
+
+    /**
      * Clear caches to free memory while keeping the panel functional.
      * Used by sliding window memory management.
      */
