@@ -2162,15 +2162,14 @@ public class GitRepo implements Closeable, IGitRepo {
         return mb == null ? null : mb.getName();
     }
 
-    /**
-     * Lists all worktrees in the repository.
-     */
-    @Override
-    public List<WorktreeInfo> listWorktrees() throws GitAPIException {
+    public record ListWorktreesResult(List<WorktreeInfo> worktrees, List<Path> invalidPaths) {}
+
+    public ListWorktreesResult listWorktreesAndInvalid() throws GitAPIException {
         try {
             var command = "git worktree list --porcelain";
             var output = Environment.instance.runShellCommand(command, gitTopLevel, out -> {});
             var worktrees = new ArrayList<WorktreeInfo>();
+            var invalidPaths = new ArrayList<Path>();
             var lines = Splitter.on(Pattern.compile("\\R")).splitToList(output); // Split by any newline sequence
 
             Path currentPath = null;
@@ -2184,42 +2183,63 @@ public class GitRepo implements Closeable, IGitRepo {
                         worktrees.add(new WorktreeInfo(currentPath,
                                                        currentBranch,
                                                        requireNonNull(currentHead)));
-                        currentHead = null;
-                        currentBranch = null;
                     }
+                    // Reset for next entry
+                    currentHead = null;
+                    currentBranch = null;
 
+                    var pathStr = line.substring("worktree ".length());
                     try {
-                        currentPath = Path.of(line.substring("worktree ".length())).toRealPath();
+                        currentPath = Path.of(pathStr).toRealPath();
+                    } catch (NoSuchFileException e) {
+                        logger.warn("Worktree path does not exist, scheduling for prune: {}", pathStr);
+                        invalidPaths.add(Path.of(pathStr));
+                        currentPath = null; // Mark as invalid for subsequent processing
                     } catch (IOException e) {
-                        throw new GitRepoException("Failed to resolve worktree path: " + line.substring("worktree ".length()), e);
+                        throw new GitRepoException("Failed to resolve worktree path: " + pathStr, e);
                     }
                 } else if (line.startsWith("HEAD ")) {
-                    currentHead = line.substring("HEAD ".length());
+                    // Only process if current worktree path is valid
+                    if (currentPath != null) {
+                        currentHead = line.substring("HEAD ".length());
+                    }
                 } else if (line.startsWith("branch ")) {
-                    var branchRef = line.substring("branch ".length());
-                    if (branchRef.startsWith("refs/heads/")) {
-                        currentBranch = branchRef.substring("refs/heads/".length());
-                    } else {
-                        currentBranch = branchRef; // Should not happen with porcelain but good to be defensive
+                    if (currentPath != null) {
+                        var branchRef = line.substring("branch ".length());
+                        if (branchRef.startsWith("refs/heads/")) {
+                            currentBranch = branchRef.substring("refs/heads/".length());
+                        } else {
+                            currentBranch = branchRef; // Should not happen with porcelain but good to be defensive
+                        }
                     }
                 } else if (line.equals("detached")) {
-                    // Detached-HEAD worktree: branch remains null (WorktreeInfo.branch is @Nullable).
-                    currentBranch = null;
+                    if (currentPath != null) {
+                        // Detached-HEAD worktree: branch remains null (WorktreeInfo.branch is @Nullable).
+                        currentBranch = null;
+                    }
                 }
             }
             // Add the last parsed worktree
             if (currentPath != null) {
                 worktrees.add(new WorktreeInfo(currentPath,
-                                               currentBranch,   // empty string for detached worktrees
+                                               currentBranch,
                                                requireNonNull(currentHead)));
             }
-            return worktrees;
+            return new ListWorktreesResult(worktrees, invalidPaths);
         } catch (Environment.SubprocessException e) {
             throw new GitRepoException("Failed to list worktrees: " + e.getOutput(), e);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             throw new GitRepoException("Listing worktrees was interrupted", e);
         }
+    }
+
+    /**
+     * Lists all worktrees in the repository.
+     */
+    @Override
+    public List<WorktreeInfo> listWorktrees() throws GitAPIException {
+        return listWorktreesAndInvalid().worktrees();
     }
 
     /**
@@ -2339,6 +2359,23 @@ public class GitRepo implements Closeable, IGitRepo {
             String interruptMessage = String.format("Removing worktree at %s%s was interrupted",
                                                     path, (force ? " (with force)" : ""));
             throw new GitRepoException(interruptMessage, e);
+        }
+    }
+
+    /**
+     * Prunes worktree metadata for worktrees that no longer exist.
+     * This is equivalent to `git worktree prune`.
+     * @throws GitAPIException if a Git error occurs.
+     */
+    public void pruneWorktrees() throws GitAPIException {
+        try {
+            var command = "git worktree prune";
+            Environment.instance.runShellCommand(command, gitTopLevel, out -> {});
+        } catch (Environment.SubprocessException e) {
+            throw new GitRepoException("Failed to prune worktrees: " + e.getOutput(), e);
+        } catch (InterruptedException e) {
+            Thread.currentThread().interrupt();
+            throw new GitRepoException("Pruning worktrees was interrupted", e);
         }
     }
 
