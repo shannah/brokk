@@ -6,10 +6,12 @@ import io.github.jbellis.brokk.util.Environment;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.NoHeadException;
+import org.eclipse.jgit.revwalk.FollowFilter;
 import org.jetbrains.annotations.Nullable;
 import org.eclipse.jgit.api.*;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.ProgressMonitor;
+import org.eclipse.jgit.diff.DiffConfig;
 import org.eclipse.jgit.diff.DiffEntry;
 import org.eclipse.jgit.diff.DiffFormatter;
 import org.eclipse.jgit.errors.IncorrectObjectTypeException;
@@ -1885,12 +1887,23 @@ public class GitRepo implements Closeable, IGitRepo {
       * Get the commit history for a specific file
       */
      public List<CommitInfo> getFileHistory(ProjectFile file) throws GitAPIException {
-        var commits = new ArrayList<CommitInfo>();
-        for (var commit : git.log().addPath(toRepoRelativePath(file)).call()) {
-            // Use factory method
-            commits.add(this.fromRevCommit(commit));
+        var commits = new LinkedHashSet<CommitInfo>();
+        var path = toRepoRelativePath(file);
+        try {
+            var headId = resolve("HEAD");
+            try (var revWalk = new RevWalk(repository)) {
+                var diffconfig = repository.getConfig().get(DiffConfig.KEY);
+                revWalk.setTreeFilter(FollowFilter.create(path, diffconfig));
+                revWalk.markStart(revWalk.parseCommit(headId));
+
+                for (var commit : revWalk) {
+                    commits.add(this.fromRevCommit(commit));
+                }
+            }
+        } catch (IOException e) {
+            throw new GitWrappedIOException(e);
         }
-        return commits;
+        return new ArrayList<>(commits);
     }
 
     /**
