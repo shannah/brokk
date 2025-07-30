@@ -1154,7 +1154,6 @@ public class GitRepo implements Closeable, IGitRepo {
     @Override
     public MergeResult rebaseMergeIntoHead(String branchName) throws GitAPIException {
         String targetBranch = getCurrentBranch();
-        String originalBranch = targetBranch;
         String tempRebaseBranchName = null;
 
         try {
@@ -1196,11 +1195,11 @@ public class GitRepo implements Closeable, IGitRepo {
         } finally {
             // Cleanup: ensure we're on the original branch and delete temp branch
             try {
-                if (!getCurrentBranch().equals(originalBranch)) {
-                    checkout(originalBranch);
+                if (!getCurrentBranch().equals(targetBranch)) {
+                    checkout(targetBranch);
                 }
             } catch (GitAPIException e) {
-                logger.error("Error ensuring checkout to target branch '{}' during rebase cleanup", originalBranch, e);
+                logger.error("Error ensuring checkout to target branch '{}' during rebase cleanup", targetBranch, e);
             }
 
             if (tempRebaseBranchName != null) {
@@ -1882,11 +1881,11 @@ public class GitRepo implements Closeable, IGitRepo {
              throw new GitWrappedIOException(e);
          }
      }
- 
+
      /**
       * Get the commit history for a specific file
       */
-     public List<CommitInfo> getFileHistory(ProjectFile file) throws GitAPIException {
+    private List<CommitInfo> getFileHistory(ProjectFile file) throws GitAPIException {
         var commits = new LinkedHashSet<CommitInfo>();
         var path = toRepoRelativePath(file);
         try {
@@ -1904,6 +1903,89 @@ public class GitRepo implements Closeable, IGitRepo {
             throw new GitWrappedIOException(e);
         }
         return new ArrayList<>(commits);
+    }
+
+    /** One commit in a file’s history together with the path the file had
+     *  inside that commit.
+     */
+    public record FileHistoryEntry(CommitInfo commit, ProjectFile path) {}
+
+    /**
+     * Like {@link #getFileHistory(ProjectFile)} but also returns, for each
+     * commit, the path the file had *in that commit* (following renames
+     * backwards).
+     *
+     * @param file the file (at its current path) whose history we want
+     */
+    public List<FileHistoryEntry> getFileHistoryWithPaths(ProjectFile file) throws GitAPIException
+    {
+        // 1. normal commit list, newest → oldest (already follows renames)
+        var commits = getFileHistory(file);
+        if (commits.isEmpty()) {
+            return new ArrayList<>();
+        }
+
+        var results    = new ArrayList<FileHistoryEntry>(commits.size());
+        var currPath   = file;                     // path valid for current head
+        var currGitRel = toRepoRelativePath(currPath);
+
+        try (var revWalk = new RevWalk(repository);
+             var diffFmt = new DiffFormatter(new ByteArrayOutputStream()))
+        {
+            diffFmt.setRepository(repository);
+            diffFmt.setDetectRenames(true);
+
+            for (var commitInfo : commits)
+            {
+                // record current path for this commit
+                results.add(new FileHistoryEntry(commitInfo, currPath));
+
+                // prepare for next (older) commit
+                RevCommit commit;
+                try {
+                    commit = revWalk.parseCommit(ObjectId.fromString(commitInfo.id()));
+                } catch (IOException | IllegalArgumentException e) {
+                    logger.warn("Failed to parse commit {}: {}", commitInfo.id(), e.getMessage());
+                    continue; // Skip this commit but continue processing
+                }
+
+                if (commit.getParentCount() == 0) {
+                    // reached root – no parent to diff against
+                    logger.debug("Reached root commit {} with no parents", commitInfo.id());
+                    continue;
+                }
+
+                // For merge commits, check all parents for renames
+                boolean renameFound = false;
+                for (int i = 0; i < commit.getParentCount() && !renameFound; i++) {
+                    try {
+                        var parent = revWalk.parseCommit(commit.getParent(i).getId());
+                        var diffs = diffFmt.scan(parent.getTree(), commit.getTree());
+
+                        for (var d : diffs) {
+                            if (d.getChangeType() == DiffEntry.ChangeType.RENAME &&
+                                d.getNewPath().equals(currGitRel))
+                            {
+                                // file was renamed in THIS commit; older commits use oldPath
+                                logger.debug("Detected rename: {} -> {} in commit {}",
+                                           d.getOldPath(), d.getNewPath(), commitInfo.id());
+                                currGitRel = d.getOldPath();
+                                currPath   = toProjectFile(currGitRel);
+                                renameFound = true;
+                                break;
+                            }
+                        }
+                    } catch (IOException e) {
+                        logger.warn("Failed to process parent {} of commit {}: {}",
+                                  i, commitInfo.id(), e.getMessage());
+                        // Continue with next parent
+                    }
+                }
+
+                logger.debug("Processing commit {}, current path: {}", commitInfo.id(), currGitRel);
+            }
+        }
+        return results;
     }
 
     /**
