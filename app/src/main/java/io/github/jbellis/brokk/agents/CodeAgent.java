@@ -122,8 +122,10 @@ public class CodeAgent {
                                                                                  parser,
                                                                                  loopContext.conversationState().taskMessages(),
                                                                                  loopContext.conversationState().nextRequest());
+                var llmStartNanos = System.nanoTime();
                 streamingResult = coder.sendRequest(allMessagesForLlm, true);
                 if (metrics != null) {
+                    metrics.llmWaitNanos += System.nanoTime() - llmStartNanos;
                     Optional.ofNullable(streamingResult.tokenUsage())
                             .ifPresent(metrics::addTokens);
                     metrics.addApiRetries(streamingResult.retries());
@@ -464,7 +466,8 @@ public class CodeAgent {
      */
     private void attemptFullFileReplacements(List<EditBlock.FailedBlock> failedBlocks,
                                              String originalUserInput,
-                                             List<ChatMessage> taskMessages) throws EditStopException {
+                                             List<ChatMessage> taskMessages,
+                                             @Nullable Metrics metrics) throws EditStopException {
         var failuresByFile = failedBlocks.stream()
                 .filter(fb -> fb.block().filename() != null)
                 .collect(Collectors.groupingBy(fb -> contextManager.toFile(fb.block().filename())));
@@ -487,7 +490,7 @@ public class CodeAgent {
                 var model = requireNonNull(contextManager.getService().getModel(Service.GROK_3_MINI, Service.ReasoningLevel.DEFAULT));
                 var coder = contextManager.getLlm(model, "Full File Replacement: " + file.getFileName());
                 coder.setOutput(io);
-                return executeReplace(file, coder, messages);
+                return executeReplace(file, coder, messages, metrics);
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -541,10 +544,16 @@ public class CodeAgent {
     /**
      * @return an error message, or empty if successful
      */
-    public static Optional<String> executeReplace(ProjectFile file, Llm coder, List<ChatMessage> messages)
+    public static Optional<String> executeReplace(ProjectFile file, Llm coder, List<ChatMessage> messages, @Nullable Metrics metrics)
             throws InterruptedException, IOException {
         // Send request
+        var llmStartNanos = System.nanoTime();
         StreamingResult result = coder.sendRequest(messages, false);
+        if (metrics != null) {
+            metrics.llmWaitNanos += System.nanoTime() - llmStartNanos;
+            Optional.ofNullable(result.tokenUsage()).ifPresent(metrics::addTokens);
+            metrics.addApiRetries(result.retries());
+        }
 
         // Process response
         if (result.error() != null) {
@@ -859,7 +868,7 @@ public class CodeAgent {
                 if (updatedConsecutiveApplyFailures >= MAX_APPLY_FAILURES_BEFORE_FALLBACK) {
                     report("Apply failure limit reached (%d), attempting full file replacement fallback.".formatted(updatedConsecutiveApplyFailures));
                     List<EditBlock.FailedBlock> blocksForFallback = List.copyOf(failedBlocks);
-                    attemptFullFileReplacements(blocksForFallback, currentLoopContext.userGoal(), cs.taskMessages());
+                    attemptFullFileReplacements(blocksForFallback, currentLoopContext.userGoal(), cs.taskMessages(), metrics);
                     // If attemptFullFileReplacements succeeds, it doesn't throw. If it fails, it throws EditStopException caught below.
                     report("Full file replacement fallback successful.");
 
@@ -1023,6 +1032,7 @@ public class CodeAgent {
         private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
 
         final long startNanos = System.nanoTime();
+        long llmWaitNanos = 0;
         int totalInputTokens = 0;
         int totalCachedTokens = 0;
         int totalThinkingTokens = 0;
@@ -1052,7 +1062,8 @@ public class CodeAgent {
             var changedFilesList = changedFiles.stream().map(ProjectFile::toString).toList();
 
             var jsonMap = new LinkedHashMap<String, Object>();
-            jsonMap.put("elapsedMillis", Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            jsonMap.put("totalMillis", Duration.ofNanos(System.nanoTime() - startNanos).toMillis());
+            jsonMap.put("llmMillis", Duration.ofNanos(llmWaitNanos).toMillis());
             jsonMap.put("inputTokens", totalInputTokens);
             jsonMap.put("cachedInputTokens", totalCachedTokens);
             jsonMap.put("reasoningTokens", totalThinkingTokens);
