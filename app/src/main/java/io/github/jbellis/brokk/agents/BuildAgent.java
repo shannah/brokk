@@ -233,7 +233,7 @@ public class BuildAgent {
                                        Use the tools to examine build files (like `pom.xml`, `build.gradle`, etc.), configuration files, and linting files,
                                        as necessary, to determine the information needed by `reportBuildDetails`.
 
-                                       When selecting build or test commands, prefer flags or sub-commands that minimise console output (for example, Maven -q, Gradle --quiet, npm test --silent).
+                                       When selecting build or test commands, prefer flags or sub-commands that minimise console output (for example, Maven -q, Gradle --quiet, npm test --silent, sbt -error).
                                        Avoid verbose flags such as --info, --debug, or -X unless they are strictly required for correct operation.
 
                                        The lists are DecoratedCollection instances, so you get first/last/index/value fields.
@@ -241,8 +241,8 @@ public class BuildAgent {
 
                                        | Build tool        | One-liner a user could write
                                        | ----------------- | ------------------------------------------------------------------------
-                                       | **SBT**           | `sbt "testOnly{{#classes}} {{value}}{{/classes}}"`
-                                       | **Maven**         | `mvn -q test -Dtest={{#classes}}{{value}}{{^-last}},{{/-last}}{{/classes}}`
+                                       | **SBT**           | `sbt -error "testOnly{{#classes}} {{value}}{{/classes}}"`
+                                       | **Maven**         | `mvn --quiet test -Dtest={{#classes}}{{value}}{{^-last}},{{/-last}}{{/classes}}`
                                        | **Gradle**        | `gradle --quiet test{{#classes}} --tests {{value}}{{/classes}}`
                                        | **Go**            | `go test -run '{{#classes}}{{value}}{{^-last}} | {{/-last}}{{/classes}}`
                                        | **.NET CLI**      | `dotnet test --filter "{{#classes}}FullyQualifiedName\\~{{value}}{{^-last}} | {{/-last}}{{/classes}}"`
