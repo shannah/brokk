@@ -611,6 +611,17 @@ public class Service {
         return (Integer) info.get("tokens_per_minute");
     }
 
+    public boolean supportsToolChoiceRequired(StreamingChatModel model) {
+        var modelName = nameOf(model);
+        var location = modelLocations.get(modelName);
+        if (location == null) {
+            logger.warn("Location not found for model name {}, assuming no tool_choice=required support", modelName);
+            return false;
+        }
+
+        return !location.contains("claude") && !location.contains("deepseek-reasoner");
+    }
+
     /**
      * Returns true if the given model exposes the toggle to completely disable reasoning
      * (independent of the usual LOW/MEDIUM/HIGH levels).

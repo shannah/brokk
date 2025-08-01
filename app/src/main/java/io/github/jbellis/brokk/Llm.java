@@ -434,12 +434,8 @@ public class Llm {
                 paramsBuilder = paramsBuilder
                         .parallelToolCalls(true);
             }
-            var effort = ((OpenAiChatRequestParameters) model.defaultRequestParameters()).reasoningEffort();
-            if (toolChoice == ToolChoice.REQUIRED && effort == null) {
-                // Anthropic only supports TC.REQUIRED with reasoning off
-                // (and Anthropic is currently the only vendor that runs with native tool calls)
-                paramsBuilder = paramsBuilder
-                        .toolChoice(ToolChoice.REQUIRED);
+            if (toolChoice == ToolChoice.REQUIRED && contextManager.getService().supportsToolChoiceRequired(model)) {
+                paramsBuilder = paramsBuilder.toolChoice(ToolChoice.REQUIRED);
             }
             requestBuilder.parameters(paramsBuilder.build());
         }
