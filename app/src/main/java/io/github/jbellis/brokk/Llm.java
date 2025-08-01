@@ -1128,6 +1128,10 @@ public class Llm {
                 return null;
             }
             var usage = (OpenAiTokenUsage) originalResponse().tokenUsage();
+            if (usage == null) {
+                logger.warn("Response is present but tokenUsage is null. Litellm bug?");
+                return null;
+            }
 
             // always present
             int inputTokens       = usage.inputTokenCount();
