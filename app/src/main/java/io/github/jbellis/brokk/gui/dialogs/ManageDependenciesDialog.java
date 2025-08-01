@@ -131,7 +131,8 @@ public class ManageDependenciesDialog extends JDialog {
         var order = UIManager.getString("OptionPane.buttonOrder");
         if (order == null) order = "OC";   // sensible fallback
 
-        for (char ch : order.toCharArray()) {
+        for (int i = 0; i < order.length(); i++) {
+            char ch = order.charAt(i);
             switch (ch) {
                 case 'O' -> okCancelPanel.add(okButton);
                 case 'C' -> okCancelPanel.add(cancelButton);
