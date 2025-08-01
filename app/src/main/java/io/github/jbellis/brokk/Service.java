@@ -307,7 +307,7 @@ public class Service {
     public static float getUserBalance(String key) throws IOException {
         parseKey(key); // Throws IllegalArgumentException if key is malformed
 
-        String url = "https://app.brokk.ai/api/payments/balance-lookup/" + key;
+        String url = MainProject.getServiceUrl() + "/api/payments/balance-lookup/" + key;
         Request request = new Request.Builder()
                 .url(url)
                 .get()
@@ -352,7 +352,7 @@ public class Service {
         }
 
         String encodedKey = URLEncoder.encode(key, StandardCharsets.UTF_8);
-        String url = "https://app.brokk.ai/api/users/check-data-sharing?brokk_key=" + encodedKey;
+        String url = MainProject.getServiceUrl() + "/api/users/check-data-sharing?brokk_key=" + encodedKey;
         Request request = new Request.Builder()
                 .url(url)
                 .get()
@@ -405,7 +405,7 @@ public class Service {
         infoTarget.clear();
 
         String baseUrl = MainProject.getProxyUrl(); // Get full URL (including scheme) from project settings
-        boolean isBrokk = MainProject.getProxySetting() == MainProject.LlmProxySetting.BROKK;
+        boolean isBrokk = MainProject.getProxySetting() != MainProject.LlmProxySetting.LOCALHOST;
         boolean isFreeTierOnly = false;
 
         var authHeader = "Bearer dummy-key";
@@ -700,17 +700,17 @@ public class Service {
                 .timeout(Duration.ofSeconds(LLM_MAX_RESPONSE_TIME));
         params = params.maxOutputTokens(getMaxOutputTokens(location));
 
-        if (MainProject.getProxySetting() == MainProject.LlmProxySetting.BROKK) {
+        if (MainProject.getProxySetting() == MainProject.LlmProxySetting.LOCALHOST) {
+            // Non-Brokk proxy
+            builder = builder.apiKey("dummy-key");
+        } else {
             var kp = parseKey(MainProject.getBrokkKey());
             builder = builder
                     .apiKey(kp.token())
                     .customHeaders(Map.of("Authorization", "Bearer " + kp.token()));
             params = params.user(kp.userId().toString());
-        } else {
-            // Non-Brokk proxy
-            builder = builder.apiKey("dummy-key");
         }
-            
+
         params = params.modelName(location);
 
         // Apply reasoning effort if not default and supported
@@ -982,7 +982,7 @@ public class Service {
         }
 
         var requestBuilder = new Request.Builder()
-                .url("https://app.brokk.ai/api/events/feedback")
+                .url(MainProject.getServiceUrl() + "/api/events/feedback")
                 .post(bodyBuilder.build());
 
         try (Response response = httpClient.newCall(requestBuilder.build()).execute()) {
