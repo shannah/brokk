@@ -601,6 +601,13 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         return contextManager.getIo();
     }
 
+    /**
+     * Provides access to the ContextManager for BufferDiffPanel.
+     */
+    public ContextManager getContextManager() {
+        return contextManager;
+    }
+
     public void launchComparison() {
         logger.info("Navigation Step 0: Launching diff comparison with {} files, starting with file index 0",
                    fileComparisons.size());

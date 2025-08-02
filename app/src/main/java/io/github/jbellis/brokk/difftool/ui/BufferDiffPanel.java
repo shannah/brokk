@@ -1,9 +1,14 @@
 package io.github.jbellis.brokk.difftool.ui;
 
+import com.github.difflib.DiffUtils;
+import com.github.difflib.UnifiedDiffUtils;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Patch;
 import com.jgoodies.forms.layout.CellConstraints;
 import com.jgoodies.forms.layout.FormLayout;
+import dev.langchain4j.data.message.ChatMessage;
+import io.github.jbellis.brokk.TaskResult;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
 import io.github.jbellis.brokk.difftool.doc.JMDocumentEvent;
 import io.github.jbellis.brokk.difftool.node.BufferNode;
@@ -12,6 +17,7 @@ import io.github.jbellis.brokk.difftool.scroll.DiffScrollComponent;
 import io.github.jbellis.brokk.difftool.scroll.ScrollSynchronizer;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
+import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.SlidingWindowCache;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
@@ -24,9 +30,15 @@ import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
+import java.io.IOException;
 import java.util.ArrayList;
 import java.util.EnumMap;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
 
@@ -90,6 +102,18 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * Dirty flag that tracks whether there are any unsaved changes.
      */
     private boolean dirtySinceOpen = false;
+
+    /**
+     * Tracks applied diff operations that haven't been saved yet.
+     * Maps filename to count of operations applied.
+     */
+    private final Map<String, Integer> pendingDiffChanges = new HashMap<>();
+
+    /**
+     * Tracks the content of files before any diff changes were applied.
+     * Used to generate unified diffs showing what changes were made.
+     */
+    private final Map<String, String> contentBeforeChanges = new HashMap<>();
 
 
     /**
@@ -1091,11 +1115,14 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 toEditor.getDocument().insertString(toToOffset, replacedText, null);
             }
 
+            // Record that this file was modified by a diff operation
+            recordDiffChange(toDoc);
             SwingUtilities.invokeLater(() -> {
                 toEditor.setCaretPosition(toFromOffset);
                 destinationViewport.setViewPosition(originalViewPosition);
             });
         }, operationType);
+
     }
 
     /**
@@ -1128,6 +1155,10 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             editor.setSelectionEnd(toOffset);
             editor.replaceSelection("");
             editor.setCaretPosition(fromOffset);
+
+            // Record that this file was modified by a diff operation
+            recordDiffChange(fromDoc);
+
         }, "Delete Chunk");
     }
 
@@ -1155,6 +1186,10 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                                               JOptionPane.ERROR_MESSAGE);
             }
         }
+
+        // Generate activity entries for files that had diff changes applied
+        generateDiffChangeActivityEntries();
+
         // After saving, recalculate dirty status (should be false since undo history is cleared)
         recalcDirty();
     }
@@ -1375,6 +1410,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             scrollSynchronizer = null;
         }
 
+        // Clear diff change tracking
+        clearDiffChangeTracking();
+
         // Clear references
         diffNode = null;
         patch = null;
@@ -1420,4 +1458,150 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         }
     }
 
+    /**
+     * Records that a diff operation was applied to a file.
+     * Used for generating activity entries when files are saved.
+     * @param doc the document that was modified
+     */
+    private void recordDiffChange(BufferDocumentIF doc) {
+        var filename = doc.getShortName();
+
+        // Save the original content before the first change to this file
+        if (!contentBeforeChanges.containsKey(filename)) {
+            try {
+                var document = doc.getDocument();
+                var content = document.getText(0, document.getLength());
+                contentBeforeChanges.put(filename, content);
+            } catch (BadLocationException e) {
+                logger.warn("Failed to capture original content for diff change tracking: {}", filename, e);
+            }
+        }
+
+        pendingDiffChanges.merge(filename, 1, Integer::sum);
+    }
+
+    /**
+     * Generate undoable activity entries for files that had diff changes applied.
+     * Called after successful save operations to record the changes in session history.
+     * Creates TaskResult objects with unified diffs showing what changes were applied.
+     */
+    private void generateDiffChangeActivityEntries() {
+        if (pendingDiffChanges.isEmpty()) {
+            return;
+        }
+
+        var contextManager = mainPanel.getContextManager();
+
+        for (var entry : pendingDiffChanges.entrySet()) {
+            var filename = entry.getKey();
+            var changeCount = entry.getValue();
+
+            try {
+                // Get the current content after changes
+                String currentContent = null;
+                ProjectFile projectFile = null;
+
+                // Find the document with this filename
+                for (var fp : filePanels.values()) {
+                    var doc = fp.getBufferDocument();
+                    if (doc != null && filename.equals(doc.getShortName())) {
+                        try {
+                            var document = doc.getDocument();
+                            currentContent = document.getText(0, document.getLength());
+
+                            // Try to get the underlying file and convert to ProjectFile
+                            if (doc instanceof io.github.jbellis.brokk.difftool.doc.FileDocument) {
+                                // Create ProjectFile from the filename path
+                                var project = contextManager.getProject();
+                                var filePath = java.nio.file.Paths.get(doc.getName());
+                                if (filePath.toFile().exists()) {
+                                    projectFile = new ProjectFile(project.getRoot(), filePath);
+                                }
+                            }
+                        } catch (Exception e) {
+                            logger.warn("Failed to get current content for diff change history: {}", filename, e);
+                        }
+                        break;
+                    }
+                }
+
+                // Get the original content before changes
+                var originalContent = contentBeforeChanges.get(filename);
+                if (originalContent != null && currentContent != null) {
+                    // Generate unified diff showing the changes applied
+                    var originalLines = originalContent.lines().collect(Collectors.toList());
+                    var currentLines = currentContent.lines().collect(Collectors.toList());
+                    var patch = DiffUtils.diff(originalLines, currentLines);
+                    var unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(filename,
+                                                                            filename,
+                                                                            originalLines,
+                                                                            patch,
+                                                                            3);
+
+                    // Create TaskResult with the diff information
+                    String actionDescription;
+                    if (changeCount == 1) {
+                        actionDescription = "Applied diff change to " + filename;
+                    } else {
+                        actionDescription = "Applied " + changeCount + " diff changes to " + filename;
+                    }
+
+                    // Create message list with the diff
+                    var messagesForHistory = new ArrayList<ChatMessage>();
+                    messagesForHistory.add(Messages.customSystem("# Diff changes applied\\n\\n```diff\\n" + unifiedDiff + "\\n```"));
+
+                    // Determine which files were affected
+                    Set<ProjectFile> affectedFiles = new HashSet<>();
+                    if (projectFile != null) {
+                        affectedFiles.add(projectFile);
+                    }
+
+                    var diffResult = new TaskResult(contextManager,
+                                                    actionDescription,
+                                                    messagesForHistory,
+                                                    affectedFiles,
+                                                    TaskResult.StopReason.SUCCESS);
+
+                    // Add to context history as undoable entry
+                    contextManager.addToHistory(diffResult, false);
+                    logger.debug("Added undoable history entry for diff changes in: {}", filename);
+                } else {
+                    // Fallback to simple logging if we can't generate diff
+                    logger.debug("Cannot generate diff for {}: originalContent={}, currentContent={}",
+                               filename, originalContent != null, currentContent != null);
+
+                    String message;
+                    if (changeCount == 1) {
+                        message = "Applied diff change to " + filename;
+                    } else {
+                        message = "Applied " + changeCount + " diff changes to " + filename;
+                    }
+                    mainPanel.getConsoleIO().systemOutput(message);
+                }
+            } catch (Exception e) {
+                logger.error("Failed to generate diff change activity entry for {}", filename, e);
+                // Fallback to simple logging
+                String message;
+                if (changeCount == 1) {
+                    message = "Applied diff change to " + filename;
+                } else {
+                    message = "Applied " + changeCount + " diff changes to " + filename;
+                }
+                mainPanel.getConsoleIO().systemOutput(message);
+            }
+        }
+
+        // Clear pending changes counter, but keep contentBeforeChanges for future saves
+        pendingDiffChanges.clear();
+        // Note: contentBeforeChanges is kept to allow proper diffs on subsequent saves
+    }
+
+    /**
+     * Clears all diff change tracking state.
+     * Should be called when loading a new diff or disposing the panel.
+     */
+    public void clearDiffChangeTracking() {
+        pendingDiffChanges.clear();
+        contentBeforeChanges.clear();
+    }
 }
