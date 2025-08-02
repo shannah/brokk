@@ -32,6 +32,9 @@ import java.util.List;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Optional;
+import io.github.jbellis.brokk.util.AdaptiveExecutor;
+import java.util.concurrent.Callable;
+import java.util.concurrent.Future;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -51,6 +54,7 @@ public class ContextAgent {
     private final String goal;
     private final IAnalyzer analyzer;
     private final boolean deepScan;
+    private final StreamingChatModel model;
 
     // if the entire project fits in the Skip Pruning budget, just include it all and call it good
     private final int skipPruningBudget;
@@ -66,6 +70,7 @@ public class ContextAgent {
         this.goal = goal;
         this.analyzer = contextManager.getAnalyzer();
         this.deepScan = deepScan;
+        this.model = model;
 
         int maxInputTokens = contextManager.getService().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
@@ -201,6 +206,11 @@ public class ContextAgent {
                                   ? CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()) 
                                   : CodePrompts.instance.getWorkspaceSummaryMessages(cm.liveContext());
         budgetPruning -= Messages.getApproximateTokens(workspaceRepresentation);
+        if (budgetPruning < 1000) {
+            // can't do anything useful here
+            debug("budget for pruning is too low ({}); giving up", budgetPruning);
+            return new RecommendationResult(false, List.of(), "Workspace is too large", null);
+        }
         var allFiles = cm.getProject().getAllFiles().stream().sorted().toList();
 
         // Attempt single-pass mode first
@@ -231,7 +241,7 @@ public class ContextAgent {
 
         // Fallback 1: Prune based on filenames only
         debug("Falling back to filename-based pruning.");
-        var filenameResult = executeWithFilenamesOnly(allFiles, workspaceRepresentation);
+        var filenameResult = createResult(askLlmDeepPruneFilenames(allFiles.stream().map(ProjectFile::toString).toList(), workspaceRepresentation));
         cumulativeUsage = addTokenUsage(cumulativeUsage, filenameResult.tokenUsage());
 
         if (!filenameResult.success) {
@@ -257,7 +267,7 @@ public class ContextAgent {
         } catch (ContextTooLargeException e) {
             // The set is still too large; prune once more on filenames only
             debug("Second pass still too large; performing a second filename-based prune.");
-            var secondFilenameResult = executeWithFilenamesOnly(prunedFiles, workspaceRepresentation);
+            var secondFilenameResult = createResult(askLlmDeepPruneFilenames(prunedFiles.stream().map(ProjectFile::toString).toList(), workspaceRepresentation));
             cumulativeUsage = addTokenUsage(cumulativeUsage, secondFilenameResult.tokenUsage());
 
             if (!secondFilenameResult.success) {
@@ -447,10 +457,7 @@ public class ContextAgent {
                 "Exactly one of filenames, summaries, or contentsMap must be non-empty";
 
         if (deepScan) {
-            if (filenames.isEmpty()) {
-                return askLlmDeepRecommendContext(summaries, contentsMap, workspaceRepresentation);
-            }
-            return askLlmDeepPruneFilenames(filenames, workspaceRepresentation);
+            return askLlmDeepRecommendContext(summaries, contentsMap, workspaceRepresentation);
         } else {
             return askLlmQuickRecommendContext(filenames, summaries, contentsMap, workspaceRepresentation);
         }
@@ -460,17 +467,32 @@ public class ContextAgent {
 
     private LlmRecommendation askLlmDeepPruneFilenames(List<String> filenames,
                                                        Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
+        // If the filename list is too large for one request, process it in parallel chunks
+        var filenameString = String.join("\n", filenames);
+        int filenameTokens = Messages.getApproximateTokens(filenameString);
+        if (filenameTokens > budgetPruning) {
+            return deepPruneFilenamesInChunks(filenames, workspaceRepresentation);
+        }
+
         var systemPrompt = """
-                You are an assistant that performs a first pass of identifying relevant code context based on a goal and the existing relevant information.
+                You are an assistant that performs a first pass of identifying relevant files based on a goal and the existing Workspace contents.
+                A second pass will be made using your recommended files, so the top priority is to make sure you
+                identify ALL potentially relevant files without leaving any out, even at the cost of some false positives.
                 """;
         var filenamePrompt = """
-                You are given a goal, the current workspace contents (if any), and a list of filenames.
-                Analyze the provided information and think carefully about how to achieve the goal. When you are ready,
-                list the potentially relevant filenames, one per line, including full paths. (If you need to reason about
-                individual files before then, use the name without the full path.)
+                Given the above goal and Workspace contents (if any), evaluate this list of filenames
+                while thinking carefully about how they may be relevant to the goal.
+               
+                Reason step-by-step:
+                 - Identify all files corresponding to class names explicitly mentioned in the <goal>.
+                 - Identify all files corresponding to class types used in the <workspace> code.
+                 - Think about how you would solve the <goal>, and identify additional files potentially relevant to your plan.
+                   For example, if the plan involves instantiating class Foo, or calling a method of class Bar,
+                   then Foo.java and Bar.java are relevant files.
+                 - Compare this combined list against the filenames available.
                 
-                A second pass will be made using your recommended files, so it is more important to avoid false negatives than false positives.
-                
+                Then, list the full path of each relevant filename, one per line.
+               
                 Here are the filenames to evaluate:
                 ```
                 %s
@@ -492,9 +514,37 @@ public class ContextAgent {
         debug("Invoking LLM to prune filenames (prompt size ~{} tokens)", promptTokens);
         var result = llm.sendRequest(messages);
         if (result.error() != null || result.isEmpty()) {
+            var error = result.error();
+            // litellm does an inconsistent job translating into ContextWindowExceededError. https://github.com/BrokkAi/brokk/issues/540
+            boolean contextError = error != null
+                    && error.getMessage() != null
+                    && error.getMessage().contains("context");
+            if (contextError && filenames.size() > 1) {
+                // Estimation was off; split the request and retry recursively
+                debug("LLM context-window error with {} filenames; splitting and retrying", filenames.size());
+                int mid = filenames.size() / 2;
+                var left = filenames.subList(0, mid);
+                var right = filenames.subList(mid, filenames.size());
+
+                var rec1 = askLlmDeepPruneFilenames(left, workspaceRepresentation);
+                var rec2 = askLlmDeepPruneFilenames(right, workspaceRepresentation);
+
+                // Merge the two halves
+                var mergedFiles = new ArrayList<ProjectFile>();
+                mergedFiles.addAll(rec1.recommendedFiles());
+                rec2.recommendedFiles().stream()
+                        .filter(pf -> !mergedFiles.contains(pf))
+                        .forEach(mergedFiles::add);
+
+                var mergedReasoning = (rec1.reasoning() + "\n" + rec2.reasoning()).strip();
+                var mergedUsage = addTokenUsage(rec1.tokenUsage(), rec2.tokenUsage());
+
+                return new LlmRecommendation(mergedFiles, List.of(), mergedReasoning, mergedUsage);
+            }
+
             logger.warn("Error ({}) from LLM during filename pruning: {}. Returning empty",
-                        result.error() != null ? result.error().getMessage() : "empty response",
-                        result.error());
+                        error != null ? error.getMessage() : "empty response",
+                        error);
             return LlmRecommendation.EMPTY;
         }
         var tokenUsage = result.tokenUsage();
@@ -502,6 +552,78 @@ public class ContextAgent {
                 .filter(f -> result.text().contains(f))
                 .toList();
         return new LlmRecommendation(toProjectFiles(selected), List.of(), result.text(), tokenUsage);
+    }
+
+    /**
+     * Execute filename pruning in parallel when the input exceeds the per-request limit.
+     */
+    private LlmRecommendation deepPruneFilenamesInChunks(List<String> filenames,
+                                                         Collection<ChatMessage> workspaceRepresentation) throws InterruptedException
+    {
+        debug("Chunking {} filenames for parallel pruning", filenames.size());
+
+        // Build chunks that fit within the remaining per-request budget
+        List<List<String>> chunks = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        int currentTokens = 0;
+
+        for (var fn : filenames) {
+            int t = Messages.getApproximateTokens(fn);
+            if (!current.isEmpty() && currentTokens + t > budgetPruning ) {
+                chunks.add(current);
+                current = new ArrayList<>();
+                currentTokens = 0;
+            }
+            current.add(fn);
+            currentTokens += t;
+        }
+        if (!current.isEmpty()) {
+            chunks.add(current);
+        }
+
+        debug("Created {} chunks for pruning", chunks.size());
+        if (chunks.size() == 1) {
+            // something went wrong, we have a single huge filename? this risks recursing infinitely
+            debug("Single filename chunk!?" + chunks.getFirst());
+            return new LlmRecommendation(List.of(), List.of(), "Unable to prune filenames");
+        }
+        if (chunks.size() > 100) {
+            debug("Too many chunks: " + chunks.size());
+            return new LlmRecommendation(List.of(), List.of(), "Unable to prune filenames");
+        }
+
+        List<Future<LlmRecommendation>> futures;
+        try (var executor = AdaptiveExecutor.create(cm.getService(), model, chunks.size())) {
+            List<Callable<LlmRecommendation>> tasks = new ArrayList<>(chunks.size());
+            for (var chunk : chunks) {
+                tasks.add(() -> {
+                    try {
+                        return askLlmDeepPruneFilenames(chunk, workspaceRepresentation);
+                    } catch (InterruptedException ie) {
+                        Thread.currentThread().interrupt();
+                        throw new RuntimeException(ie);
+                    }
+                });
+            }
+
+            futures = executor.invokeAll(tasks);
+        }
+
+        var combinedFiles = new ArrayList<ProjectFile>();
+        var combinedReasoning = new StringBuilder();
+        @Nullable Llm.RichTokenUsage combinedUsage = null;
+
+        for (var f : futures) {
+            try {
+                var rec = f.get();
+                rec.recommendedFiles().stream().filter(pf -> !combinedFiles.contains(pf)).forEach(combinedFiles::add);
+                if (!rec.reasoning().isBlank()) combinedReasoning.append(rec.reasoning()).append('\n');
+                combinedUsage = addTokenUsage(combinedUsage, rec.tokenUsage());
+            } catch (Exception e) {
+                logger.warn("Failed to retrieve chunk result", e);
+            }
+        }
+        return new LlmRecommendation(combinedFiles, List.of(), combinedReasoning.toString().strip(), combinedUsage);
     }
 
     private LlmRecommendation askLlmDeepRecommendContext(Map<CodeUnit, String> summaries,
@@ -530,18 +652,10 @@ public class ContextAgent {
         assert toolSpecs.size() == 1 : "Expected exactly one tool specification from ContextRecommendationTool";
 
         var deepPromptTemplate = """
-                                 You are an assistant that identifies relevant code context based on a goal and the existing relevant information.
-                                 You are given a goal, the current workspace contents (if any), and %s (within <%s> tags).
-                                 Analyze the provided information and determine which items are most relevant to achieving the goal.
-                                 You MUST call the `recommendContext` tool to provide your recommendations.
-                                 DO NOT recommend files or classes that are already in the Workspace.
-                                 Populate the `filesToAdd` argument with the full (relative) paths of files that will need to be edited as part of the goal,
-                                 or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary).
-                                 
-                                 Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
-                                 
-                                 Either or both of `filesToAdd` and `classesToSummarize` may be empty.
-                                 """.formatted(contextTypeDescription, contextTypeElement).stripIndent();
+                You are an assistant that identifies relevant code context based on a goal and the existing relevant information.
+                You are given a goal, the current workspace contents (if any), and %s (within <%s> tags).
+                Analyze the provided information and determine which items are most relevant to achieving the goal.
+                """.formatted(contextTypeDescription, contextTypeElement).stripIndent();
 
         var finalSystemMessage = new SystemMessage(deepPromptTemplate);
         var userMessageText = new StringBuilder();
@@ -566,12 +680,33 @@ public class ContextAgent {
             userMessageText.append("<%s>\n%s\n</%s>\n\n".formatted(contextTypeElement, filesText, contextTypeElement));
         }
 
-        userMessageText.append("Call the `recommendContext` tool with the appropriate entries from %s based on the goal and available context.".formatted(contextTypeElement));
         userMessageText.append("\n<goal>\n%s\n</goal>\n".formatted(goal));
+        var userPrompt = """
+                Identify code context relevant to the goal by calling `recommendContext`.
+                
+                Before calling `recommendContext`, reason step-by-step:
+                - Identify all class names explicitly mentioned in the <goal>.
+                - Identify all class types used in the <workspace> code.
+                - Think about how you would solve the <goal>, and identify additional classes relevant to your plan.
+                  For example, if the plan involves instantiating class Foo, or calling a method of class Bar,
+                  then Foo and Bar are relevant classes.
+                - Compare this combined list against the classes in <%s>.
+
+                Then call the `recommendContext` tool with the appropriate entries:
+
+                Populate the `filesToAdd` argument with the full (relative) paths of files that will need to be edited as part of the goal,
+                or whose implementation details are necessary. Put these files in `filesToAdd` (even if you are only shown a summary).
+                
+                Populate the `classesToSummarize` argument with the fully-qualified names of classes whose APIs will be used.
+                
+                Either or both of `filesToAdd` and `classesToSummarize` may be empty.
+                """.formatted(contextTypeElement);
+        userMessageText.append(userPrompt);
 
         // Construct final message list including workspace representation
         List<ChatMessage> messages = Stream.concat(Stream.of(finalSystemMessage),
-                                                   Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userMessageText.toString()))))
+                                                   Stream.concat(workspaceRepresentation.stream(),
+                                                                 Stream.of(new UserMessage(userMessageText.toString()))))
                 .toList();
 
         int promptTokens = Messages.getApproximateTokens(messages);
@@ -821,37 +956,6 @@ public class ContextAgent {
                 .filter(entry -> !entry.getValue().isEmpty()) // Filter out files that couldn't be read
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
     }
-
-    // --- Logic for pruning based on filenames only (fallback) ---
-
-    private RecommendationResult executeWithFilenamesOnly(List<ProjectFile> allFiles,
-                                                          Collection<ChatMessage> workspaceRepresentation)
-            throws InterruptedException
-    {
-        var filenameString = allFiles.stream()
-                .map(ProjectFile::toString)
-                .collect(Collectors.joining("\n"));
-        int filenameTokens = Messages.getApproximateTokens(filenameString);
-        debug("Total tokens for filename list: {}", filenameTokens);
-
-        if (filenameTokens > budgetPruning) {
-            // Too large even for the LLM to prune based on names
-            // TODO make multiple requests for Deep Scan mode
-            return new RecommendationResult(false, List.of(), "Filename list too large for LLM pruning budget.");
-        }
-
-        // Ask LLM to recommend files based *only* on paths
-        LlmRecommendation llmRecommendation;
-        try {
-            llmRecommendation = askLlmToRecommendContext(allFiles.stream().map(ProjectFile::toString).toList(), Map.of(), Map.of(), workspaceRepresentation);
-        } catch (ContextTooLargeException e) {
-            // TODO make multiple requests for Deep Scan mode
-            return new RecommendationResult(false, List.of(), "Filename list too large for LLM");
-        }
-
-        return createResult(llmRecommendation);
-    }
-
 
     // --- Helper methods ---
 
