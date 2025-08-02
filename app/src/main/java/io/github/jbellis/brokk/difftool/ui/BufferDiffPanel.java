@@ -21,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.text.BadLocationException;
+import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.EnumMap;
@@ -276,6 +277,26 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             fp.reDisplay();
         }
         mainPanel.repaint();
+    }
+
+    /**
+     * Synchronizes the BufferDocument's underlying document with the editor's document.
+     * This ensures both documents contain identical content after text modifications.
+     */
+    private void synchronizeDocuments(JTextComponent editor, BufferDocumentIF bufferDoc)
+    {
+        var srcDoc = editor.getDocument();
+        var dstDoc = bufferDoc.getDocument();
+        if (srcDoc != dstDoc) {              // copy only when different
+            try {
+                var len = srcDoc.getLength();
+                var text = srcDoc.getText(0, len);
+                dstDoc.remove(0, dstDoc.getLength());
+                dstDoc.insertString(0, text, null);
+            } catch (BadLocationException ex) {
+                throw new RuntimeException("Failed to synchronize documents", ex);
+            }
+        }
     }
 
     public String getTitle()
@@ -986,11 +1007,21 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 patch.getDeltas().remove(delta);
             }
 
+            // Synchronize BufferDocument with editor content
+            synchronizeDocuments(toEditor, toDoc);
+
             setSelectedDelta(null);
             setSelectedLine(sourceChunk.getPosition());
 
-            // Re-display so the chunk disappears immediately
-            reDisplay();
+            // --- keep model + view in sync ---------------------------------
+            // 1. Refresh BufferDocument caches so line/offset tables match the
+            //    text we just inserted/replaced.
+            toDoc.getLines(); // rebuilds internal cache
+
+            // 2. Re-diff to adjust the remaining deltas and refresh highlights.
+            diff(true);       // also repaints and recenters view if needed
+
+            // Update tab title to reflect potential dirty state
             mainPanel.refreshTabTitle(this);
         } catch (BadLocationException ex) {
             throw new RuntimeException("Error applying change operation", ex);
@@ -1030,11 +1061,15 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             patch.getDeltas().remove(delta);
         }
 
+        // Synchronize BufferDocument with editor content
+        synchronizeDocuments(toEditor, fromDoc);
+
         setSelectedDelta(null);
         setSelectedLine(chunk.getPosition());
 
-        // Refresh so the UI doesn't show that chunk anymore
-        reDisplay();
+        // --- keep model + view in sync ---------------------------------
+        fromDoc.getLines(); // rebuild cache after deletion
+        diff(true);         // recalc patch & refresh UI
         mainPanel.refreshTabTitle(this);
     }
 
