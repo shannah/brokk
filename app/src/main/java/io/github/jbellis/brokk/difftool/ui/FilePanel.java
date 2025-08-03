@@ -1157,13 +1157,9 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                     copyTextFallback(sourceDoc, destinationDoc);
                 }
             } else if (eventType == DocumentEvent.EventType.REMOVE) {
-                // Remove the same range from the destination document
-                if (offset < destinationDoc.getLength() && offset + length <= destinationDoc.getLength()) {
-                    destinationDoc.remove(offset, length);
-                } else {
-                    // Range is invalid, use fallback to resync
-                    copyTextFallback(sourceDoc, destinationDoc);
-                }
+                // Always use fallback for REMOVE operations to prevent any synchronization issues
+                // This is simpler and more reliable than trying to handle edge cases with incremental removal
+                copyTextFallback(sourceDoc, destinationDoc);
             } else if (eventType == DocumentEvent.EventType.CHANGE) {
                 // For change events, always use fallback to ensure consistency
                 copyTextFallback(sourceDoc, destinationDoc);
