@@ -72,6 +72,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
     // Track when typing state was last set to detect stuck states
     private volatile long lastTypingStateChange = System.currentTimeMillis();
 
+
     // Navigation state to ensure highlights appear when scrolling to diffs
     private final AtomicBoolean isNavigatingToDiff = new AtomicBoolean(false);
 
@@ -506,6 +507,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         return isActivelyTyping.get();
     }
 
+
     /**
      * Force reset typing state - used for recovery from stuck states
      */
@@ -832,7 +834,14 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
         boolean isUserEdit = de.getDocumentEvent() != null ||
                             (de.getStartLine() != -1 && de.getNumberOfLines() > 0);
 
-        if (isUserEdit) {
+        // Check if this is a programmatic change by consulting the scroll synchronizer
+        boolean isProgrammaticChange = false;
+        var scrollSync = diffPanel.getScrollSynchronizer();
+        if (scrollSync != null) {
+            isProgrammaticChange = scrollSync.isProgrammaticScroll();
+        }
+
+        if (isUserEdit && !isProgrammaticChange) {
             boolean wasTyping = isActivelyTyping.getAndSet(true);
             if (!wasTyping) {
                 lastTypingStateChange = System.currentTimeMillis();

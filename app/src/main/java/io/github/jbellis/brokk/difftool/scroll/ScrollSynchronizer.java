@@ -639,6 +639,23 @@ public class ScrollSynchronizer
     }
 
     /**
+     * Temporarily disable scroll synchronization during document operations.
+     * This prevents interference when applying diff deltas that modify document content.
+     *
+     * @param inProgress true to disable sync, false to re-enable
+     */
+    public void setProgrammaticScrollMode(boolean inProgress) {
+        syncState.setProgrammaticScroll(inProgress);
+    }
+
+    /**
+     * Check if a programmatic scroll operation is currently in progress.
+     */
+    public boolean isProgrammaticScroll() {
+        return syncState.isProgrammaticScroll();
+    }
+
+    /**
      * Record for throttling performance metrics.
      */
     public record ThrottlingMetrics(

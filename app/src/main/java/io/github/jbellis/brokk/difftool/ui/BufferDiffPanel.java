@@ -964,6 +964,11 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var toFilePanel = getFilePanel(toPanelIndex);
         if (fromFilePanel == null || toFilePanel == null) return;
 
+        // Remember current scroll position of the destination editor so we can
+        // restore it after the text operation (avoids jump to EOF).
+        var destinationViewport = toFilePanel.getScrollPane().getViewport();
+        var originalViewPosition = destinationViewport.getViewPosition();
+
         var fromDoc = fromFilePanel.getBufferDocument();
         var toDoc = toFilePanel.getBufferDocument();
         if (fromDoc == null || toDoc == null) return;
@@ -978,6 +983,11 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         if (fromOffset < 0) return;
         var toOffset = fromDoc.getOffsetForLine(fromLine + size);
         if (toOffset < 0) return;
+
+        // Coordinate with ScrollSynchronizer to prevent scroll interference
+        if (scrollSynchronizer != null) {
+            scrollSynchronizer.setProgrammaticScrollMode(true);
+        }
 
         try {
             var fromPlainDoc = fromDoc.getDocument();
@@ -1002,6 +1012,15 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 toEditor.getDocument().insertString(toToOffset, replacedText, null);
             }
 
+            // Restore caret and viewport *after* Swing processes the document
+            // events triggered by replaceSelection; this prevents the automatic
+            // scrollRectToVisible fired by the caret from moving the viewport
+            // to the end of the file.
+            SwingUtilities.invokeLater(() -> {
+                toEditor.setCaretPosition(toFromOffset);
+                destinationViewport.setViewPosition(originalViewPosition);
+            });
+
             // Remove this delta so we can't click it again
             if (patch != null) {
                 patch.getDeltas().remove(delta);
@@ -1010,21 +1029,24 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             // Synchronize BufferDocument with editor content
             synchronizeDocuments(toEditor, toDoc);
 
-            setSelectedDelta(null);
-            setSelectedLine(sourceChunk.getPosition());
-
             // --- keep model + view in sync ---------------------------------
             // 1. Refresh BufferDocument caches so line/offset tables match the
             //    text we just inserted/replaced.
             toDoc.getLines(); // rebuilds internal cache
 
             // 2. Re-diff to adjust the remaining deltas and refresh highlights.
-            diff(true);       // also repaints and recenters view if needed
+            diff(false);      // recalc patch & refresh UI without auto-scrolling
 
             // Update tab title to reflect potential dirty state
             mainPanel.refreshTabTitle(this);
         } catch (BadLocationException ex) {
             throw new RuntimeException("Error applying change operation", ex);
+        } finally {
+            // Re-enable scroll synchronization
+            var synchronizer = scrollSynchronizer;
+            if (synchronizer != null) {
+                SwingUtilities.invokeLater(() -> synchronizer.setProgrammaticScrollMode(false));
+            }
         }
     }
 
@@ -1051,26 +1073,40 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var toOffset = fromDoc.getOffsetForLine(fromLine + size);
         if (toOffset < 0) return;
 
-        var toEditor = fromFilePanel.getEditor();
-        toEditor.setSelectionStart(fromOffset);
-        toEditor.setSelectionEnd(toOffset);
-        toEditor.replaceSelection("");
-
-        // Remove the just-used delta
-        if (patch != null) {
-            patch.getDeltas().remove(delta);
+        // Coordinate with ScrollSynchronizer to prevent scroll interference
+        if (scrollSynchronizer != null) {
+            scrollSynchronizer.setProgrammaticScrollMode(true);
         }
 
-        // Synchronize BufferDocument with editor content
-        synchronizeDocuments(toEditor, fromDoc);
+        try {
+            var toEditor = fromFilePanel.getEditor();
+            toEditor.setSelectionStart(fromOffset);
+            toEditor.setSelectionEnd(toOffset);
 
-        setSelectedDelta(null);
-        setSelectedLine(chunk.getPosition());
+            toEditor.replaceSelection("");
 
-        // --- keep model + view in sync ---------------------------------
-        fromDoc.getLines(); // rebuild cache after deletion
-        diff(true);         // recalc patch & refresh UI
-        mainPanel.refreshTabTitle(this);
+            // Position caret at the start of the deleted section to prevent auto-scroll to end
+            toEditor.setCaretPosition(fromOffset);
+
+            // Remove the just-used delta
+            if (patch != null) {
+                patch.getDeltas().remove(delta);
+            }
+
+            // Synchronize BufferDocument with editor content
+            synchronizeDocuments(toEditor, fromDoc);
+
+            // --- keep model + view in sync ---------------------------------
+            fromDoc.getLines(); // rebuild cache after deletion
+            diff(false);        // recalc patch & refresh UI without auto-scrolling
+            mainPanel.refreshTabTitle(this);
+        } finally {
+            // Re-enable scroll synchronization
+            var synchronizer = scrollSynchronizer;
+            if (synchronizer != null) {
+                SwingUtilities.invokeLater(() -> synchronizer.setProgrammaticScrollMode(false));
+            }
+        }
     }
 
     /**
