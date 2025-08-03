@@ -122,8 +122,6 @@ class InsertDeltaHandlingTest {
             "CHANGE delta should extract actual line content: " + extractedText);
     }
 
-    // ===== Document Synchronization Tests =====
-
     @Test
     @DisplayName("Document synchronization concept - copy content between documents")
     void testDocumentSynchronizationConcept() throws Exception {
@@ -148,22 +146,6 @@ class InsertDeltaHandlingTest {
     }
 
     @Test
-    @DisplayName("Document synchronization concept - skip when same document")
-    void testDocumentSynchronizationConceptSameDocument() throws Exception {
-        // Arrange
-        PlainDocument sharedDoc = new PlainDocument();
-        sharedDoc.insertString(0, "Shared content", null);
-
-        // Act - synchronization should be skipped when documents are the same
-        if (sharedDoc != sharedDoc) {
-            fail("Should not reach this point for same document");
-        }
-
-        // Assert
-        assertEquals("Shared content", sharedDoc.getText(0, sharedDoc.getLength()));
-    }
-
-    @Test
     @DisplayName("Document synchronization concept - handle empty source")
     void testDocumentSynchronizationConceptEmptySource() throws Exception {
         // Arrange
@@ -172,7 +154,7 @@ class InsertDeltaHandlingTest {
         targetDoc.insertString(0, "Target content", null);
 
         // Act - copy empty content from source to target
-        if (sourceDoc != targetDoc) {
+        if (!sourceDoc.equals(targetDoc)) {
             String sourceContent = sourceDoc.getText(0, sourceDoc.getLength());
             targetDoc.remove(0, targetDoc.getLength());
             targetDoc.insertString(0, sourceContent, null);
@@ -183,23 +165,4 @@ class InsertDeltaHandlingTest {
         assertEquals(0, targetDoc.getLength());
     }
 
-    @Test
-    @DisplayName("Verify synchronizeDocuments method exists and is accessible")
-    void testSynchronizeDocumentsMethodExists() throws Exception {
-        // This test verifies that the synchronizeDocuments method exists
-        // and can be accessed via reflection
-        var method = BufferDiffPanel.class.getDeclaredMethod(
-            "synchronizeDocuments",
-            javax.swing.text.JTextComponent.class,
-            io.github.jbellis.brokk.difftool.doc.BufferDocumentIF.class
-        );
-        assertNotNull(method);
-
-        // Verify it's private (as intended)
-        assertTrue(java.lang.reflect.Modifier.isPrivate(method.getModifiers()));
-
-        // Verify it can be made accessible
-        method.setAccessible(true);
-        assertTrue(method.isAccessible());
-    }
 }

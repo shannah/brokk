@@ -1159,14 +1159,14 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
             } else if (eventType == DocumentEvent.EventType.REMOVE) {
                 // Always use fallback for REMOVE operations to prevent any synchronization issues
                 // This is simpler and more reliable than trying to handle edge cases with incremental removal
-                copyTextFallback(sourceDoc, destinationDoc);
+                BufferDiffPanel.synchronizeDocuments(sourceDoc, destinationDoc);
             } else if (eventType == DocumentEvent.EventType.CHANGE) {
                 // For change events, always use fallback to ensure consistency
-                copyTextFallback(sourceDoc, destinationDoc);
+                BufferDiffPanel.synchronizeDocuments(sourceDoc, destinationDoc);
             }
         } catch (BadLocationException ex) {
             // Fallback to full document copy only on error
-            copyTextFallback(sourceDoc, destinationDoc);
+            BufferDiffPanel.synchronizeDocuments(sourceDoc, destinationDoc);
         }
     }
 
@@ -1175,8 +1175,8 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
      * This preserves the original behavior but should only be used as a last resort.
      */
     private static void copyTextFallback(Document src, Document dst) {
+        // Only perform fallback if documents are significantly out of sync
         try {
-            // Only perform fallback if documents are significantly out of sync
             String srcText = src.getText(0, src.getLength());
             String dstText = dst.getText(0, dst.getLength());
 
@@ -1185,9 +1185,7 @@ public class FilePanel implements BufferDocumentChangeListenerIF, ThemeAware {
                 return;
             }
 
-            // If documents differ significantly, perform full copy as last resort
-            dst.remove(0, dst.getLength());
-            dst.insertString(0, srcText, null);
+            BufferDiffPanel.synchronizeDocuments(src, dst);
         } catch (BadLocationException e) {
             throw new RuntimeException("Document mirroring fallback failed", e);
         }

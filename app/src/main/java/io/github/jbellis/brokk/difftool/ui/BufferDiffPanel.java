@@ -21,6 +21,7 @@ import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
 import javax.swing.text.BadLocationException;
+import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.util.ArrayList;
@@ -280,14 +281,15 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     }
 
     /**
-     * Synchronizes the BufferDocument's underlying document with the editor's document.
-     * This ensures both documents contain identical content after text modifications.
+     * Synchronizes the content of a source Document to a destination Document.
+     * This is a fallback mechanism to ensure documents are identical.
+     *
+     * @param srcDoc the source document
+     * @param dstDoc the destination document
      */
-    private void synchronizeDocuments(JTextComponent editor, BufferDocumentIF bufferDoc)
+    public static void synchronizeDocuments(Document srcDoc, Document dstDoc)
     {
-        var srcDoc = editor.getDocument();
-        var dstDoc = bufferDoc.getDocument();
-        if (srcDoc != dstDoc) {              // copy only when different
+        if (srcDoc != dstDoc) { // copy only when different
             try {
                 var len = srcDoc.getLength();
                 var text = srcDoc.getText(0, len);
@@ -297,6 +299,14 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 throw new RuntimeException("Failed to synchronize documents", ex);
             }
         }
+    }
+
+    /**
+     * Synchronizes the BufferDocument's underlying document with the editor's document.
+     * This ensures both documents contain identical content after text modifications.
+     */
+    private void synchronizeDocuments(JTextComponent editor, BufferDocumentIF bufferDoc) {
+        synchronizeDocuments(editor.getDocument(), bufferDoc.getDocument());
     }
 
     public String getTitle()
@@ -950,6 +960,35 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         return isAsymmetric;
     }
 
+    @FunctionalInterface
+    private interface DocumentMutation {
+        void perform() throws BadLocationException;
+    }
+
+    private void applyDelta(AbstractDelta<String> delta, BufferDocumentIF changedDoc, JTextComponent changedEditor, DocumentMutation mutation) {
+        assert SwingUtilities.isEventDispatchThread();
+        try {
+            if (scrollSynchronizer != null) {
+                try (var ignored = scrollSynchronizer.programmaticSection()) {
+                    mutation.perform();
+                }
+            } else {
+                mutation.perform();
+            }
+
+            if (patch != null) {
+                patch.getDeltas().remove(delta);
+            }
+
+            synchronizeDocuments(changedEditor, changedDoc);
+            changedDoc.getLines(); // rebuild internal cache
+            diff(false); // recalc patch & refresh UI without auto-scrolling
+            mainPanel.refreshTabTitle(this);
+        } catch (Exception ex) {
+            throw new RuntimeException("Error applying delta operation", ex);
+        }
+    }
+
     /**
      * The "change" operation from left->right or right->left.
      * We replicate the old logic, then remove the used delta from the patch
@@ -957,6 +996,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      */
     public void runChange(int fromPanelIndex, int toPanelIndex, boolean shift)
     {
+        assert SwingUtilities.isEventDispatchThread();
         var delta = getSelectedDelta();
         if (delta == null) return;
 
@@ -964,8 +1004,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var toFilePanel = getFilePanel(toPanelIndex);
         if (fromFilePanel == null || toFilePanel == null) return;
 
-        // Remember current scroll position of the destination editor so we can
-        // restore it after the text operation (avoids jump to EOF).
         var destinationViewport = toFilePanel.getScrollPane().getViewport();
         var originalViewPosition = destinationViewport.getViewPosition();
 
@@ -973,7 +1011,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var toDoc = toFilePanel.getBufferDocument();
         if (fromDoc == null || toDoc == null) return;
 
-        // Decide which side is "source" vs "target" chunk
         var sourceChunk = (fromPanelIndex < toPanelIndex) ? delta.getSource() : delta.getTarget();
         var targetChunk = (fromPanelIndex < toPanelIndex) ? delta.getTarget() : delta.getSource();
 
@@ -984,12 +1021,8 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var toOffset = fromDoc.getOffsetForLine(fromLine + size);
         if (toOffset < 0) return;
 
-        // Coordinate with ScrollSynchronizer to prevent scroll interference
-        if (scrollSynchronizer != null) {
-            scrollSynchronizer.setProgrammaticScrollMode(true);
-        }
-
-        try {
+        var toEditor = toFilePanel.getEditor();
+        applyDelta(delta, toDoc, toEditor, () -> {
             var fromPlainDoc = fromDoc.getDocument();
             var replacedText = fromPlainDoc.getText(fromOffset, toOffset - fromOffset);
 
@@ -1000,54 +1033,20 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             var toToOffset = toDoc.getOffsetForLine(toLine + toSize);
             if (toToOffset < 0) return;
 
-            var toEditor = toFilePanel.getEditor();
             toEditor.setSelectionStart(toFromOffset);
             toEditor.setSelectionEnd(toToOffset);
 
-            // SHIFT -> Insert after the existing chunk
             if (!shift) {
                 toEditor.replaceSelection(replacedText);
             } else {
-                // Insert at the end, effectively appending
                 toEditor.getDocument().insertString(toToOffset, replacedText, null);
             }
 
-            // Restore caret and viewport *after* Swing processes the document
-            // events triggered by replaceSelection; this prevents the automatic
-            // scrollRectToVisible fired by the caret from moving the viewport
-            // to the end of the file.
             SwingUtilities.invokeLater(() -> {
                 toEditor.setCaretPosition(toFromOffset);
                 destinationViewport.setViewPosition(originalViewPosition);
             });
-
-            // Remove this delta so we can't click it again
-            if (patch != null) {
-                patch.getDeltas().remove(delta);
-            }
-
-            // Synchronize BufferDocument with editor content
-            synchronizeDocuments(toEditor, toDoc);
-
-            // --- keep model + view in sync ---------------------------------
-            // 1. Refresh BufferDocument caches so line/offset tables match the
-            //    text we just inserted/replaced.
-            toDoc.getLines(); // rebuilds internal cache
-
-            // 2. Re-diff to adjust the remaining deltas and refresh highlights.
-            diff(false);      // recalc patch & refresh UI without auto-scrolling
-
-            // Update tab title to reflect potential dirty state
-            mainPanel.refreshTabTitle(this);
-        } catch (BadLocationException ex) {
-            throw new RuntimeException("Error applying change operation", ex);
-        } finally {
-            // Re-enable scroll synchronization
-            var synchronizer = scrollSynchronizer;
-            if (synchronizer != null) {
-                SwingUtilities.invokeLater(() -> synchronizer.setProgrammaticScrollMode(false));
-            }
-        }
+        });
     }
 
     /**
@@ -1055,6 +1054,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * Afterward, remove the delta so it doesn't stay clickable.
      */
     public void runDelete(int fromPanelIndex, int toPanelIndex) {
+        assert SwingUtilities.isEventDispatchThread();
         var delta = getSelectedDelta();
         if (delta == null) return;
 
@@ -1073,40 +1073,13 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var toOffset = fromDoc.getOffsetForLine(fromLine + size);
         if (toOffset < 0) return;
 
-        // Coordinate with ScrollSynchronizer to prevent scroll interference
-        if (scrollSynchronizer != null) {
-            scrollSynchronizer.setProgrammaticScrollMode(true);
-        }
-
-        try {
-            var toEditor = fromFilePanel.getEditor();
-            toEditor.setSelectionStart(fromOffset);
-            toEditor.setSelectionEnd(toOffset);
-
-            toEditor.replaceSelection("");
-
-            // Position caret at the start of the deleted section to prevent auto-scroll to end
-            toEditor.setCaretPosition(fromOffset);
-
-            // Remove the just-used delta
-            if (patch != null) {
-                patch.getDeltas().remove(delta);
-            }
-
-            // Synchronize BufferDocument with editor content
-            synchronizeDocuments(toEditor, fromDoc);
-
-            // --- keep model + view in sync ---------------------------------
-            fromDoc.getLines(); // rebuild cache after deletion
-            diff(false);        // recalc patch & refresh UI without auto-scrolling
-            mainPanel.refreshTabTitle(this);
-        } finally {
-            // Re-enable scroll synchronization
-            var synchronizer = scrollSynchronizer;
-            if (synchronizer != null) {
-                SwingUtilities.invokeLater(() -> synchronizer.setProgrammaticScrollMode(false));
-            }
-        }
+        var editor = fromFilePanel.getEditor();
+        applyDelta(delta, fromDoc, editor, () -> {
+            editor.setSelectionStart(fromOffset);
+            editor.setSelectionEnd(toOffset);
+            editor.replaceSelection("");
+            editor.setCaretPosition(fromOffset);
+        });
     }
 
     /**
