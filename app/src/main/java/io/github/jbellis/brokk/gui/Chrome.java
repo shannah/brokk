@@ -404,7 +404,6 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // JMHighlightPainter.initializePainters(); // Removed: Painters are now created dynamically with theme colors
         // Initialize theme manager now that all components are created
         // and contextManager should be properly set
-        // historyOutputPanel.getLlmScrollPane() is now @NotNull
         themeManager = new GuiTheme(frame, historyOutputPanel.getLlmScrollPane(), this);
 
         // Apply current theme based on project settings
@@ -580,7 +579,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     public void actionComplete() {
         SwingUtilities.invokeLater(() -> instructionsPanel.clearCommandResultText());
     }
-    
+
     @Override
     public void llmOutput(String token, ChatMessageType type, boolean isNewMessage) {
         SwingUtilities.invokeLater(() -> historyOutputPanel.appendLlmOutput(token, type, isNewMessage));
@@ -741,7 +740,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Add 5px gap below the top panel
         topPanel.setBorder(new EmptyBorder(0, 0, 5, 0));
-    
+
         // Add components to content panel
         contentPanel.add(topPanel, BorderLayout.NORTH);
         contentPanel.add(contentComponent, BorderLayout.CENTER);

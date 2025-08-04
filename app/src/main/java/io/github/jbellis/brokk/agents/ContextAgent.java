@@ -6,7 +6,6 @@ import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.prompts.CodePrompts;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
@@ -173,8 +172,8 @@ public class ContextAgent {
      */
     public RecommendationResult getRecommendations(boolean allowSkipPruning) throws InterruptedException {
         Collection<ChatMessage> workspaceRepresentation;
-        workspaceRepresentation = deepScan 
-                                  ? CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()) 
+        workspaceRepresentation = deepScan
+                                  ? CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext())
                                   : CodePrompts.instance.getWorkspaceSummaryMessages(cm.liveContext());
         budgetPruning -= Messages.getApproximateTokens(workspaceRepresentation);
         var allFiles = cm.getProject().getAllFiles().stream().sorted().toList();
@@ -313,7 +312,7 @@ public class ContextAgent {
     private LlmRecommendation recommendInChunks(List<Map<CodeUnit, String>> chunks,
                                                 Collection<ChatMessage> workspaceRepresentation,
                                                 int recursionDepth)
-            throws InterruptedException 
+            throws InterruptedException
     {
         debug("Requesting parallel recommendations for {} chunks", chunks.size());
 
@@ -399,7 +398,7 @@ public class ContextAgent {
         return finalRecommendation;
     }
 
-    private @NotNull List<Map<CodeUnit, String>> partitionSummaries(Map<CodeUnit, String> rawSummaries, int tokensPerMessage) {
+    private List<Map<CodeUnit, String>> partitionSummaries(Map<CodeUnit, String> rawSummaries, int tokensPerMessage) {
         // Partition summaries into chunks that fit within the pruning budget
         List<Map<CodeUnit, String>> chunks = new ArrayList<>();
         var currentChunkSummaries = new LinkedHashMap<CodeUnit, String>();
@@ -498,7 +497,7 @@ public class ContextAgent {
     private LlmRecommendation askLlmToRecommendContext(List<String> filenames,
                                                        Map<CodeUnit, String> summaries,
                                                        Map<ProjectFile, String> contentsMap,
-                                                       Collection<ChatMessage> workspaceRepresentation) 
+                                                       Collection<ChatMessage> workspaceRepresentation)
             throws InterruptedException
     {
         if (deepScan) {
