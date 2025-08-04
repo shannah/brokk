@@ -95,7 +95,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     * Recalculate dirty status by checking if any FilePanel has unsaved changes.
     * When the state changes, update tab title and toolbar buttons.
     */
-    private void recalcDirty() {
+    void recalcDirty() {
             // Check if either side has unsaved changes (document changed since last save)
             boolean newDirty = filePanels.values().stream().anyMatch(FilePanel::isDocumentChanged);
 
@@ -965,9 +965,26 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         void perform() throws BadLocationException;
     }
 
-    private void applyDelta(AbstractDelta<String> delta, BufferDocumentIF changedDoc, JTextComponent changedEditor, DocumentMutation mutation) {
+    private void applyDelta(AbstractDelta<String> delta, BufferDocumentIF changedDoc, JTextComponent changedEditor, DocumentMutation mutation, String operationType) {
         assert SwingUtilities.isEventDispatchThread();
+
+        // Create snapshots before applying changes
+        var patchSnapshot = createPatchSnapshot();
+        var selectedDeltaSnapshot = selectedDelta;
+        var documentEdits = new java.util.ArrayList<javax.swing.undo.UndoableEdit>();
+
+        // Create a custom undo listener to capture document edits during the mutation
+        var editCapture = new javax.swing.event.UndoableEditListener() {
+            @Override
+            public void undoableEditHappened(javax.swing.event.UndoableEditEvent e) {
+                documentEdits.add(e.getEdit());
+            }
+        };
+
         try {
+            // Temporarily add the edit capture listener
+            changedEditor.getDocument().addUndoableEditListener(editCapture);
+
             if (scrollSynchronizer != null) {
                 try (var ignored = scrollSynchronizer.programmaticSection()) {
                     mutation.perform();
@@ -976,17 +993,47 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 mutation.perform();
             }
 
+            // Remove the delta from patch
             if (patch != null) {
                 patch.getDeltas().remove(delta);
             }
 
             synchronizeDocuments(changedEditor, changedDoc);
             changedDoc.getLines(); // rebuild internal cache
+
+            // Create and add the compound undo operation
+            if (!documentEdits.isEmpty()) {
+                var chunkEdit = new ChunkApplicationEdit(
+                    this, delta, documentEdits, patchSnapshot, selectedDeltaSnapshot, operationType);
+                getUndoHandler().add(chunkEdit);
+            }
+
             diff(false); // recalc patch & refresh UI without auto-scrolling
             mainPanel.refreshTabTitle(this);
+
         } catch (Exception ex) {
             throw new RuntimeException("Error applying delta operation", ex);
+        } finally {
+            // Always remove the temporary listener
+            changedEditor.getDocument().removeUndoableEditListener(editCapture);
         }
+    }
+
+    /**
+     * Creates a deep copy snapshot of the current patch state for undo operations.
+     */
+    @Nullable
+    private com.github.difflib.patch.Patch<String> createPatchSnapshot() {
+        if (patch == null) {
+            return null;
+        }
+
+        // Create a new patch with copies of all deltas
+        var snapshot = new com.github.difflib.patch.Patch<String>();
+        for (var delta : patch.getDeltas()) {
+            snapshot.addDelta(delta);
+        }
+        return snapshot;
     }
 
     /**
@@ -1022,6 +1069,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         if (toOffset < 0) return;
 
         var toEditor = toFilePanel.getEditor();
+        var operationType = shift ? "Apply Change (Insert)" : "Apply Change (Replace)";
         applyDelta(delta, toDoc, toEditor, () -> {
             var fromPlainDoc = fromDoc.getDocument();
             var replacedText = fromPlainDoc.getText(fromOffset, toOffset - fromOffset);
@@ -1046,7 +1094,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 toEditor.setCaretPosition(toFromOffset);
                 destinationViewport.setViewPosition(originalViewPosition);
             });
-        });
+        }, operationType);
     }
 
     /**
@@ -1079,7 +1127,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             editor.setSelectionEnd(toOffset);
             editor.replaceSelection("");
             editor.setCaretPosition(fromOffset);
-        });
+        }, "Delete Chunk");
     }
 
     /**
@@ -1135,7 +1183,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     {
         super.doUndo();
         mainPanel.updateUndoRedoButtons();
-        // Recalculate diff and redraw highlights after undo
+        // ChunkApplicationEdit handles its own patch state restoration and diff() calls
+        // For regular document edits, we still need diff recalculation, so always call it
+        // The ChunkApplicationEdit.undo() will call diff() anyway, so this ensures consistency
         diff(true); // Scroll to selection since this is user-initiated
         recalcDirty();
     }
@@ -1145,7 +1195,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     {
         super.doRedo();
         mainPanel.updateUndoRedoButtons();
-        // Recalculate diff and redraw highlights after redo
+        // ChunkApplicationEdit handles its own patch state restoration and diff() calls
+        // For regular document edits, we still need diff recalculation, so always call it
+        // The ChunkApplicationEdit.redo() will call diff() anyway, so this ensures consistency
         diff(true); // Scroll to selection since this is user-initiated
         recalcDirty();
     }
