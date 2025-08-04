@@ -91,6 +91,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      */
     private boolean dirtySinceOpen = false;
 
+
     /**
     * Recalculate dirty status by checking if any FilePanel has unsaved changes.
     * When the state changes, update tab title and toolbar buttons.
@@ -1418,4 +1419,5 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             fp.clearSearchCache();
         }
     }
+
 }
