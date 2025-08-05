@@ -834,6 +834,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return false;
     }
 
+
     /**
      * undo changes until we reach the target FROZEN context
      */
@@ -1231,7 +1232,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         return """
                %s
-               
+
                ## Environment
                - Brokk version: %s
                - Project: %s (%d native files, %d total including dependencies)
@@ -1413,7 +1414,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     int choice = io.showConfirmDialog("""
                                                       The conversation history is getting long (%,d lines or about %,d tokens).
                                                       Compressing it can improve performance and reduce cost.
-                                                      
+
                                                       Compress history now?
                                                       """.formatted(cf.format().split("\n").length, tokenCount),
                                                       "Compress History?",
@@ -1701,7 +1702,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                         Based on these code examples, create a concise, clear coding style guide in Markdown format
                                         that captures the conventions used in this codebase, particularly the ones that leverage new or uncommon features.
                                         DO NOT repeat what are simply common best practices.
-                                        
+
                                         %s
                                         """.stripIndent().formatted(codeForLLM))
                 );

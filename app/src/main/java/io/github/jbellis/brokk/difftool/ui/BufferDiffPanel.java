@@ -7,6 +7,7 @@ import com.github.difflib.patch.Patch;
 import com.jgoodies.forms.layout.CellConstraints;
 import com.jgoodies.forms.layout.FormLayout;
 import dev.langchain4j.data.message.ChatMessage;
+import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
@@ -123,6 +124,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     private final Map<String, String> contentBeforeChanges = new ConcurrentHashMap<>();
 
 
+
     /**
     * Recalculate dirty status by checking if any FilePanel has unsaved changes.
     * When the state changes, update tab title and toolbar buttons.
@@ -161,6 +163,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
         // Let the mainPanel keep a reference to us for toolbar/undo/redo interplay
         mainPanel.setBufferDiffPanel(this);
+
 
         init();
         setFocusable(true);
@@ -1042,6 +1045,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
             diff(false); // recalc patch & refresh UI without auto-scrolling
             mainPanel.refreshTabTitle(this);
+            recalcDirty(); // Update dirty state after document changes
 
         } catch (Exception ex) {
             throw new RuntimeException("Error applying delta operation", ex);
@@ -1130,8 +1134,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             });
         }, operationType);
 
-        // Create immediate history entry for this chunk operation
-        SwingUtilities.invokeLater(() -> createImmediateHistoryEntry(toDoc, operationType));
+        // History entries are now created only on explicit save, not on individual chunk operations
     }
 
     /**
@@ -1170,8 +1173,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
         }, "Delete Chunk");
 
-        // Create immediate history entry for this chunk operation
-        SwingUtilities.invokeLater(() -> createImmediateHistoryEntry(fromDoc, "Delete Chunk"));
+        // History entries are now created only on explicit save, not on individual chunk operations
     }
 
     /**
@@ -1206,10 +1208,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             var diffChangesCopy = new HashMap<>(pendingDiffChanges);
             var contentBeforeChangesCopy = new HashMap<>(contentBeforeChanges);
 
-            // Clear the tracking maps immediately to prevent memory leaks
-            pendingDiffChanges.clear();
-            contentBeforeChanges.clear();
-
             // Process in background thread
             CompletableFuture.supplyAsync(() -> {
                 generateDiffChangeActivityEntriesAsync(diffChangesCopy, contentBeforeChangesCopy);
@@ -1218,6 +1216,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 logger.error("Failed to generate diff change activity entries in background", ex);
                 return null;
             });
+
+            // After processing, update baseline content for next save (like PreviewTextPanel)
+            updateBaselineContentAfterSave();
         }
 
         // After saving, recalculate dirty status (should be false since undo history is cleared)
@@ -1428,6 +1429,11 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
     @Override
     public void dispose() {
+
+        // Clear tracking maps
+        pendingDiffChanges.clear();
+        contentBeforeChanges.clear();
+
         // Dispose of file panels to clean up their timers and listeners
         for (var fp : filePanels.values()) {
             fp.dispose();
@@ -1496,13 +1502,25 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     private void recordDiffChange(BufferDocumentIF doc) {
         var filename = doc.getShortName();
 
-        // Save the original content before the first change to this file
-        // Using putIfAbsent for thread-safe atomic operation
-        if (contentBeforeChanges.get(filename) == null) {
+        // Capture baseline content before changes (first time or if no changes pending)
+        if (contentBeforeChanges.get(filename) == null || pendingDiffChanges.get(filename) == null) {
             try {
                 var document = doc.getDocument();
                 var content = document.getText(0, document.getLength());
-                contentBeforeChanges.putIfAbsent(filename, content);
+
+                // Only update baseline if no changes are pending (start of new change cycle)
+                if (pendingDiffChanges.get(filename) == null) {
+                    contentBeforeChanges.put(filename, content);
+                } else {
+                    // First time seeing this file, use putIfAbsent
+                    contentBeforeChanges.putIfAbsent(filename, content);
+                }
+
+                // Add file to editable context - this preserves original content for undo
+                var contextManager = mainPanel.getContextManager();
+                var projectFile = new ProjectFile(contextManager.getRoot(), filename);
+                contextManager.editFiles(List.of(projectFile));
+
             } catch (BadLocationException e) {
                 logger.warn("Failed to capture original content for diff change tracking: {}", filename, e);
             }
@@ -1576,10 +1594,18 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var projectRoot = contextManager.getProject().getRoot();
 
         try {
-            if (doc instanceof FileDocument) {
-                var fullPath = Paths.get(doc.getName());
+            if (doc instanceof FileDocument fileDoc) {
+                // Try absolute path first
+                var fullPath = Paths.get(fileDoc.getName());
                 if (fullPath.toFile().exists()) {
                     var relativePath = projectRoot.relativize(fullPath);
+                    return new ProjectFile(projectRoot, relativePath);
+                }
+
+                // If that fails, try resolving against project root
+                var resolvedPath = projectRoot.resolve(fileDoc.getName());
+                if (resolvedPath.toFile().exists()) {
+                    var relativePath = projectRoot.relativize(resolvedPath);
                     return new ProjectFile(projectRoot, relativePath);
                 }
             } else {
@@ -1601,6 +1627,12 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     }
 
     private void createHistoryEntry(String filename, int changeCount, String originalContent, FileData fileData) {
+        if (fileData.projectFile == null) {
+            logSimpleMessage(filename, changeCount);
+            return;
+        }
+
+        // Generate unified diff (same as PreviewTextPanel approach)
         var originalLines = originalContent.lines().collect(Collectors.toList());
         var currentLines = fileData.currentContent.lines().collect(Collectors.toList());
         var patch = DiffUtils.diff(originalLines, currentLines);
@@ -1608,33 +1640,21 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
         var actionDescription = formatDiffActionDescription(changeCount, filename);
 
-        var messagesForHistory = List.<ChatMessage>of(
-            Messages.customSystem("# Diff changes applied\\n\\n```diff\\n" + unifiedDiff + "\\n```"));
+        // Create TaskResult with unified diff (same pattern as PreviewTextPanel)
+        var messagesForHistory = new ArrayList<ChatMessage>();
+        messagesForHistory.add(Messages.customSystem("Diff operation: " + actionDescription));
+        messagesForHistory.add(Messages.customSystem("# Diff of changes\n\n```%s```".formatted(unifiedDiff)));
 
-        var affectedFiles = fileData.projectFile != null
-            ? Set.of(fileData.projectFile)
-            : Set.<ProjectFile>of();
+        var diffResult = new TaskResult(mainPanel.getContextManager(),
+                                      actionDescription,
+                                      messagesForHistory,
+                                      Set.of(fileData.projectFile),
+                                      TaskResult.StopReason.SUCCESS);
 
-        var diffResult = createTaskResult(actionDescription, messagesForHistory, affectedFiles);
-
-        addToHistoryWithFileSwap(diffResult, fileData.projectFile, originalContent);
+        // Add to history using standard mechanism (editable file system handles undo)
+        mainPanel.getContextManager().addToHistory(diffResult, false);
     }
 
-    private void addToHistoryWithFileSwap(TaskResult diffResult, @Nullable ProjectFile projectFile, String originalContent) {
-        if (projectFile != null) {
-            try {
-                var currentModifiedContent = projectFile.read();
-                projectFile.write(originalContent);
-                mainPanel.getContextManager().addToHistory(diffResult, false);
-                projectFile.write(currentModifiedContent);
-            } catch (Exception e) {
-                logger.error("Failed to create proper history entry: {}", e.getMessage());
-                mainPanel.getContextManager().addToHistory(diffResult, false);
-            }
-        } else {
-            mainPanel.getContextManager().addToHistory(diffResult, false);
-        }
-    }
 
     private void logSimpleMessage(String filename, int changeCount) {
         var message = formatDiffActionDescription(changeCount, filename);
@@ -1650,68 +1670,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         contentBeforeChanges.clear();
     }
 
-    /**
-     * Creates an immediate history entry for a chunk operation instead of waiting for save.
-     * This ensures each chunk operation can be individually undone from the activity history.
-     */
-    private void createImmediateHistoryEntry(BufferDocumentIF doc, String operationType) {
-        try {
-            var filename = doc.getShortName();
-            var originalContent = contentBeforeChanges.get(filename);
-
-            if (originalContent == null) {
-                logger.warn("No diff change recorded for immediate history entry: {}", filename);
-                return;
-            }
-
-            if (!hasContentChanged(doc, originalContent)) {
-                return;
-            }
-
-            var projectFile = createProjectFile(doc, filename);
-            if (projectFile == null) {
-                logger.warn("Could not create ProjectFile for immediate history entry: {}", filename);
-                return;
-            }
-
-            createAndAddHistoryEntry(filename, operationType, originalContent, projectFile);
-            cleanupTrackingData(filename);
-
-        } catch (Exception e) {
-            logger.error("Failed to create immediate history entry for {}: {}", doc.getShortName(), e.getMessage(), e);
-        }
-    }
-
-    private boolean hasContentChanged(BufferDocumentIF doc, String originalContent) {
-        try {
-            var document = doc.getDocument();
-            var currentContent = document.getText(0, document.getLength());
-            return !originalContent.equals(currentContent);
-        } catch (BadLocationException e) {
-            logger.warn("Failed to get current content for history entry: {}", doc.getShortName(), e);
-            return false;
-        }
-    }
-
-    private void createAndAddHistoryEntry(String filename, String operationType, String originalContent, ProjectFile projectFile) {
-        var actionDescription = operationType + " applied to " + filename;
-        var messagesForHistory = List.<ChatMessage>of(Messages.customSystem("Diff operation: " + operationType));
-        var affectedFiles = Set.of(projectFile);
-
-        var diffResult = createTaskResult(actionDescription, messagesForHistory, affectedFiles);
-
-        var virtualFragment = new io.github.jbellis.brokk.context.ContextFragment.StringFragment(
-            mainPanel.getContextManager(), originalContent,
-            "Immediate diff change backup for " + filename, "java");
-
-        mainPanel.getContextManager().pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(virtualFragment));
-        mainPanel.getContextManager().addToHistory(diffResult, false);
-    }
-
-    private void cleanupTrackingData(String filename) {
-        pendingDiffChanges.remove(filename);
-        contentBeforeChanges.remove(filename);
-    }
 
     private String formatDiffActionDescription(int changeCount, String filename) {
         return changeCount == 1
@@ -1719,8 +1677,41 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             : "Applied " + changeCount + " diff changes to " + filename;
     }
 
-    private TaskResult createTaskResult(String actionDescription, List<ChatMessage> messagesForHistory, Set<ProjectFile> affectedFiles) {
-        return new TaskResult(mainPanel.getContextManager(), actionDescription,
-                             messagesForHistory, affectedFiles, TaskResult.StopReason.SUCCESS);
+    /**
+     * Updates the baseline content after save to track future changes (like PreviewTextPanel).
+     * This allows multiple saves to each create history entries.
+     */
+    private void updateBaselineContentAfterSave() {
+        // Reset counters for next save cycle
+        pendingDiffChanges.clear();
+
+        // Update baseline content to current content for each tracked file
+        var updatedBaseline = new HashMap<String, String>();
+        for (var entry : contentBeforeChanges.entrySet()) {
+            var filename = entry.getKey();
+
+            // Find current content for this file
+            for (var fp : filePanels.values()) {
+                var doc = fp.getBufferDocument();
+                if (doc != null && filename.equals(doc.getShortName())) {
+                    try {
+                        var document = doc.getDocument();
+                        var currentContent = document.getText(0, document.getLength());
+                        updatedBaseline.put(filename, currentContent);
+                        break;
+                    } catch (Exception e) {
+                        logger.warn("Failed to update baseline content for {}: {}", filename, e.getMessage());
+                        // Keep old baseline if we can't read current content
+                        updatedBaseline.put(filename, entry.getValue());
+                    }
+                }
+            }
+        }
+
+        // Replace the baseline with current content
+        contentBeforeChanges.clear();
+        contentBeforeChanges.putAll(updatedBaseline);
     }
+
+
 }
