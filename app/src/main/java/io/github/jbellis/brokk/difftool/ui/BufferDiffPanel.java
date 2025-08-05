@@ -10,7 +10,9 @@ import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.difftool.doc.BufferDocumentIF;
+import io.github.jbellis.brokk.difftool.doc.FileDocument;
 import io.github.jbellis.brokk.difftool.doc.JMDocumentEvent;
+import io.github.jbellis.brokk.difftool.doc.StringDocument;
 import io.github.jbellis.brokk.difftool.node.BufferNode;
 import io.github.jbellis.brokk.difftool.node.JMDiffNode;
 import io.github.jbellis.brokk.difftool.scroll.DiffScrollComponent;
@@ -31,13 +33,16 @@ import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
 import java.awt.*;
 import java.io.IOException;
+import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.concurrent.CompletableFuture;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
@@ -106,14 +111,16 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Tracks applied diff operations that haven't been saved yet.
      * Maps filename to count of operations applied.
+     * Thread-safe to handle concurrent access from EDT and background threads.
      */
-    private final Map<String, Integer> pendingDiffChanges = new HashMap<>();
+    private final Map<String, Integer> pendingDiffChanges = new ConcurrentHashMap<>();
 
     /**
      * Tracks the content of files before any diff changes were applied.
      * Used to generate unified diffs showing what changes were made.
+     * Thread-safe to handle concurrent access from EDT and background threads.
      */
-    private final Map<String, String> contentBeforeChanges = new HashMap<>();
+    private final Map<String, String> contentBeforeChanges = new ConcurrentHashMap<>();
 
 
     /**
@@ -1106,6 +1113,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             var toToOffset = toDoc.getOffsetForLine(toLine + toSize);
             if (toToOffset < 0) return;
 
+            // Record that this file was modified by a diff operation BEFORE applying changes
+            recordDiffChange(toDoc);
+
             toEditor.setSelectionStart(toFromOffset);
             toEditor.setSelectionEnd(toToOffset);
 
@@ -1114,15 +1124,14 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             } else {
                 toEditor.getDocument().insertString(toToOffset, replacedText, null);
             }
-
-            // Record that this file was modified by a diff operation
-            recordDiffChange(toDoc);
             SwingUtilities.invokeLater(() -> {
                 toEditor.setCaretPosition(toFromOffset);
                 destinationViewport.setViewPosition(originalViewPosition);
             });
         }, operationType);
 
+        // Create immediate history entry for this chunk operation
+        SwingUtilities.invokeLater(() -> createImmediateHistoryEntry(toDoc, operationType));
     }
 
     /**
@@ -1151,15 +1160,18 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
         var editor = fromFilePanel.getEditor();
         applyDelta(delta, fromDoc, editor, () -> {
+            // Record that this file was modified by a diff operation BEFORE applying changes
+            recordDiffChange(fromDoc);
+
             editor.setSelectionStart(fromOffset);
             editor.setSelectionEnd(toOffset);
             editor.replaceSelection("");
             editor.setCaretPosition(fromOffset);
 
-            // Record that this file was modified by a diff operation
-            recordDiffChange(fromDoc);
-
         }, "Delete Chunk");
+
+        // Create immediate history entry for this chunk operation
+        SwingUtilities.invokeLater(() -> createImmediateHistoryEntry(fromDoc, "Delete Chunk"));
     }
 
     /**
@@ -1188,7 +1200,25 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         }
 
         // Generate activity entries for files that had diff changes applied
-        generateDiffChangeActivityEntries();
+        // Move expensive operations to background thread to avoid blocking UI
+        if (!pendingDiffChanges.isEmpty()) {
+            // Capture current state for background processing
+            var diffChangesCopy = new HashMap<>(pendingDiffChanges);
+            var contentBeforeChangesCopy = new HashMap<>(contentBeforeChanges);
+
+            // Clear the tracking maps immediately to prevent memory leaks
+            pendingDiffChanges.clear();
+            contentBeforeChanges.clear();
+
+            // Process in background thread
+            CompletableFuture.supplyAsync(() -> {
+                generateDiffChangeActivityEntriesAsync(diffChangesCopy, contentBeforeChangesCopy);
+                return null;
+            }).exceptionally(ex -> {
+                logger.error("Failed to generate diff change activity entries in background", ex);
+                return null;
+            });
+        }
 
         // After saving, recalculate dirty status (should be false since undo history is cleared)
         recalcDirty();
@@ -1467,32 +1497,37 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         var filename = doc.getShortName();
 
         // Save the original content before the first change to this file
-        if (!contentBeforeChanges.containsKey(filename)) {
+        // Using putIfAbsent for thread-safe atomic operation
+        if (contentBeforeChanges.get(filename) == null) {
             try {
                 var document = doc.getDocument();
                 var content = document.getText(0, document.getLength());
-                contentBeforeChanges.put(filename, content);
+                contentBeforeChanges.putIfAbsent(filename, content);
             } catch (BadLocationException e) {
                 logger.warn("Failed to capture original content for diff change tracking: {}", filename, e);
             }
         }
 
+        // Thread-safe atomic increment
         pendingDiffChanges.merge(filename, 1, Integer::sum);
     }
 
+
     /**
-     * Generate undoable activity entries for files that had diff changes applied.
-     * Called after successful save operations to record the changes in session history.
-     * Creates TaskResult objects with unified diffs showing what changes were applied.
+     * Asynchronous version of generateDiffChangeActivityEntries that can run on background threads.
+     * This method is safe to call from any thread as it uses copies of the tracking data.
+     *
+     * @param diffChanges Copy of pending diff changes
+     * @param contentBefore Copy of original content before changes
      */
-    private void generateDiffChangeActivityEntries() {
-        if (pendingDiffChanges.isEmpty()) {
+    private void generateDiffChangeActivityEntriesAsync(Map<String, Integer> diffChanges, Map<String, String> contentBefore) {
+        if (diffChanges.isEmpty()) {
             return;
         }
 
         var contextManager = mainPanel.getContextManager();
 
-        for (var entry : pendingDiffChanges.entrySet()) {
+        for (var entry : diffChanges.entrySet()) {
             var filename = entry.getKey();
             var changeCount = entry.getValue();
 
@@ -1509,13 +1544,52 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                             var document = doc.getDocument();
                             currentContent = document.getText(0, document.getLength());
 
-                            // Try to get the underlying file and convert to ProjectFile
+                            // Try to create ProjectFile for this document
+                            // Handle both FileDocument and StringDocument (used in diff panels)
                             if (doc instanceof io.github.jbellis.brokk.difftool.doc.FileDocument) {
-                                // Create ProjectFile from the filename path
+                                // For FileDocument, use the file path directly
                                 var project = contextManager.getProject();
-                                var filePath = java.nio.file.Paths.get(doc.getName());
+                                var fullPath = java.nio.file.Paths.get(doc.getName());
+
+                                if (fullPath.toFile().exists()) {
+                                    try {
+                                        // Convert absolute path to relative path within project
+                                        var projectRoot = project.getRoot();
+                                        var relativePath = projectRoot.relativize(fullPath);
+                                        projectFile = new ProjectFile(projectRoot, relativePath);
+                                    } catch (Exception e) {
+                                        logger.warn("Failed to create ProjectFile for {}: {}", fullPath, e.getMessage());
+                                    }
+                                }
+                            } else {
+                                // For StringDocument or other types, try to create ProjectFile from filename
+                                // This handles diff panels where documents might be StringDocument instances
+                                var project = contextManager.getProject();
+                                var projectRoot = project.getRoot();
+
+                                // Try the filename as-is first
+                                var filePath = projectRoot.resolve(filename);
+
                                 if (filePath.toFile().exists()) {
-                                    projectFile = new ProjectFile(project.getRoot(), filePath);
+                                    try {
+                                        projectFile = new ProjectFile(projectRoot, java.nio.file.Paths.get(filename));
+                                    } catch (Exception e) {
+                                        logger.warn("Failed to create ProjectFile from filename {}: {}", filename, e.getMessage());
+                                    }
+                                } else {
+                                    // Try using doc.getName() if it's a path
+                                    try {
+                                        var docNamePath = java.nio.file.Paths.get(doc.getName());
+                                        if (docNamePath.toFile().exists()) {
+                                            var relativePath = projectRoot.relativize(docNamePath);
+                                            projectFile = new ProjectFile(projectRoot, relativePath);
+                                        } else {
+                                            logger.warn("Could not find file for StringDocument: filename='{}', doc.getName()='{}'",
+                                                filename, doc.getName());
+                                        }
+                                    } catch (Exception e) {
+                                        logger.warn("Failed to create ProjectFile from doc.getName() {}: {}", doc.getName(), e.getMessage());
+                                    }
                                 }
                             }
                         } catch (Exception e) {
@@ -1526,7 +1600,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 }
 
                 // Get the original content before changes
-                var originalContent = contentBeforeChanges.get(filename);
+                var originalContent = contentBefore.get(filename);
                 if (originalContent != null && currentContent != null) {
                     // Generate unified diff showing the changes applied
                     var originalLines = originalContent.lines().collect(Collectors.toList());
@@ -1554,21 +1628,42 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                     Set<ProjectFile> affectedFiles = new HashSet<>();
                     if (projectFile != null) {
                         affectedFiles.add(projectFile);
+                    } else {
+                        logger.warn("projectFile is null, affectedFiles will be empty for file: {}", filename);
                     }
 
-                    var diffResult = new TaskResult(contextManager,
+                    var diffResult = new TaskResult(mainPanel.getContextManager(),
                                                     actionDescription,
                                                     messagesForHistory,
                                                     affectedFiles,
                                                     TaskResult.StopReason.SUCCESS);
 
                     // Add to context history as undoable entry
-                    contextManager.addToHistory(diffResult, false);
-                    logger.debug("Added undoable history entry for diff changes in: {}", filename);
+                    // PROPER APPROACH: Temporarily write original content to file during addToHistory, then restore modified content
+                    if (projectFile != null) {
+                        try {
+                            // Save current modified content
+                            var currentModifiedContent = projectFile.read();
+
+                            // Temporarily write original content to file (for context freeze to capture)
+                            projectFile.write(originalContent);
+
+                            // Add to history - the context freeze will capture the original content from the file
+                            mainPanel.getContextManager().addToHistory(diffResult, false);
+
+                            // Restore the modified content so user sees their changes
+                            projectFile.write(currentModifiedContent);
+                        } catch (Exception e) {
+                            logger.error("Failed to create proper history entry for {}: {}", filename, e.getMessage());
+                            // Fallback to regular addToHistory without file manipulation
+                            mainPanel.getContextManager().addToHistory(diffResult, false);
+                        }
+                    } else {
+                        logger.warn("projectFile is null, using regular addToHistory");
+                        mainPanel.getContextManager().addToHistory(diffResult, false);
+                    }
                 } else {
                     // Fallback to simple logging if we can't generate diff
-                    logger.debug("Cannot generate diff for {}: originalContent={}, currentContent={}",
-                               filename, originalContent != null, currentContent != null);
 
                     String message;
                     if (changeCount == 1) {
@@ -1590,10 +1685,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 mainPanel.getConsoleIO().systemOutput(message);
             }
         }
-
-        // Clear pending changes counter, but keep contentBeforeChanges for future saves
-        pendingDiffChanges.clear();
-        // Note: contentBeforeChanges is kept to allow proper diffs on subsequent saves
     }
 
     /**
@@ -1603,5 +1694,87 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     public void clearDiffChangeTracking() {
         pendingDiffChanges.clear();
         contentBeforeChanges.clear();
+    }
+
+    /**
+     * Creates an immediate history entry for a chunk operation instead of waiting for save.
+     * This ensures each chunk operation can be individually undone from the activity history.
+     */
+    private void createImmediateHistoryEntry(BufferDocumentIF doc, String operationType) {
+        try {
+            var filename = doc.getShortName();
+            var originalContent = contentBeforeChanges.get(filename);
+            if (originalContent == null) {
+                logger.warn("No diff change recorded for immediate history entry: {}", filename);
+                return;
+            }
+
+            var document = doc.getDocument();
+            var currentContent = document.getText(0, document.getLength());
+
+            // Only create history entry if content actually changed
+            if (originalContent.equals(currentContent)) {
+                return;
+            }
+
+            // Create ProjectFile for history entry
+            ProjectFile projectFile = null;
+            try {
+                if (doc instanceof FileDocument fileDoc) {
+                    var fullPath = Paths.get(fileDoc.getName());
+                    var projectRoot = mainPanel.getContextManager().getProject().getRoot();
+                    var relativePath = projectRoot.relativize(fullPath);
+                    projectFile = new ProjectFile(projectRoot, relativePath);
+                } else if (doc instanceof StringDocument) {
+                    var path = Paths.get(filename);
+                    if (path.isAbsolute()) {
+                        var projectRoot = mainPanel.getContextManager().getProject().getRoot();
+                        var relativePath = projectRoot.relativize(path);
+                        projectFile = new ProjectFile(projectRoot, relativePath);
+                    } else {
+                        projectFile = new ProjectFile(mainPanel.getContextManager().getProject().getRoot(), path);
+                    }
+                }
+            } catch (Exception e) {
+                logger.warn("Failed to create ProjectFile for immediate history: {}", e.getMessage());
+                return;
+            }
+
+            if (projectFile == null) {
+                logger.warn("Could not create ProjectFile for immediate history entry: {}", filename);
+                return;
+            }
+
+            // Create TaskResult for this operation
+            var messagesForHistory = List.<ChatMessage>of(Messages.customSystem("Diff operation: " + operationType));
+            var affectedFiles = Set.of(projectFile);
+            var actionDescription = operationType + " applied to " + filename;
+
+            var diffResult = new TaskResult(mainPanel.getContextManager(),
+                                          actionDescription,
+                                          messagesForHistory,
+                                          affectedFiles,
+                                          TaskResult.StopReason.SUCCESS);
+
+            // SAFE APPROACH: Use virtual fragment instead of file manipulation
+            // Create a virtual fragment containing the original content for undo purposes
+            var virtualFragment = new io.github.jbellis.brokk.context.ContextFragment.StringFragment(
+                                       mainPanel.getContextManager(),
+                                       originalContent,
+                                       "Immediate diff change backup for " + filename,
+                                       "java");
+
+            // Add the virtual fragment to the context for history capture
+            mainPanel.getContextManager().pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(virtualFragment));
+
+            mainPanel.getContextManager().addToHistory(diffResult, false);
+
+            // Remove this operation from pending changes and clear original content to prevent memory leak
+            pendingDiffChanges.remove(filename);
+            contentBeforeChanges.remove(filename);
+
+        } catch (Exception e) {
+            logger.error("Failed to create immediate history entry for {}: {}", doc.getShortName(), e.getMessage(), e);
+        }
     }
 }

@@ -98,8 +98,8 @@ public class ContextHistory {
             return true;
         }
         if (logger.isWarnEnabled()) {
-            logger.warn("Attempted to select context {} not present in history (history size: {}, available contexts: {})", 
-                       ctx == null ? "null" : ctx, 
+            logger.warn("Attempted to select context {} not present in history (history size: {}, available contexts: {})",
+                       ctx == null ? "null" : ctx,
                        history.size(),
                        history.stream().map(Context::toString).collect(java.util.stream.Collectors.joining(", ")));
         }
@@ -208,12 +208,9 @@ public class ContextHistory {
 
     private void truncateHistory() {
         while (history.size() > MAX_DEPTH) {
-            var removed = history.removeFirst();
+            history.removeFirst();
             var historyIds = history.stream().map(Context::id).collect(java.util.stream.Collectors.toSet());
             resetEdges.removeIf(edge -> !historyIds.contains(edge.sourceId()) || !historyIds.contains(edge.targetId()));
-            if (logger.isDebugEnabled()) {
-                logger.debug("Truncated history (removed oldest context: {})", removed);
-            }
         }
     }
 
@@ -244,6 +241,7 @@ public class ContextHistory {
             return;
         }
         assert !frozenContext.containsDynamicFragments();
+
         frozenContext.editableFiles.forEach(fragment -> {
             assert fragment.getType() == ContextFragment.FragmentType.PROJECT_PATH : fragment.getType();
             assert fragment.files().size() == 1 : fragment.files();
@@ -252,14 +250,15 @@ public class ContextHistory {
             try {
                 var newContent = fragment.text();
                 var currentContent = pf.exists() ? pf.read() : "";
-                
+
                 if (!newContent.equals(currentContent)) {
-                    var restoredFiles = new ArrayList<String>();
                     pf.write(newContent);
+                    var restoredFiles = new ArrayList<String>();
                     restoredFiles.add(pf.toString());
                     if (!restoredFiles.isEmpty()) {
                         io.systemOutput("Restored files: " + String.join(", ", restoredFiles));
                     }
+                    io.updateWorkspace();
                 }
             } catch (IOException e) {
                 io.toolError("Failed to restore file " + pf + ": " + e.getMessage(), "Error");
