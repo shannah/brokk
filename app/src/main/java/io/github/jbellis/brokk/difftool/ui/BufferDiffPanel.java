@@ -29,17 +29,21 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 import javax.swing.*;
+import javax.swing.event.UndoableEditListener;
 import javax.swing.text.BadLocationException;
 import javax.swing.text.Document;
 import javax.swing.text.JTextComponent;
+import javax.swing.undo.UndoableEdit;
 import java.awt.*;
 import java.io.IOException;
 import java.nio.file.Paths;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.concurrent.CompletableFuture;
 import java.util.EnumMap;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -112,18 +116,22 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     /**
      * Tracks applied diff operations that haven't been saved yet.
      * Maps filename to count of operations applied.
-     * Thread-safe to handle concurrent access from EDT and background threads.
      */
     private final Map<String, Integer> pendingDiffChanges = new ConcurrentHashMap<>();
 
     /**
      * Tracks the content of files before any diff changes were applied.
      * Used to generate unified diffs showing what changes were made.
-     * Thread-safe to handle concurrent access from EDT and background threads.
      */
-    private final Map<String, String> contentBeforeChanges = new ConcurrentHashMap<>();
-
-
+    private final Map<String, String> contentBeforeChanges = Collections.synchronizedMap(
+        new LinkedHashMap<String, String>(16, 0.75f, true) {
+            private static final int MAX_ENTRIES = 100; // Limit to 100 files
+            @Override
+            protected boolean removeEldestEntry(Map.Entry<String, String> eldest) {
+                return size() > MAX_ENTRIES;
+            }
+        }
+    );
 
     /**
     * Recalculate dirty status by checking if any FilePanel has unsaved changes.
@@ -1003,23 +1011,57 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
     private void applyDelta(AbstractDelta<String> delta, BufferDocumentIF changedDoc, JTextComponent changedEditor, DocumentMutation mutation, String operationType) {
         assert SwingUtilities.isEventDispatchThread();
 
-        // Create snapshots before applying changes
-        var patchSnapshot = createPatchSnapshot();
-        var selectedDeltaSnapshot = selectedDelta;
-        var documentEdits = new java.util.ArrayList<javax.swing.undo.UndoableEdit>();
+        var undoState = captureUndoState(delta);
+        var documentEdits = new ArrayList<javax.swing.undo.UndoableEdit>();
+        var editCapture = createEditCaptureListener(documentEdits);
 
-        // Create a custom undo listener to capture document edits during the mutation
-        var editCapture = new javax.swing.event.UndoableEditListener() {
+        executeWithEditTracking(changedEditor, editCapture, () -> {
+            performDocumentMutation(mutation);
+            updatePatchState(delta);
+            synchronizeAndRefreshDocuments(changedEditor, changedDoc);
+            createUndoOperation(delta, documentEdits, undoState, operationType);
+            refreshUserInterface();
+        });
+    }
+
+    private UndoState captureUndoState(AbstractDelta<String> delta) {
+        var originalDeltaIndex = patch != null ? patch.getDeltas().indexOf(delta) : null;
+        var selectedDeltaSnapshot = selectedDelta;
+        return new UndoState(originalDeltaIndex, selectedDeltaSnapshot);
+    }
+
+    private UndoableEditListener createEditCaptureListener(List<UndoableEdit> documentEdits) {
+        return new javax.swing.event.UndoableEditListener() {
             @Override
             public void undoableEditHappened(javax.swing.event.UndoableEditEvent e) {
                 documentEdits.add(e.getEdit());
             }
         };
+    }
+
+    private void executeWithEditTracking(JTextComponent editor, UndoableEditListener editCapture, Runnable operation) {
+        var document = editor.getDocument();
+        boolean listenerAdded = false;
 
         try {
-            // Temporarily add the edit capture listener
-            changedEditor.getDocument().addUndoableEditListener(editCapture);
+            document.addUndoableEditListener(editCapture);
+            listenerAdded = true;
+            operation.run();
+        } catch (Exception ex) {
+            throw new RuntimeException("Error applying delta operation", ex);
+        } finally {
+            if (listenerAdded && editor.getDocument() == document) {
+                try {
+                    document.removeUndoableEditListener(editCapture);
+                } catch (Exception e) {
+                    logger.warn("Failed to remove UndoableEditListener, potential resource leak", e);
+                }
+            }
+        }
+    }
 
+    private void performDocumentMutation(DocumentMutation mutation) {
+        try {
             if (scrollSynchronizer != null) {
                 try (var ignored = scrollSynchronizer.programmaticSection()) {
                     mutation.perform();
@@ -1027,50 +1069,38 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             } else {
                 mutation.perform();
             }
-
-            // Remove the delta from patch
-            if (patch != null) {
-                patch.getDeltas().remove(delta);
-            }
-
-            synchronizeDocuments(changedEditor, changedDoc);
-            changedDoc.getLines(); // rebuild internal cache
-
-            // Create and add the compound undo operation
-            if (!documentEdits.isEmpty()) {
-                var chunkEdit = new ChunkApplicationEdit(
-                    this, delta, documentEdits, patchSnapshot, selectedDeltaSnapshot, operationType);
-                getUndoHandler().add(chunkEdit);
-            }
-
-            diff(false); // recalc patch & refresh UI without auto-scrolling
-            mainPanel.refreshTabTitle(this);
-            recalcDirty(); // Update dirty state after document changes
-
-        } catch (Exception ex) {
-            throw new RuntimeException("Error applying delta operation", ex);
-        } finally {
-            // Always remove the temporary listener
-            changedEditor.getDocument().removeUndoableEditListener(editCapture);
+        } catch (Exception e) {
+            throw new RuntimeException("Failed to perform document mutation", e);
         }
     }
 
-    /**
-     * Creates a deep copy snapshot of the current patch state for undo operations.
-     */
-    @Nullable
-    private com.github.difflib.patch.Patch<String> createPatchSnapshot() {
-        if (patch == null) {
-            return null;
+    private void updatePatchState(AbstractDelta<String> delta) {
+        if (patch != null) {
+            patch.getDeltas().remove(delta);
         }
-
-        // Create a new patch with copies of all deltas
-        var snapshot = new com.github.difflib.patch.Patch<String>();
-        for (var delta : patch.getDeltas()) {
-            snapshot.addDelta(delta);
-        }
-        return snapshot;
     }
+
+    private void synchronizeAndRefreshDocuments(JTextComponent changedEditor, BufferDocumentIF changedDoc) {
+        synchronizeDocuments(changedEditor, changedDoc);
+        changedDoc.getLines(); // rebuild internal cache
+    }
+
+    private void createUndoOperation(AbstractDelta<String> delta, List<UndoableEdit> documentEdits, UndoState undoState, String operationType) {
+        if (!documentEdits.isEmpty()) {
+            var chunkEdit = new ChunkApplicationEdit(
+                this, delta, documentEdits, undoState.originalDeltaIndex(), undoState.selectedDeltaSnapshot(), operationType);
+            getUndoHandler().add(chunkEdit);
+        }
+    }
+
+    private void refreshUserInterface() {
+        diff(false); // recalc patch & refresh UI without auto-scrolling
+        mainPanel.refreshTabTitle(this);
+        recalcDirty(); // Update dirty state after document changes
+    }
+
+    private record UndoState(@Nullable Integer originalDeltaIndex, @Nullable AbstractDelta<String> selectedDeltaSnapshot) {}
+
 
     /**
      * The "change" operation from left->right or right->left.
@@ -1133,8 +1163,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 destinationViewport.setViewPosition(originalViewPosition);
             });
         }, operationType);
-
-        // History entries are now created only on explicit save, not on individual chunk operations
     }
 
     /**
@@ -1172,8 +1200,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             editor.setCaretPosition(fromOffset);
 
         }, "Delete Chunk");
-
-        // History entries are now created only on explicit save, not on individual chunk operations
     }
 
     /**
@@ -1251,8 +1277,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         super.doUndo();
         mainPanel.updateUndoRedoButtons();
         // ChunkApplicationEdit handles its own patch state restoration and diff() calls
-        // For regular document edits, we still need diff recalculation, so always call it
-        // The ChunkApplicationEdit.undo() will call diff() anyway, so this ensures consistency
         diff(true); // Scroll to selection since this is user-initiated
         recalcDirty();
     }
@@ -1263,8 +1287,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         super.doRedo();
         mainPanel.updateUndoRedoButtons();
         // ChunkApplicationEdit handles its own patch state restoration and diff() calls
-        // For regular document edits, we still need diff recalculation, so always call it
-        // The ChunkApplicationEdit.redo() will call diff() anyway, so this ensures consistency
         diff(true); // Scroll to selection since this is user-initiated
         recalcDirty();
     }
@@ -1496,8 +1518,6 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
     /**
      * Records that a diff operation was applied to a file.
-     * Used for generating activity entries when files are saved.
-     * @param doc the document that was modified
      */
     private void recordDiffChange(BufferDocumentIF doc) {
         var filename = doc.getShortName();
@@ -1530,13 +1550,15 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         pendingDiffChanges.merge(filename, 1, Integer::sum);
     }
 
+    /**
+     * Records a manual edit (typing, paste, etc.) on a document for history tracking.
+     */
+    public void recordManualEdit(BufferDocumentIF doc) {
+        recordDiffChange(doc);
+    }
 
     /**
      * Asynchronous version of generateDiffChangeActivityEntries that can run on background threads.
-     * This method is safe to call from any thread as it uses copies of the tracking data.
-     *
-     * @param diffChanges Copy of pending diff changes
-     * @param contentBefore Copy of original content before changes
      */
     private void generateDiffChangeActivityEntriesAsync(Map<String, Integer> diffChanges, Map<String, String> contentBefore) {
         if (diffChanges.isEmpty()) {

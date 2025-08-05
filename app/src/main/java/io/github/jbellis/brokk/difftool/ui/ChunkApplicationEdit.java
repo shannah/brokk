@@ -11,6 +11,8 @@ import javax.swing.undo.CannotRedoException;
 import javax.swing.undo.CannotUndoException;
 import javax.swing.undo.UndoableEdit;
 import java.util.ArrayList;
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -27,31 +29,24 @@ public class ChunkApplicationEdit extends AbstractUndoableEdit {
     private final AbstractDelta<String> appliedDelta;
     private final List<UndoableEdit> documentEdits;
     @Nullable
-    private final Patch<String> patchSnapshot;
+    private final Integer originalDeltaIndex;
     @Nullable
     private final AbstractDelta<String> selectedDeltaSnapshot;
     private final String operationType;
 
     /**
      * Creates a new chunk application edit that can be undone/redone.
-     *
-     * @param diffPanel the diff panel where the operation occurred
-     * @param appliedDelta the delta that was applied
-     * @param documentEdits the document edits that occurred during application
-     * @param patchSnapshot snapshot of patch state before the operation
-     * @param selectedDeltaSnapshot the selected delta before the operation
-     * @param operationType description of the operation (e.g., "Apply Change", "Delete Chunk")
      */
     public ChunkApplicationEdit(BufferDiffPanel diffPanel,
                                AbstractDelta<String> appliedDelta,
                                List<UndoableEdit> documentEdits,
-                               @Nullable Patch<String> patchSnapshot,
+                               @Nullable Integer originalDeltaIndex,
                                @Nullable AbstractDelta<String> selectedDeltaSnapshot,
                                String operationType) {
         this.diffPanel = diffPanel;
         this.appliedDelta = appliedDelta;
         this.documentEdits = new ArrayList<>(documentEdits);
-        this.patchSnapshot = patchSnapshot;
+        this.originalDeltaIndex = originalDeltaIndex;
         this.selectedDeltaSnapshot = selectedDeltaSnapshot;
         this.operationType = operationType;
     }
@@ -73,10 +68,11 @@ public class ChunkApplicationEdit extends AbstractUndoableEdit {
             // Restore the patch state by re-adding the delta that was removed
             var currentPatch = diffPanel.getPatch();
             if (currentPatch != null && !currentPatch.getDeltas().contains(appliedDelta)) {
-                // Verify the delta should be restored using the snapshot if available
-                boolean shouldRestore = patchSnapshot == null || patchSnapshot.getDeltas().contains(appliedDelta);
-                if (shouldRestore) {
-                    // Find the correct position to insert the delta back
+                // Insert the delta back at its original position if we have it, otherwise find correct position
+                if (originalDeltaIndex != null && originalDeltaIndex >= 0 && originalDeltaIndex <= currentPatch.getDeltas().size()) {
+                    currentPatch.getDeltas().add(originalDeltaIndex, appliedDelta);
+                } else {
+                    // Fallback to position-based insertion
                     insertDeltaInCorrectPosition(currentPatch, appliedDelta);
                 }
             }
@@ -150,20 +146,17 @@ public class ChunkApplicationEdit extends AbstractUndoableEdit {
 
     /**
      * Insert the delta back into the patch at the correct position based on line numbers.
-     * This maintains the sorted order of deltas in the patch.
+     * This maintains the sorted order of deltas in the patch using binary search for O(log n) performance.
      */
     private void insertDeltaInCorrectPosition(Patch<String> patch, AbstractDelta<String> delta) {
         var deltas = patch.getDeltas();
-        int insertPosition = 0;
 
-        // Find the correct insertion point to maintain line number ordering
-        for (int i = 0; i < deltas.size(); i++) {
-            if (deltas.get(i).getSource().getPosition() > delta.getSource().getPosition()) {
-                insertPosition = i;
-                break;
-            }
-            insertPosition = i + 1;
-        }
+        // Use binary search to find the correct insertion position
+        int searchResult = Collections.binarySearch(deltas, delta,
+            Comparator.comparingInt(d -> d.getSource().getPosition()));
+
+        // If searchResult is negative, convert to insertion point
+        int insertPosition = searchResult < 0 ? -(searchResult + 1) : searchResult;
 
         deltas.add(insertPosition, delta);
     }

@@ -108,8 +108,8 @@ public class ContextHistory {
             return true;
         }
         if (logger.isWarnEnabled()) {
-            logger.warn("Attempted to select context {} not present in history (history size: {}, available contexts: {})",
-                       ctx == null ? "null" : ctx,
+            logger.warn("Attempted to select context {} not present in history (history size: {}, available contexts: {})", 
+                       ctx == null ? "null" : ctx, 
                        history.size(),
                        history.stream().map(Context::toString).collect(java.util.stream.Collectors.joining(", ")));
         }
@@ -218,9 +218,13 @@ public class ContextHistory {
 
     private void truncateHistory() {
         while (history.size() > MAX_DEPTH) {
-            history.removeFirst();
+            var removed = history.removeFirst();
+            gitStates.remove(removed.id());
             var historyIds = history.stream().map(Context::id).collect(java.util.stream.Collectors.toSet());
             resetEdges.removeIf(edge -> !historyIds.contains(edge.sourceId()) || !historyIds.contains(edge.targetId()));
+            if (logger.isDebugEnabled()) {
+                logger.debug("Truncated history (removed oldest context: {})", removed);
+            }
         }
     }
 
@@ -263,7 +267,6 @@ public class ContextHistory {
             return;
         }
         assert !frozenContext.containsDynamicFragments();
-
         frozenContext.editableFiles.forEach(fragment -> {
             assert fragment.getType() == ContextFragment.FragmentType.PROJECT_PATH : fragment.getType();
             assert fragment.files().size() == 1 : fragment.files();
