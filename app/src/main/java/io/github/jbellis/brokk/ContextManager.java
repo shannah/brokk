@@ -831,7 +831,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return true;
         }
 
-        logger.info("Undo failed - no states to undo or other issue");
         return false;
     }
 
@@ -1791,6 +1790,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         var action = result.actionDescription();
+        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, result.changedFiles(), result.stopDetails());
 
         // Create TaskEntry based on the current liveContext
         TaskEntry newEntry = liveContext().createTaskEntry(result);

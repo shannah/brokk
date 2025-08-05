@@ -1525,166 +1525,120 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
             return;
         }
 
-        var contextManager = mainPanel.getContextManager();
-
         for (var entry : diffChanges.entrySet()) {
             var filename = entry.getKey();
             var changeCount = entry.getValue();
 
             try {
-                // Get the current content after changes
-                String currentContent = null;
-                ProjectFile projectFile = null;
-
-                // Find the document with this filename
-                for (var fp : filePanels.values()) {
-                    var doc = fp.getBufferDocument();
-                    if (doc != null && filename.equals(doc.getShortName())) {
-                        try {
-                            var document = doc.getDocument();
-                            currentContent = document.getText(0, document.getLength());
-
-                            // Try to create ProjectFile for this document
-                            // Handle both FileDocument and StringDocument (used in diff panels)
-                            if (doc instanceof io.github.jbellis.brokk.difftool.doc.FileDocument) {
-                                // For FileDocument, use the file path directly
-                                var project = contextManager.getProject();
-                                var fullPath = java.nio.file.Paths.get(doc.getName());
-
-                                if (fullPath.toFile().exists()) {
-                                    try {
-                                        // Convert absolute path to relative path within project
-                                        var projectRoot = project.getRoot();
-                                        var relativePath = projectRoot.relativize(fullPath);
-                                        projectFile = new ProjectFile(projectRoot, relativePath);
-                                    } catch (Exception e) {
-                                        logger.warn("Failed to create ProjectFile for {}: {}", fullPath, e.getMessage());
-                                    }
-                                }
-                            } else {
-                                // For StringDocument or other types, try to create ProjectFile from filename
-                                // This handles diff panels where documents might be StringDocument instances
-                                var project = contextManager.getProject();
-                                var projectRoot = project.getRoot();
-
-                                // Try the filename as-is first
-                                var filePath = projectRoot.resolve(filename);
-
-                                if (filePath.toFile().exists()) {
-                                    try {
-                                        projectFile = new ProjectFile(projectRoot, java.nio.file.Paths.get(filename));
-                                    } catch (Exception e) {
-                                        logger.warn("Failed to create ProjectFile from filename {}: {}", filename, e.getMessage());
-                                    }
-                                } else {
-                                    // Try using doc.getName() if it's a path
-                                    try {
-                                        var docNamePath = java.nio.file.Paths.get(doc.getName());
-                                        if (docNamePath.toFile().exists()) {
-                                            var relativePath = projectRoot.relativize(docNamePath);
-                                            projectFile = new ProjectFile(projectRoot, relativePath);
-                                        } else {
-                                            logger.warn("Could not find file for StringDocument: filename='{}', doc.getName()='{}'",
-                                                filename, doc.getName());
-                                        }
-                                    } catch (Exception e) {
-                                        logger.warn("Failed to create ProjectFile from doc.getName() {}: {}", doc.getName(), e.getMessage());
-                                    }
-                                }
-                            }
-                        } catch (Exception e) {
-                            logger.warn("Failed to get current content for diff change history: {}", filename, e);
-                        }
-                        break;
-                    }
+                var fileData = findFileData(filename);
+                if (fileData == null) {
+                    logSimpleMessage(filename, changeCount);
+                    continue;
                 }
 
-                // Get the original content before changes
                 var originalContent = contentBefore.get(filename);
-                if (originalContent != null && currentContent != null) {
-                    // Generate unified diff showing the changes applied
-                    var originalLines = originalContent.lines().collect(Collectors.toList());
-                    var currentLines = currentContent.lines().collect(Collectors.toList());
-                    var patch = DiffUtils.diff(originalLines, currentLines);
-                    var unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(filename,
-                                                                            filename,
-                                                                            originalLines,
-                                                                            patch,
-                                                                            3);
-
-                    // Create TaskResult with the diff information
-                    String actionDescription;
-                    if (changeCount == 1) {
-                        actionDescription = "Applied diff change to " + filename;
-                    } else {
-                        actionDescription = "Applied " + changeCount + " diff changes to " + filename;
-                    }
-
-                    // Create message list with the diff
-                    var messagesForHistory = new ArrayList<ChatMessage>();
-                    messagesForHistory.add(Messages.customSystem("# Diff changes applied\\n\\n```diff\\n" + unifiedDiff + "\\n```"));
-
-                    // Determine which files were affected
-                    Set<ProjectFile> affectedFiles = new HashSet<>();
-                    if (projectFile != null) {
-                        affectedFiles.add(projectFile);
-                    } else {
-                        logger.warn("projectFile is null, affectedFiles will be empty for file: {}", filename);
-                    }
-
-                    var diffResult = new TaskResult(mainPanel.getContextManager(),
-                                                    actionDescription,
-                                                    messagesForHistory,
-                                                    affectedFiles,
-                                                    TaskResult.StopReason.SUCCESS);
-
-                    // Add to context history as undoable entry
-                    // PROPER APPROACH: Temporarily write original content to file during addToHistory, then restore modified content
-                    if (projectFile != null) {
-                        try {
-                            // Save current modified content
-                            var currentModifiedContent = projectFile.read();
-
-                            // Temporarily write original content to file (for context freeze to capture)
-                            projectFile.write(originalContent);
-
-                            // Add to history - the context freeze will capture the original content from the file
-                            mainPanel.getContextManager().addToHistory(diffResult, false);
-
-                            // Restore the modified content so user sees their changes
-                            projectFile.write(currentModifiedContent);
-                        } catch (Exception e) {
-                            logger.error("Failed to create proper history entry for {}: {}", filename, e.getMessage());
-                            // Fallback to regular addToHistory without file manipulation
-                            mainPanel.getContextManager().addToHistory(diffResult, false);
-                        }
-                    } else {
-                        logger.warn("projectFile is null, using regular addToHistory");
-                        mainPanel.getContextManager().addToHistory(diffResult, false);
-                    }
+                if (originalContent != null) {
+                    createHistoryEntry(filename, changeCount, originalContent, fileData);
                 } else {
-                    // Fallback to simple logging if we can't generate diff
-
-                    String message;
-                    if (changeCount == 1) {
-                        message = "Applied diff change to " + filename;
-                    } else {
-                        message = "Applied " + changeCount + " diff changes to " + filename;
-                    }
-                    mainPanel.getConsoleIO().systemOutput(message);
+                    logSimpleMessage(filename, changeCount);
                 }
             } catch (Exception e) {
                 logger.error("Failed to generate diff change activity entry for {}", filename, e);
-                // Fallback to simple logging
-                String message;
-                if (changeCount == 1) {
-                    message = "Applied diff change to " + filename;
-                } else {
-                    message = "Applied " + changeCount + " diff changes to " + filename;
-                }
-                mainPanel.getConsoleIO().systemOutput(message);
+                logSimpleMessage(filename, changeCount);
             }
         }
+    }
+
+    private record FileData(String currentContent, @Nullable ProjectFile projectFile) {}
+
+    @Nullable
+    private FileData findFileData(String filename) {
+        for (var fp : filePanels.values()) {
+            var doc = fp.getBufferDocument();
+            if (doc != null && filename.equals(doc.getShortName())) {
+                try {
+                    var document = doc.getDocument();
+                    var currentContent = document.getText(0, document.getLength());
+                    var projectFile = createProjectFile(doc, filename);
+                    return new FileData(currentContent, projectFile);
+                } catch (Exception e) {
+                    logger.warn("Failed to get current content for diff change history: {}", filename, e);
+                    break;
+                }
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    private ProjectFile createProjectFile(BufferDocumentIF doc, String filename) {
+        var contextManager = mainPanel.getContextManager();
+        var projectRoot = contextManager.getProject().getRoot();
+
+        try {
+            if (doc instanceof FileDocument) {
+                var fullPath = Paths.get(doc.getName());
+                if (fullPath.toFile().exists()) {
+                    var relativePath = projectRoot.relativize(fullPath);
+                    return new ProjectFile(projectRoot, relativePath);
+                }
+            } else {
+                var filePath = projectRoot.resolve(filename);
+                if (filePath.toFile().exists()) {
+                    return new ProjectFile(projectRoot, Paths.get(filename));
+                }
+
+                var docNamePath = Paths.get(doc.getName());
+                if (docNamePath.toFile().exists()) {
+                    var relativePath = projectRoot.relativize(docNamePath);
+                    return new ProjectFile(projectRoot, relativePath);
+                }
+            }
+        } catch (Exception e) {
+            logger.warn("Failed to create ProjectFile for {}: {}", filename, e.getMessage());
+        }
+        return null;
+    }
+
+    private void createHistoryEntry(String filename, int changeCount, String originalContent, FileData fileData) {
+        var originalLines = originalContent.lines().collect(Collectors.toList());
+        var currentLines = fileData.currentContent.lines().collect(Collectors.toList());
+        var patch = DiffUtils.diff(originalLines, currentLines);
+        var unifiedDiff = UnifiedDiffUtils.generateUnifiedDiff(filename, filename, originalLines, patch, 3);
+
+        var actionDescription = formatDiffActionDescription(changeCount, filename);
+
+        var messagesForHistory = List.<ChatMessage>of(
+            Messages.customSystem("# Diff changes applied\\n\\n```diff\\n" + unifiedDiff + "\\n```"));
+
+        var affectedFiles = fileData.projectFile != null
+            ? Set.of(fileData.projectFile)
+            : Set.<ProjectFile>of();
+
+        var diffResult = createTaskResult(actionDescription, messagesForHistory, affectedFiles);
+
+        addToHistoryWithFileSwap(diffResult, fileData.projectFile, originalContent);
+    }
+
+    private void addToHistoryWithFileSwap(TaskResult diffResult, @Nullable ProjectFile projectFile, String originalContent) {
+        if (projectFile != null) {
+            try {
+                var currentModifiedContent = projectFile.read();
+                projectFile.write(originalContent);
+                mainPanel.getContextManager().addToHistory(diffResult, false);
+                projectFile.write(currentModifiedContent);
+            } catch (Exception e) {
+                logger.error("Failed to create proper history entry: {}", e.getMessage());
+                mainPanel.getContextManager().addToHistory(diffResult, false);
+            }
+        } else {
+            mainPanel.getContextManager().addToHistory(diffResult, false);
+        }
+    }
+
+    private void logSimpleMessage(String filename, int changeCount) {
+        var message = formatDiffActionDescription(changeCount, filename);
+        mainPanel.getConsoleIO().systemOutput(message);
     }
 
     /**
@@ -1704,77 +1658,69 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         try {
             var filename = doc.getShortName();
             var originalContent = contentBeforeChanges.get(filename);
+
             if (originalContent == null) {
                 logger.warn("No diff change recorded for immediate history entry: {}", filename);
                 return;
             }
 
-            var document = doc.getDocument();
-            var currentContent = document.getText(0, document.getLength());
-
-            // Only create history entry if content actually changed
-            if (originalContent.equals(currentContent)) {
+            if (!hasContentChanged(doc, originalContent)) {
                 return;
             }
 
-            // Create ProjectFile for history entry
-            ProjectFile projectFile = null;
-            try {
-                if (doc instanceof FileDocument fileDoc) {
-                    var fullPath = Paths.get(fileDoc.getName());
-                    var projectRoot = mainPanel.getContextManager().getProject().getRoot();
-                    var relativePath = projectRoot.relativize(fullPath);
-                    projectFile = new ProjectFile(projectRoot, relativePath);
-                } else if (doc instanceof StringDocument) {
-                    var path = Paths.get(filename);
-                    if (path.isAbsolute()) {
-                        var projectRoot = mainPanel.getContextManager().getProject().getRoot();
-                        var relativePath = projectRoot.relativize(path);
-                        projectFile = new ProjectFile(projectRoot, relativePath);
-                    } else {
-                        projectFile = new ProjectFile(mainPanel.getContextManager().getProject().getRoot(), path);
-                    }
-                }
-            } catch (Exception e) {
-                logger.warn("Failed to create ProjectFile for immediate history: {}", e.getMessage());
-                return;
-            }
-
+            var projectFile = createProjectFile(doc, filename);
             if (projectFile == null) {
                 logger.warn("Could not create ProjectFile for immediate history entry: {}", filename);
                 return;
             }
 
-            // Create TaskResult for this operation
-            var messagesForHistory = List.<ChatMessage>of(Messages.customSystem("Diff operation: " + operationType));
-            var affectedFiles = Set.of(projectFile);
-            var actionDescription = operationType + " applied to " + filename;
-
-            var diffResult = new TaskResult(mainPanel.getContextManager(),
-                                          actionDescription,
-                                          messagesForHistory,
-                                          affectedFiles,
-                                          TaskResult.StopReason.SUCCESS);
-
-            // SAFE APPROACH: Use virtual fragment instead of file manipulation
-            // Create a virtual fragment containing the original content for undo purposes
-            var virtualFragment = new io.github.jbellis.brokk.context.ContextFragment.StringFragment(
-                                       mainPanel.getContextManager(),
-                                       originalContent,
-                                       "Immediate diff change backup for " + filename,
-                                       "java");
-
-            // Add the virtual fragment to the context for history capture
-            mainPanel.getContextManager().pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(virtualFragment));
-
-            mainPanel.getContextManager().addToHistory(diffResult, false);
-
-            // Remove this operation from pending changes and clear original content to prevent memory leak
-            pendingDiffChanges.remove(filename);
-            contentBeforeChanges.remove(filename);
+            createAndAddHistoryEntry(filename, operationType, originalContent, projectFile);
+            cleanupTrackingData(filename);
 
         } catch (Exception e) {
             logger.error("Failed to create immediate history entry for {}: {}", doc.getShortName(), e.getMessage(), e);
         }
+    }
+
+    private boolean hasContentChanged(BufferDocumentIF doc, String originalContent) {
+        try {
+            var document = doc.getDocument();
+            var currentContent = document.getText(0, document.getLength());
+            return !originalContent.equals(currentContent);
+        } catch (BadLocationException e) {
+            logger.warn("Failed to get current content for history entry: {}", doc.getShortName(), e);
+            return false;
+        }
+    }
+
+    private void createAndAddHistoryEntry(String filename, String operationType, String originalContent, ProjectFile projectFile) {
+        var actionDescription = operationType + " applied to " + filename;
+        var messagesForHistory = List.<ChatMessage>of(Messages.customSystem("Diff operation: " + operationType));
+        var affectedFiles = Set.of(projectFile);
+
+        var diffResult = createTaskResult(actionDescription, messagesForHistory, affectedFiles);
+
+        var virtualFragment = new io.github.jbellis.brokk.context.ContextFragment.StringFragment(
+            mainPanel.getContextManager(), originalContent,
+            "Immediate diff change backup for " + filename, "java");
+
+        mainPanel.getContextManager().pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(virtualFragment));
+        mainPanel.getContextManager().addToHistory(diffResult, false);
+    }
+
+    private void cleanupTrackingData(String filename) {
+        pendingDiffChanges.remove(filename);
+        contentBeforeChanges.remove(filename);
+    }
+
+    private String formatDiffActionDescription(int changeCount, String filename) {
+        return changeCount == 1
+            ? "Applied diff change to " + filename
+            : "Applied " + changeCount + " diff changes to " + filename;
+    }
+
+    private TaskResult createTaskResult(String actionDescription, List<ChatMessage> messagesForHistory, Set<ProjectFile> affectedFiles) {
+        return new TaskResult(mainPanel.getContextManager(), actionDescription,
+                             messagesForHistory, affectedFiles, TaskResult.StopReason.SUCCESS);
     }
 }
