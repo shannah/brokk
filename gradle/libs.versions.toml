@@ -14,6 +14,7 @@ picocli = "4.7.7"
 maven-embedder = "3.9.6"
 maven-resolver = "1.9.20"
 dependency-analysis = "2.6.0"
+javafx = "22"
 
 [libraries]
 # Scala
@@ -79,11 +80,13 @@ jsoup = "org.jsoup:jsoup:1.19.1"
 
 # Git
 jgit-core = { module = "org.eclipse.jgit:org.eclipse.jgit", version.ref = "jgit" }
+jgit-gpg = { module = "org.eclipse.jgit:org.eclipse.jgit.gpg.bc", version.ref = "jgit" }
 jgit-ssh = { module = "org.eclipse.jgit:org.eclipse.jgit.ssh.apache", version.ref = "jgit" }
 bouncycastle = "org.bouncycastle:bcprov-jdk18on:1.80"
 
 # TreeSitter
 treesitter-core = { module = "io.github.bonede:tree-sitter", version.ref = "treesitter" }
+treesitter-java = "io.github.bonede:tree-sitter-java:0.23.4"
 treesitter-csharp = "io.github.bonede:tree-sitter-c-sharp:0.23.1"
 treesitter-go = "io.github.bonede:tree-sitter-go:0.23.3"
 treesitter-javascript = "io.github.bonede:tree-sitter-javascript:0.23.1"
@@ -112,8 +115,8 @@ junit-runtime = ["junit-platform-engine", "junit-platform-launcher", "junit-plat
 scalatest = ["scalatest-core", "scalatest-junit4", "scalatest-junit5"]
 ui = ["flatlaf", "rsyntaxtextarea", "autocomplete", "jgoodies-forms"]
 markdown = ["flexmark-core", "flexmark-html2md", "mustache"]
-git = ["jgit-core", "jgit-ssh", "bouncycastle"]
-treesitter = ["treesitter-core", "treesitter-csharp", "treesitter-go", "treesitter-javascript", "treesitter-php", "treesitter-python", "treesitter-rust", "treesitter-typescript"]
+git = ["jgit-core", "jgit-gpg", "jgit-ssh", "bouncycastle"]
+treesitter = ["treesitter-core", "treesitter-java", "treesitter-csharp", "treesitter-go", "treesitter-javascript", "treesitter-php", "treesitter-python", "treesitter-rust", "treesitter-typescript"]
 maven-resolver = ["maven-embedder", "maven-resolver-api", "maven-resolver-spi", "maven-resolver-util", "maven-resolver-impl", "maven-resolver-connector-basic", "maven-resolver-transport-http"]
 
 [plugins]
@@ -121,4 +124,5 @@ errorprone = { id = "net.ltgt.errorprone", version = "3.1.0" }
 shadow = { id = "com.github.johnrengelman.shadow", version = "8.1.1" }
 buildconfig = { id = "com.github.gmazzo.buildconfig", version = "5.3.5" }
 spotless = { id = "com.diffplug.spotless", version = "6.25.0" }
+javafx = { id = "org.openjfx.javafxplugin", version = "0.1.0" }
 dependency-analysis = { id = "com.autonomousapps.dependency-analysis", version.ref = "dependency-analysis" }

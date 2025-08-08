@@ -16,9 +16,11 @@ import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 
+import java.awt.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.util.*;
+import java.util.List;
 import java.util.stream.Collectors;
 
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
@@ -262,7 +264,7 @@ public abstract class CodePrompts {
         var instructions = """
         <instructions>
         Think about this request for changes to the supplied code.
-        If the request is ambiguous, ask questions.
+        If the request is ambiguous, %s.
         
         Once you understand the request you MUST:
         
@@ -283,7 +285,7 @@ public abstract class CodePrompts {
         If a file is read-only or unavailable, ask the user to add it or make it editable.
         
         If you are struggling to use a dependency or API correctly, stop and ask the user for help.
-        """;
+        """.formatted(GraphicsEnvironment.isHeadless() ? "decide what the most logical interpretation is" : "ask questions");
         return new UserMessage(instructions + parser.instructions(input, file, reminder));
     }
 

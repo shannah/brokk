@@ -8,6 +8,7 @@ plugins {
     alias(libs.plugins.shadow)
     alias(libs.plugins.buildconfig)
     alias(libs.plugins.spotless)
+    alias(libs.plugins.javafx)
 }
 
 group = "io.github.jbellis"
@@ -25,6 +26,11 @@ application {
         "--add-modules=jdk.incubator.vector",  // Vector API support
         "-Dbrokk.devmode=true"  // Development mode flag
     )
+}
+
+javafx {
+    version = libs.versions.javafx.get()
+    modules = listOf("javafx.controls", "javafx.fxml", "javafx.swing", "javafx.web")
 }
 
 repositories {
@@ -286,6 +292,20 @@ tasks.register<JavaExec>("runCli") {
     description = "Runs the Brokk CLI"
     mainClass.set("io.github.jbellis.brokk.cli.BrokkCli")
     classpath = sourceSets.main.get().runtimeClasspath
+    jvmArgs = listOf(
+        "-ea",
+        "-Dbrokk.devmode=true"
+    )
+    if (project.hasProperty("args")) {
+        args((project.property("args") as String).split(" "))
+    }
+}
+
+tasks.register<JavaExec>("runSkeletonPrinter") {
+    group = "application"
+    description = "Runs the SkeletonPrinter tool"
+    mainClass.set("io.github.jbellis.brokk.tools.SkeletonPrinter")
+    classpath = sourceSets.test.get().runtimeClasspath
     jvmArgs = listOf(
         "-ea",
         "-Dbrokk.devmode=true"
