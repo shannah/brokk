@@ -529,8 +529,10 @@ public class Service {
                     logger.debug("Discovered model: {} -> {} with info {})",
                                  modelName, modelLocation, immutableModelInfo);
 
-                    // Only add chat models to the available locations for selection
-                    if ("chat".equals(immutableModelInfo.get("mode"))) {
+                    // Only add chat models (not STT) to the available locations for selection
+                    if ("chat".equals(immutableModelInfo.get("mode"))
+                        || "responses".equals(immutableModelInfo.get("mode")))
+                    {
                          locationsTarget.put(modelName, modelLocation);
                          logger.debug("Added chat model {} to available locations.", modelName);
                     } else {
@@ -809,7 +811,10 @@ public class Service {
         // mostly we force models that don't support parallel calls to use our emulation, but o3 does so poorly with that
         // that serial calls is the lesser evil
         var location = model.defaultRequestParameters().modelName();
-        return !location.contains("gemini") && !location.contains("o3") && !location.contains("o4-mini");
+        return !location.contains("gemini")
+                && !location.contains("o3")
+                && !location.contains("o4-mini")
+                && !location.contains("gpt-5");
     }
 
     /**
