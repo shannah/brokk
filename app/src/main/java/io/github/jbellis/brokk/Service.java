@@ -1103,10 +1103,10 @@ public class Service {
             String proxyUrl = MainProject.getProxyUrl();
             String endpoint = proxyUrl + "/audio/transcriptions";
 
-            var authHeader = "Bearer dummy-key"; // Default for non-Brokk
-            if (MainProject.getProxySetting() == MainProject.LlmProxySetting.BROKK) {
+            var authHeader = "Bearer dummy-key"; // Default for LOCALHOST (no auth)
+            if (MainProject.getProxySetting() != MainProject.LlmProxySetting.LOCALHOST) {
                 var kp = parseKey(MainProject.getBrokkKey());
-                authHeader = "Bearer " + kp.token;
+                authHeader = "Bearer " + kp.token();
             }
 
             Request request = new Request.Builder()
