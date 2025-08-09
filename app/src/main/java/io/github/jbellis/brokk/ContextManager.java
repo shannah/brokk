@@ -1151,7 +1151,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             List<String> classFqns = classes.stream()
                     .map(CodeUnit::fqName)
                     .collect(Collectors.toList());
-            var classSummaryFragment = new ContextFragment.SkeletonFragment(this, classFqns, ContextFragment.SummaryType.CLASS_SKELETON); // Pass IContextManager
+            var classSummaryFragment = new ContextFragment.SkeletonFragment(this, classFqns, ContextFragment.SummaryType.CODEUNIT_SKELETON); // Pass IContextManager
             addVirtualFragment(classSummaryFragment);
             io.systemOutput("Summarized " + String.join(", ", classFqns));
             summariesAdded = true;

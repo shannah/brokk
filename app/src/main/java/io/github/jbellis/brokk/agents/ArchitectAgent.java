@@ -811,7 +811,7 @@ public class ArchitectAgent {
             // For FILE_SKELETONS, collect all target file paths.
             // Create one fragment per type.
             List<String> classTargetFqns = skeletonFragments.stream()
-                    .filter(sf -> sf.getSummaryType() == ContextFragment.SummaryType.CLASS_SKELETON)
+                    .filter(sf -> sf.getSummaryType() == ContextFragment.SummaryType.CODEUNIT_SKELETON)
                     .flatMap(sf -> sf.getTargetIdentifiers().stream())
                     .distinct()
                     .toList();
@@ -824,7 +824,7 @@ public class ArchitectAgent {
 
             if (!classTargetFqns.isEmpty()) {
                 logger.debug("Adding combined SkeletonFragment for classes: {}", classTargetFqns);
-                contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(contextManager, classTargetFqns, ContextFragment.SummaryType.CLASS_SKELETON));
+                contextManager.addVirtualFragment(new ContextFragment.SkeletonFragment(contextManager, classTargetFqns, ContextFragment.SummaryType.CODEUNIT_SKELETON));
             }
             if (!fileTargetPaths.isEmpty()) {
                 logger.debug("Adding combined SkeletonFragment for files: {}", fileTargetPaths);

@@ -419,7 +419,7 @@ public class ContextAgent {
                                                                     contextManager, Map<CodeUnit, String> relevantSummaries)
     {
         return relevantSummaries.keySet().stream()
-                .map(s -> (ContextFragment) new ContextFragment.SkeletonFragment(contextManager, List.of(s.fqName()), ContextFragment.SummaryType.CLASS_SKELETON))
+                .map(s -> (ContextFragment) new ContextFragment.SkeletonFragment(contextManager, List.of(s.fqName()), ContextFragment.SummaryType.CODEUNIT_SKELETON))
                 .toList();
     }
 

@@ -264,7 +264,7 @@ public class WorkspaceTools {
              return "Cannot add summary: class names list resolved to empty";
         }
 
-        var fragment = new ContextFragment.SkeletonFragment(contextManager, distinctClassNames, ContextFragment.SummaryType.CLASS_SKELETON); // Pass contextManager
+        var fragment = new ContextFragment.SkeletonFragment(contextManager, distinctClassNames, ContextFragment.SummaryType.CODEUNIT_SKELETON); // Pass contextManager
         contextManager.addVirtualFragment(fragment);
 
         return "Added dynamic class summaries for: [%s]".formatted(String.join(", ", distinctClassNames));
