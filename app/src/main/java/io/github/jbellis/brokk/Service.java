@@ -32,6 +32,9 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.zip.GZIPOutputStream;
 
+import static java.lang.Math.max;
+import static java.lang.Math.min;
+
 /**
  * Manages dynamically loaded models via LiteLLM.
  * This is intended to be immutable -- we handle changes by wrapping this in a ServiceWrapper that
@@ -202,7 +205,7 @@ public class Service {
     // Model name constants
     public static final String O3 = "o3";
     public static final String GEMINI_2_5_PRO = "gemini-2.5-pro";
-    public static final String GROK_3_MINI = "grok-3-mini-beta";
+    public static final String GPT_5_MINI = "gpt-5-mini";
 
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
             .connectTimeout(20, TimeUnit.SECONDS)
@@ -562,13 +565,18 @@ public class Service {
      */
     private int getMaxOutputTokens(String location) {
         var info = getModelInfo(location);
+
+        Integer value;
         if (info == null || !info.containsKey("max_output_tokens")) {
             logger.warn("max_output_tokens not found for model location: {}", location);
-            return 8192;
+            value = 8192;
+        } else {
+            value = (Integer) info.get("max_output_tokens");
         }
-        var value = info.get("max_output_tokens");
-        assert value instanceof Integer;
-        return (Integer) value;
+
+        // some models can output a lot of tokens, but if you ask for them it gets subtracted from the input budget
+        int floor = min(8192, value);
+        return max(floor, min(32768, value / 8));
     }
 
     /**
@@ -789,13 +797,8 @@ public class Service {
              return true;
         }
         var b = info.get("supports_function_calling");
-        if (!(b instanceof Boolean bVal) || !bVal) {
-            // if it doesn't support function calling then we need to emulate
-            return true;
-        }
-
-        // gemini and grok-3 support function calling but not parallel calls
-        return location.contains("grok-3");
+        // if it doesn't support function calling then we need to emulate
+        return !(b instanceof Boolean bVal) || !bVal;
     }
 
     private @Nullable Map<String, Object> getModelInfo(String location) {
