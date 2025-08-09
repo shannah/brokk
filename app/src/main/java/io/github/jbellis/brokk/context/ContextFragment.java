@@ -1331,9 +1331,7 @@ public interface ContextFragment {
                 case CLASS_SKELETON -> {
                     for (String className : targetIdentifiers) {
                         analyzer.getDefinition(className).ifPresent(cu -> {
-                            if (cu.isClass()) { // Ensure it's a class for getSkeleton
-                                analyzer.getSkeleton(cu.fqName()).ifPresent(s -> skeletonsMap.put(cu, s));
-                            }
+                            analyzer.getSkeleton(cu.fqName()).ifPresent(s -> skeletonsMap.put(cu, s));
                         });
                     }
                 }
