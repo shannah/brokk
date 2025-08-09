@@ -628,8 +628,12 @@ public class Service {
             logger.warn("Location not found for model name {}, assuming no tool_choice=required support", modelName);
             return false;
         }
+        var info = getModelInfo(location);
+        if (info == null || !info.containsKey("supports_tool_choice")) {
+            return false;
+        }
 
-        return !location.contains("claude") && !location.contains("deepseek-reasoner");
+        return (Boolean) info.get("supports_tool_choice");
     }
 
     /**
@@ -744,13 +748,6 @@ public class Service {
         }
         builder.defaultRequestParameters(params.build());
 
-        if (modelName.contains("sonnet")) {
-            // "Claude 3.7 Sonnet may be less likely to make parallel tool calls in a response,
-            // even when you have not set disable_parallel_tool_use. To work around this, we recommend
-            // enabling token-efficient tool use, which helps encourage Claude to use parallel tools."
-            builder = builder.customHeaders(Map.of("anthropic-beta", "token-efficient-tools-2025-02-19,output-128k-2025-02-19"));
-        }
-
         return builder.build();
     }
 
@@ -784,7 +781,7 @@ public class Service {
 
     public boolean isLazy(StreamingChatModel model) {
         String modelName = nameOf(model);
-        return !(modelName.contains("3-7-sonnet") || modelName.contains("gemini-2.5-pro"));
+        return !(modelName.contains("sonnet") || modelName.contains("gemini-2.5-pro"));
     }
 
     public boolean requiresEmulatedTools(StreamingChatModel model) {
