@@ -866,10 +866,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 return;
             }
 
+            // Set our snapshot as the new semantic baseline
+            this.lastCheckedInputText = snapshot;
+            this.lastCheckedEmbeddings = newEmbeddings;
+
+            // process the recommendations
             var fileRefs = recommendations.fragments().stream()
                     .flatMap(f -> f.files().stream()) // No analyzer
                     .distinct()
-                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), (ProjectFile) pf)) // Cast to ProjectFile
+                    .map(pf -> new FileReferenceData(pf.getFileName(), pf.toString(), pf))
                     .toList();
             if (fileRefs.isEmpty()) {
                 logger.debug("Task {} found no relevant files.", myGen);
@@ -885,10 +890,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             } else {
                 pendingQuickContext = fileRefs;
             }
-
-            // Set our snapshot as the new semantic baseline
-            this.lastCheckedInputText = snapshot;
-            this.lastCheckedEmbeddings = newEmbeddings;
         } catch (InterruptedException ex) {
             // shouldn't happen
             throw new RuntimeException(ex);
