@@ -215,12 +215,11 @@ public class ContextAgent {
                 .filter(f -> f.getType() == ContextFragment.FragmentType.PROJECT_PATH || f.getType() == ContextFragment.FragmentType.SKELETON)
                 .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
-        var allProjectFiles = cm.getProject().getAllFiles();
-        var allFiles = allProjectFiles.stream()
+        var allFiles = cm.getProject().getAllFiles().stream()
                 .filter(f -> !existingFiles.contains(f))
                 .sorted().toList();
         debug("Filtered out {} existing files from a total of {}. Considering {} files for context recommendation.",
-              existingFiles.size(), allProjectFiles.size(), allFiles.size());
+              existingFiles.size(), cm.getProject().getAllFiles().size(), allFiles.size());
 
         // Attempt single-pass mode first
         RecommendationResult firstPassResult = RecommendationResult.FAILED_SINGLE_PASS;
@@ -547,9 +546,8 @@ public class ContextAgent {
             return LlmRecommendation.EMPTY;
         }
         var tokenUsage = result.tokenUsage();
-        var responseLines = result.text().lines().map(String::strip).collect(Collectors.toSet());
         var selected = filenames.stream().parallel()
-                .filter(responseLines::contains)
+                .filter(f -> result.text().contains(f))
                 .toList();
         return new LlmRecommendation(toProjectFiles(selected), List.of(), result.text(), tokenUsage);
     }
