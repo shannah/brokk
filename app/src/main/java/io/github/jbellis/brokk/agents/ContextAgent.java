@@ -156,7 +156,7 @@ public class ContextAgent {
     /**
      * Calculates the approximate token count for a list of ContextFragments.
      */
-    int calculateFragmentTokens(List<ContextFragment> fragments) {
+    public int calculateFragmentTokens(List<ContextFragment> fragments) {
         int totalTokens = 0;
 
         for (var fragment : fragments) {
