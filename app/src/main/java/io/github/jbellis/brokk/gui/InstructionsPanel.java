@@ -101,7 +101,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JButton runButton;
     private final JButton stopButton;
     private final JButton configureModelsButton;
-    private final JLabel commandResultLabel;
     private final ContextManager contextManager;
     private JTable referenceFileTable;
     private JLabel failureReasonLabel;
@@ -146,9 +145,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         instructionsArea = buildCommandInputField(); // Build first to add listener
         micButton = new VoiceInputButton(instructionsArea, contextManager, () -> {
             activateCommandInput();
-            chrome.actionOutput("Recording");
+            chrome.systemOutput("Recording");
         }, msg -> chrome.toolError(msg, "Error"));
-        commandResultLabel = buildCommandResultLabel(); // Initialize moved component
 
 
         // Initialize Buttons first
@@ -423,11 +421,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Reference-file table will be inserted just below the command input (now layeredPane)
         // by initializeReferenceFileTable()
 
-        // Command Result
-        var topInfoPanel = new JPanel();
-        topInfoPanel.setLayout(new BoxLayout(topInfoPanel, BoxLayout.PAGE_AXIS));
-        topInfoPanel.add(commandResultLabel);
-        panel.add(topInfoPanel);
 
         return panel;
     }
@@ -566,15 +559,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return bottomPanel;
     }
 
-    /**
-     * Builds the command result label.
-     * Moved from HistoryOutputPanel.
-     */
-    private JLabel buildCommandResultLabel() {
-        var label = new JLabel(" "); // Start with a space to ensure height
-        label.setBorder(new EmptyBorder(2, H_PAD, 2, H_PAD));
-        return label;
-    }
 
     private void showHistoryMenu(Component invoker) {
         logger.trace("Showing history menu");
@@ -689,22 +673,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     public void requestCommandInputFocus() {
         SwingUtilities.invokeLater(instructionsArea::requestFocus);
-    }
-
-    /**
-     * Sets the text of the command result label.
-     * Moved from HistoryOutputPanel.
-     */
-    public void setCommandResultText(String text) {
-        SwingUtilities.invokeLater(() -> commandResultLabel.setText(text));
-    }
-
-    /**
-     * Clears the text of the command result label.
-     * Moved from HistoryOutputPanel.
-     */
-    public void clearCommandResultText() {
-        SwingUtilities.invokeLater(() -> commandResultLabel.setText(" ")); // Set back to space to maintain height
     }
 
     // --- Private Execution Logic ---
