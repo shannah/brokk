@@ -886,8 +886,9 @@ public class ArchitectAgent {
         messages.addAll(precomputedWorkspaceMessages);
 
         // Add auto-context as a separate message/ack pair
-        var acFragment = contextManager.liveContext().buildAutoContext(10);
-        String topClassesRaw = acFragment.text();
+        var topClassesRaw = contextManager.getAnalyzerWrapper().isCpg()
+                ? contextManager.liveContext().buildAutoContext(10).text()
+                : "";
         if (!topClassesRaw.isBlank()) {
             var topClassesText = """
                            <related_classes>
