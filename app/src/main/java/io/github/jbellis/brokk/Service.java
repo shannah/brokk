@@ -786,15 +786,15 @@ public class Service {
 
     public boolean requiresEmulatedTools(StreamingChatModel model) {
         var location = model.defaultRequestParameters().modelName();
-        var info = getModelInfo(location);
 
-        // first check litellm metadata
+        var info = getModelInfo(location);
         if (info == null) {
              logger.warn("Model info not found for location {}, assuming tool emulation required.", location);
              return true;
         }
-        var b = info.get("supports_function_calling");
+
         // if it doesn't support function calling then we need to emulate
+        var b = info.get("supports_function_calling");
         return !(b instanceof Boolean bVal) || !bVal;
     }
 
@@ -810,6 +810,7 @@ public class Service {
     public boolean supportsParallelCalls(StreamingChatModel model) {
         // mostly we force models that don't support parallel calls to use our emulation, but o3 does so poorly with that
         // that serial calls is the lesser evil
+        // Update 08/10/25: gpt-5 is also bad at using emulated calls, we need to get "requests" api working so we can do parallel calls
         var location = model.defaultRequestParameters().modelName();
         return !location.contains("gemini")
                 && !location.contains("o3")

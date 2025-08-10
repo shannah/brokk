@@ -197,11 +197,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // immediately during construction, which means our own reference to it will still be null
         this.io = new IConsoleIO() {
             @Override
-            public void actionOutput(String msg) {
-                logger.info(msg);
-            }
-
-            @Override
             public void toolError(String msg, String title) {
                 logger.info(msg);
             }
