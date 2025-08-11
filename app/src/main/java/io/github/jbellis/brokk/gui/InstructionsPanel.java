@@ -1559,10 +1559,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                                Set.of(),
                                                TaskResult.StopReason.SUCCESS),
                                 false);
-                chrome.systemOutput("Scan Project complete: recorded summaries to history (too large to add directly).");
+                chrome.llmOutput("Scan Project complete: recorded summaries to history (too large to add directly).", ChatMessageType.CUSTOM);
             } else {
                 WorkspaceTools.addToWorkspace(cm, recommendation);
-                chrome.systemOutput("Scan Project complete: added recommendations to the Workspace.");
+                chrome.llmOutput("Scan Project complete: added recommendations to the Workspace.", ChatMessageType.CUSTOM);
             }
         } catch (InterruptedException e) {
             throw new CancellationException(e.getMessage());
