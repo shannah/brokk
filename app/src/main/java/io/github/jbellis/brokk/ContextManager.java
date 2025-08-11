@@ -544,14 +544,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Returns the configured Ask model, falling back to the system model if unavailable.
-     */
-    public StreamingChatModel getAskModel() {
-        var config = project.getAskModelConfig();
-        return getModelOrDefault(config, "Ask");
-    }
-
-    /**
      * Returns the configured Search model, falling back to the system model if unavailable.
      */
     public StreamingChatModel getSearchModel() {
@@ -1673,7 +1665,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                         """.stripIndent().formatted(codeForLLM))
                 );
 
-                var result = getLlm(getAskModel(), "Generate style guide").sendRequest(messages);
+                var result = getLlm(getSearchModel(), "Generate style guide").sendRequest(messages);
                 if (result.error() != null || result.originalResponse() == null) {
                     io.systemOutput("Failed to generate style guide: " + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
