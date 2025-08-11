@@ -14,7 +14,6 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
@@ -46,7 +45,6 @@ import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 
 import static java.util.Objects.requireNonNull;
-import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
 /**
  * SearchAgent:
@@ -82,8 +80,6 @@ public class SearchAgent {
 
     // State toggles
     private boolean beastMode;
-
-    private TokenUsage totalUsage = new TokenUsage(0, 0);
 
     public SearchAgent(String goal,
                        ContextManager contextManager,
@@ -133,7 +129,6 @@ public class SearchAgent {
             toolSpecs.addAll(toolRegistry.getTools(this, List.of("answerSearch", "abortSearch")));
 
             // Decide next action(s)
-            var planCursor = messageCursor();
             io.llmOutput("\n# Planning", ChatMessageType.AI, true);
             var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
             if (result.error() != null || result.isEmpty()) {
@@ -142,21 +137,12 @@ public class SearchAgent {
                 return errorResult(new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, details));
             }
 
-            totalUsage = TokenUsage.sum(totalUsage, castNonNull(result.originalResponse()).tokenUsage());
-
-            // Record thought
+            // Record turn
+            sessionMessages.add(new UserMessage("What tools do you want to use next?"));
+            sessionMessages.add(result.aiMessage());
             if (!result.text().isBlank()) {
                 io.llmOutput("\n" + result.text(), ChatMessageType.AI);
             }
-
-            // Record planning message pair into history
-            var planningMsgs = messagesSince(planCursor);
-            cm.addToHistory(new TaskResult(cm,
-                                           "Search planning step",
-                                           planningMsgs,
-                                           Set.of(),
-                                           TaskResult.StopReason.SUCCESS),
-                            false);
 
             // De-duplicate requested tools and handle answer/abort isolation
             var ai = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
@@ -188,8 +174,8 @@ public class SearchAgent {
             }
 
             // Otherwise execute all tool calls in a deterministic order (Workspace ops before exploration helps pruning)
-            next.sort(Comparator.comparingInt(req -> priority(req.name())));
-            for (var req : next) {
+            var sortedCalls = next.stream().sorted(Comparator.comparingInt(req -> priority(req.name()))).toList();
+            for (var req : sortedCalls) {
                 // Duplicate guard and class tracking before execution
                 var signatures = createToolCallSignatures(req);
                 toolCallSignatures.addAll(signatures);
@@ -200,7 +186,6 @@ public class SearchAgent {
                     io.llmOutput("\n" + explanation, ChatMessageType.AI);
                 }
 
-                var stepCursor = messageCursor();
                 ToolExecutionResult exec;
                 try {
                     exec = toolRegistry.executeTool(this, req);
@@ -221,17 +206,11 @@ public class SearchAgent {
 
                 // Write to visible transcript and to Context history
                 sessionMessages.add(ToolExecutionResultMessage.from(req, display));
-                io.llmOutput(display, ChatMessageType.AI);
-                var stepMsgs = messagesSince(stepCursor);
-                var stop = exec.status() == ToolExecutionResult.Status.SUCCESS
-                        ? TaskResult.StopReason.SUCCESS
-                        : TaskResult.StopReason.TOOL_ERROR;
-                cm.addToHistory(new TaskResult(cm,
-                                               "Search tool: " + req.name(),
-                                               stepMsgs,
-                                               Set.of(),
-                                               stop),
-                                false);
+                if (display.isEmpty()) {
+                    logger.warn("Empty tool call result {} from {}", display, req);
+                } else {
+                    io.llmOutput(display, ChatMessageType.AI);
+                }
 
                 // Light composition: update discovery and flow
                 handleStateAfterTool(exec);
@@ -429,10 +408,10 @@ public class SearchAgent {
 
         var recommendation = contextAgent.getRecommendations(true);
         if (!recommendation.reasoning().isEmpty()) {
-            io.llmOutput("\nReasoning for recommendations: " + recommendation.reasoning(), ChatMessageType.CUSTOM);
+            io.llmOutput("\n\nReasoning for recommendations: " + recommendation.reasoning(), ChatMessageType.CUSTOM);
         }
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
-            io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
+            io.llmOutput("\n\nNo additional recommended context found", ChatMessageType.CUSTOM);
             return;
         }
 
@@ -452,6 +431,7 @@ public class SearchAgent {
                             false);
         } else {
             WorkspaceTools.addToWorkspace(cm, recommendation);
+            io.llmOutput("\n\nScan complete; added recommendations to the Workspace.", ChatMessageType.CUSTOM);
         }
     }
 
@@ -578,15 +558,18 @@ public class SearchAgent {
                                    String rawResult,
                                    @Nullable String reasoning) throws RuntimeException {
         var sys = new SystemMessage("""
-            You are a code expert extracting ALL information from the input relevant to the given query.
-            Your output replaces the raw result and must include every relevant class/method name and any
-            relevant code snippets needed later. Do NOT speculate; only use the provided content.
+            You are a code expert extracting ALL information relevant to the given goal
+            from the provided tool call result.
+            
+            Your output will be given to the agent running the search, and replaces the raw result.
+            Thus, you must include every relevant class/method name and any
+            relevant code snippets that may be needed later. DO NOT speculate; only use the provided content.
             """.stripIndent());
 
         var user = new UserMessage("""
-            <query>
+            <goal>
             %s
-            </query>
+            </goal>
             <reasoning>
             %s
             </reasoning>
@@ -781,14 +764,5 @@ public class SearchAgent {
             logger.error("Error parsing request args for {}: {}", request.name(), e.getMessage());
             return Map.of();
         }
-    }
-
-    private int messageCursor() {
-        return io.getLlmRawMessages().size();
-    }
-
-    private List<ChatMessage> messagesSince(int cursor) {
-        var raw = io.getLlmRawMessages();
-        return List.copyOf(raw.subList(cursor, raw.size()));
     }
 }
