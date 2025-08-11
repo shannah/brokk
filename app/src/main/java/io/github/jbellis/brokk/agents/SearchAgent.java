@@ -188,8 +188,8 @@ public class SearchAgent {
             }
 
             // Otherwise execute all tool calls in a deterministic order (Workspace ops before exploration helps pruning)
-            next.sort(Comparator.comparingInt(req -> priority(req.name())));
-            for (var req : next) {
+            var sortedCalls = next.stream().sorted(Comparator.comparingInt(req -> priority(req.name()))).toList();
+            for (var req : sortedCalls) {
                 // Duplicate guard and class tracking before execution
                 var signatures = createToolCallSignatures(req);
                 toolCallSignatures.addAll(signatures);
