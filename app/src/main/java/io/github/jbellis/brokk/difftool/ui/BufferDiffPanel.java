@@ -36,6 +36,8 @@ import javax.swing.text.JTextComponent;
 import javax.swing.undo.UndoableEdit;
 import java.awt.*;
 import java.io.IOException;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.util.ArrayList;
 import java.util.Collections;
@@ -1232,7 +1234,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
             // Generate activity entries for files that had diff changes applied
             // Move expensive operations to background thread to avoid blocking UI
+            logger.debug("pendingDiffChanges has {} entries", pendingDiffChanges.size());
             if (!pendingDiffChanges.isEmpty()) {
+                logger.debug("Taking diff changes path - processing {} pending changes", pendingDiffChanges.size());
                 // Capture current state for background processing
                 var diffChangesCopy = new HashMap<>(pendingDiffChanges);
                 var contentBeforeChangesCopy = new HashMap<>(contentBeforeChanges);
@@ -1248,6 +1252,17 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
                 // After processing, update baseline content for next save (like PreviewTextPanel)
                 updateBaselineContentAfterSave();
+            } else {
+                logger.debug("Taking manual changes path - no pending diff changes");
+                // Generate activity entries for any document changes (similar to PreviewTextPanel)
+                // This handles manual edits that weren't tracked as diff changes
+                CompletableFuture.supplyAsync(() -> {
+                    generateActivityEntriesForChangedDocuments();
+                    return null;
+                }).exceptionally(ex -> {
+                    logger.error("Failed to generate activity entries for document changes", ex);
+                    return null;
+                });
             }
 
             // After saving, recalculate dirty status (should be false since undo history is cleared)
@@ -1526,7 +1541,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * Records that a diff operation was applied to a file.
      */
     private void recordDiffChange(BufferDocumentIF doc) {
-        var filename = doc.getShortName();
+        var filename = doc.getName(); // Use full path instead of short name
 
         // Capture baseline content before changes (first time or if no changes pending)
         if (contentBeforeChanges.get(filename) == null || pendingDiffChanges.get(filename) == null) {
@@ -1545,10 +1560,12 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 // Add file to editable context - this preserves original content for undo
                 // Must run in background thread to avoid blocking EDT with analyzer operations
                 var contextManager = mainPanel.getContextManager();
-                var projectFile = new ProjectFile(contextManager.getRoot(), filename);
-                contextManager.submitBackgroundTask("Add file to context", () -> {
-                    contextManager.editFiles(List.of(projectFile));
-                });
+                var projectFile = createProjectFile(doc, filename);
+                if (projectFile != null) {
+                    contextManager.submitBackgroundTask("Add file to context", () -> {
+                        contextManager.editFiles(List.of(projectFile));
+                    });
+                }
 
             } catch (BadLocationException e) {
                 logger.warn("Failed to capture original content for diff change tracking: {}", filename, e);
@@ -1570,25 +1587,39 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      * Asynchronous version of generateDiffChangeActivityEntries that can run on background threads.
      */
     private void generateDiffChangeActivityEntriesAsync(Map<String, Integer> diffChanges, Map<String, String> contentBefore) {
+        logger.debug("generateDiffChangeActivityEntriesAsync called with {} diff changes", diffChanges.size());
         if (diffChanges.isEmpty()) {
+            logger.debug("No diff changes to process");
             return;
         }
 
         for (var entry : diffChanges.entrySet()) {
             var filename = entry.getKey();
             var changeCount = entry.getValue();
+            logger.debug("Processing diff changes for {}: {} changes", filename, changeCount);
 
             try {
                 var fileData = findFileData(filename);
+                logger.debug("findFileData({}) returned: {}", filename, fileData);
                 if (fileData == null) {
+                    logger.debug("No file data found for {}, logging simple message", filename);
+                    logSimpleMessage(filename, changeCount);
+                    continue;
+                }
+
+                if (fileData.projectFile() == null) {
+                    logger.debug("ProjectFile is null for {}, logging simple message", filename);
                     logSimpleMessage(filename, changeCount);
                     continue;
                 }
 
                 var originalContent = contentBefore.get(filename);
                 if (originalContent != null) {
+                    logger.debug("Creating history entry for {} with {} changes", filename, changeCount);
                     createHistoryEntry(filename, changeCount, originalContent, fileData);
+                    logger.debug("Successfully created history entry for {}", filename);
                 } else {
+                    logger.debug("No original content found for {}, logging simple message", filename);
                     logSimpleMessage(filename, changeCount);
                 }
             } catch (Exception e) {
@@ -1596,6 +1627,7 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 logSimpleMessage(filename, changeCount);
             }
         }
+        logger.debug("Finished processing diff changes");
     }
 
     private record FileData(String currentContent, @Nullable ProjectFile projectFile) {}
@@ -1621,44 +1653,33 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
 
     @Nullable
     private ProjectFile createProjectFile(BufferDocumentIF doc, String filename) {
+        logger.debug("createProjectFile called with doc.getName()='{}', filename='{}'", doc.getName(), filename);
         var contextManager = mainPanel.getContextManager();
         var projectRoot = contextManager.getProject().getRoot();
 
         try {
-            if (doc instanceof FileDocument fileDoc) {
-                // Try absolute path first
-                var fullPath = Paths.get(fileDoc.getName());
-                if (fullPath.toFile().exists()) {
-                    var relativePath = projectRoot.relativize(fullPath);
-                    return new ProjectFile(projectRoot, relativePath);
-                }
+            // doc.getName() should now contain the full absolute path
+            var fullPath = Paths.get(doc.getName());
+            logger.debug("Using full path from document: {}", fullPath);
 
-                // If that fails, try resolving against project root
-                var resolvedPath = projectRoot.resolve(fileDoc.getName());
-                if (resolvedPath.toFile().exists()) {
-                    var relativePath = projectRoot.relativize(resolvedPath);
-                    return new ProjectFile(projectRoot, relativePath);
-                }
+            if (fullPath.toFile().exists()) {
+                var relativePath = projectRoot.relativize(fullPath);
+                logger.debug("Created ProjectFile with relative path: {}", relativePath);
+                return new ProjectFile(projectRoot, relativePath);
             } else {
-                var filePath = projectRoot.resolve(filename);
-                if (filePath.toFile().exists()) {
-                    return new ProjectFile(projectRoot, Paths.get(filename));
-                }
-
-                var docNamePath = Paths.get(doc.getName());
-                if (docNamePath.toFile().exists()) {
-                    var relativePath = projectRoot.relativize(docNamePath);
-                    return new ProjectFile(projectRoot, relativePath);
-                }
+                logger.warn("File does not exist at path: {}", fullPath);
             }
         } catch (Exception e) {
-            logger.warn("Failed to create ProjectFile for {}: {}", filename, e.getMessage());
+            logger.warn("Failed to create ProjectFile for {}: {}", doc.getName(), e.getMessage());
         }
         return null;
     }
 
+
     private void createHistoryEntry(String filename, int changeCount, String originalContent, FileData fileData) {
+        logger.debug("createHistoryEntry called for {} with {} changes", filename, changeCount);
         if (fileData.projectFile == null) {
+            logger.debug("ProjectFile is null in createHistoryEntry, logging simple message");
             logSimpleMessage(filename, changeCount);
             return;
         }
@@ -1683,7 +1704,9 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                                       TaskResult.StopReason.SUCCESS);
 
         // Add to history using standard mechanism (editable file system handles undo)
-        mainPanel.getContextManager().addToHistory(diffResult, false);
+        logger.debug("Calling contextManager.addToHistory() for {}", fileData.projectFile);
+        var historyEntry = mainPanel.getContextManager().addToHistory(diffResult, false);
+        logger.debug("addToHistory returned: {}", historyEntry);
     }
 
 
@@ -1742,6 +1765,65 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
         // Replace the baseline with current content
         contentBeforeChanges.clear();
         contentBeforeChanges.putAll(updatedBaseline);
+    }
+
+    /**
+     * Generates activity entries for documents that have been changed but weren't tracked as diff changes.
+     * This is similar to PreviewTextPanel's approach for handling manual edits.
+     */
+    private void generateActivityEntriesForChangedDocuments() {
+        logger.debug("Checking for changed documents to generate activity entries");
+        for (var fp : filePanels.values()) {
+            if (!fp.isDocumentChanged()) continue;
+            var doc = fp.getBufferDocument();
+            if (doc == null || doc.isReadonly()) continue;
+
+            var filename = doc.getShortName();
+            logger.debug("Processing changed document: {}", filename);
+            try {
+                // Get current content
+                var document = doc.getDocument();
+                var currentContent = document.getText(0, document.getLength());
+
+                // Check if we have baseline content to compare against
+                var baselineContent = contentBeforeChanges.get(filename);
+                if (baselineContent == null) {
+                    logger.debug("No baseline content found for {}, attempting to read original file content", filename);
+                    // Try to read the original file content from disk as baseline
+                    var fileData = findFileData(filename);
+                    if (fileData != null && fileData.projectFile() != null) {
+                        try {
+                            baselineContent = fileData.projectFile().read();
+                            logger.debug("Using file content from disk as baseline for {}", filename);
+                        } catch (Exception e) {
+                            logger.debug("Failed to read original file content for {}, using empty baseline", filename);
+                            baselineContent = "";
+                        }
+                    } else {
+                        logger.debug("No project file found for {}, using empty baseline", filename);
+                        baselineContent = "";
+                    }
+                }
+
+                // Only create history entry if content actually changed
+                if (!currentContent.equals(baselineContent)) {
+                    logger.debug("Content changed for {}, creating history entry", filename);
+                    var fileData = findFileData(filename);
+                    if (fileData != null) {
+                        createHistoryEntry(filename, 1, baselineContent, fileData);
+                        // Update baseline for next save
+                        contentBeforeChanges.put(filename, currentContent);
+                        logger.debug("Created history entry for {}", filename);
+                    } else {
+                        logger.warn("Could not create history entry for {} - findFileData returned null", filename);
+                    }
+                } else {
+                    logger.debug("No content changes detected for {}", filename);
+                }
+            } catch (Exception e) {
+                logger.error("Failed to generate activity entry for document {}", filename, e);
+            }
+        }
     }
 
 

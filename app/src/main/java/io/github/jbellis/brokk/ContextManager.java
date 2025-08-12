@@ -1810,18 +1810,51 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         var action = result.actionDescription();
-        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}", action, result.changedFiles(), result.stopDetails());
+        logger.debug("Adding session result to history. Action: '{}', Changed files: {}, Reason: {}",
+                     action, result.changedFiles(), result.stopDetails());
 
-        // Create TaskEntry based on the current liveContext
-        TaskEntry newEntry = liveContext().createTaskEntry(result);
-        var finalEntry = compress ? compressHistory(newEntry) : newEntry;
         Future<String> actionFuture = submitSummarizeTaskForConversation(action);
 
-        // pushContext will apply addHistoryEntry to the current liveContext,
-        // then liveContext will be updated, and a frozen version added to history.
-        var newLiveContext = pushContext(currentLiveCtx -> currentLiveCtx.addHistoryEntry(finalEntry, result.output(), actionFuture));
+        /*
+         * Perform ALL mutations to the context in a single pushContext call:
+         *   1.  Make every changed file editable (if not already).
+         *   2.  Create and append the TaskEntry.
+         * This guarantees the changed files are present in the frozen snapshot
+         * created by pushContext, so undo/redo can restore them correctly.
+         */
+        var newLiveContext = pushContext(currentLiveCtx -> {
+            Context updated = currentLiveCtx;
 
-        // Auto-rename session if session has default name
+            // Step 1: ensure changed files are tracked as editable
+            if (!result.changedFiles().isEmpty()) {
+                // Capture current editable files once to keep the lambda valid
+                var existingEditableFiles = updated.editableFiles()
+                        .filter(ContextFragment.ProjectPathFragment.class::isInstance)
+                        .map(ContextFragment.ProjectPathFragment.class::cast)
+                        .map(ContextFragment.ProjectPathFragment::file)
+                        .collect(Collectors.toSet());
+
+                var fragmentsToAdd = result.changedFiles().stream()
+                        .filter(ProjectFile.class::isInstance)
+                        .map(ProjectFile.class::cast)
+                        // avoid duplicates – only add if not already editable
+                        .filter(pf -> !existingEditableFiles.contains(pf))
+                        .map(pf -> new ContextFragment.ProjectPathFragment(pf, this))
+                        .toList();
+
+                if (!fragmentsToAdd.isEmpty()) {
+                    updated = applyEditableFileChanges(updated, fragmentsToAdd);
+                }
+            }
+
+            // Step 2: build TaskEntry *after* editable-file update
+            TaskEntry entry = updated.createTaskEntry(result);
+            TaskEntry finalEntry = compress ? compressHistory(entry) : entry;
+
+            return updated.addHistoryEntry(finalEntry, result.output(), actionFuture);
+        });
+
+        // Auto-rename session if it still has the default name
         var sessionManager = project.getSessionManager();
         var sessions = sessionManager.listSessions();
         var currentSession = sessions.stream()
