@@ -181,12 +181,12 @@ public class Llm {
 
             @Override
             public void onReasoningResponse(String reasoningContent) {
-                ifNotCancelled.accept(() -> {
-                    accumulatedTextBuilder.append(reasoningContent);
-                    if (echo) {
-                        io.llmOutput(reasoningContent, ChatMessageType.AI);
-                    }
-                });
+//                ifNotCancelled.accept(() -> {
+//                    accumulatedTextBuilder.append(reasoningContent);
+//                    if (echo) {
+//                        io.llmOutput(reasoningContent, ChatMessageType.AI);
+//                    }
+//                });
             }
 
             @Override
