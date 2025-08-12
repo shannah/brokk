@@ -1207,48 +1207,54 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
      */
     public void doSave()
     {
-        for (var fp : filePanels.values()) {
-            if (!fp.isDocumentChanged()) continue;
-            var doc = requireNonNull(fp.getBufferDocument());
+        // Pause watcher callbacks while we write files and build history
+        var contextManager = mainPanel.getContextManager();
+        contextManager.withFileChangeNotificationsPaused(() -> {
+            for (var fp : filePanels.values()) {
+                if (!fp.isDocumentChanged()) continue;
+                var doc = requireNonNull(fp.getBufferDocument());
 
-            // Check if document is read-only before attempting to save
-            if (doc.isReadonly()) {
-                continue;
+                // Check if document is read-only before attempting to save
+                if (doc.isReadonly()) {
+                    continue;
+                }
+
+                try {
+                    doc.write();
+                } catch (Exception ex) {
+                    logger.error("Failed to save file: {} - {}", doc.getName(), ex.getMessage(), ex);
+                    mainPanel.getConsoleIO().systemNotify(
+                                                  "Can't save file: " + doc.getName() + "\n" + ex.getMessage(),
+                                                  "Problem writing file",
+                                                  JOptionPane.ERROR_MESSAGE);
+                }
             }
 
-            try {
-                doc.write();
-            } catch (Exception ex) {
-                logger.error("Failed to save file: {} - {}", doc.getName(), ex.getMessage(), ex);
-                mainPanel.getConsoleIO().systemNotify(
-                                              "Can't save file: " + doc.getName() + "\n" + ex.getMessage(),
-                                              "Problem writing file",
-                                              JOptionPane.ERROR_MESSAGE);
+            // Generate activity entries for files that had diff changes applied
+            // Move expensive operations to background thread to avoid blocking UI
+            if (!pendingDiffChanges.isEmpty()) {
+                // Capture current state for background processing
+                var diffChangesCopy = new HashMap<>(pendingDiffChanges);
+                var contentBeforeChangesCopy = new HashMap<>(contentBeforeChanges);
+
+                // Process in background thread
+                CompletableFuture.supplyAsync(() -> {
+                    generateDiffChangeActivityEntriesAsync(diffChangesCopy, contentBeforeChangesCopy);
+                    return null;
+                }).exceptionally(ex -> {
+                    logger.error("Failed to generate diff change activity entries in background", ex);
+                    return null;
+                });
+
+                // After processing, update baseline content for next save (like PreviewTextPanel)
+                updateBaselineContentAfterSave();
             }
-        }
 
-        // Generate activity entries for files that had diff changes applied
-        // Move expensive operations to background thread to avoid blocking UI
-        if (!pendingDiffChanges.isEmpty()) {
-            // Capture current state for background processing
-            var diffChangesCopy = new HashMap<>(pendingDiffChanges);
-            var contentBeforeChangesCopy = new HashMap<>(contentBeforeChanges);
-
-            // Process in background thread
-            CompletableFuture.supplyAsync(() -> {
-                generateDiffChangeActivityEntriesAsync(diffChangesCopy, contentBeforeChangesCopy);
-                return null;
-            }).exceptionally(ex -> {
-                logger.error("Failed to generate diff change activity entries in background", ex);
-                return null;
-            });
-
-            // After processing, update baseline content for next save (like PreviewTextPanel)
-            updateBaselineContentAfterSave();
-        }
-
-        // After saving, recalculate dirty status (should be false since undo history is cleared)
-        recalcDirty();
+            // After saving, recalculate dirty status (should be false since undo history is cleared)
+                recalcDirty();
+                return null;        // withFileChangeNotificationsPaused expects a return value
+            }
+        );
     }
 
     /**
@@ -1537,9 +1543,12 @@ public class BufferDiffPanel extends AbstractContentPanel implements ThemeAware,
                 }
 
                 // Add file to editable context - this preserves original content for undo
+                // Must run in background thread to avoid blocking EDT with analyzer operations
                 var contextManager = mainPanel.getContextManager();
                 var projectFile = new ProjectFile(contextManager.getRoot(), filename);
-                contextManager.editFiles(List.of(projectFile));
+                contextManager.submitBackgroundTask("Add file to context", () -> {
+                    contextManager.editFiles(List.of(projectFile));
+                });
 
             } catch (BadLocationException e) {
                 logger.warn("Failed to capture original content for diff change tracking: {}", filename, e);
