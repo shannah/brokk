@@ -58,6 +58,9 @@ public class FileComparisonHelper {
         }
         var node = new JMDiffNode(nodeTitle, true);
 
+        // Handle real files (FileSource) vs virtual files (StringSource)
+        // FileSource: Real files on disk, use FileNode with absolute paths for proper ProjectFile creation
+        // StringSource: Virtual content from commits/branches, use StringNode with display names
         if (left instanceof BufferSource.FileSource fileSourceLeft) {
             node.setBufferNodeLeft(new FileNode(leftFullPath, fileSourceLeft.file()));
         } else if (left instanceof BufferSource.StringSource stringSourceLeft) {
