@@ -1,17 +1,14 @@
 package io.github.jbellis.brokk.gui.search;
 
-import org.junit.jupiter.api.Test;
+import static org.junit.jupiter.api.Assertions.*;
 
-import javax.swing.*;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.List;
+import javax.swing.*;
+import org.junit.jupiter.api.Test;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for SearchMatch.compareTo() method ordering behavior.
- */
+/** Tests for SearchMatch.compareTo() method ordering behavior. */
 public class SearchMatchCompareToTest {
 
     // Mock component for testing
@@ -131,13 +128,11 @@ public class SearchMatchCompareToTest {
         assertEquals(1, matches.get(matches.size() - 1).panelIndex(), "Last match should be panel 1");
 
         // Within panel 0, verify ordering
-        var panel0Matches = matches.stream()
-                .filter(m -> m.panelIndex() == 0)
-                .toList();
+        var panel0Matches = matches.stream().filter(m -> m.panelIndex() == 0).toList();
 
         for (int i = 1; i < panel0Matches.size(); i++) {
-            assertTrue(panel0Matches.get(i - 1).compareTo(panel0Matches.get(i)) <= 0,
-                    "Matches should be in sorted order");
+            assertTrue(
+                    panel0Matches.get(i - 1).compareTo(panel0Matches.get(i)) <= 0, "Matches should be in sorted order");
         }
     }
 
@@ -175,15 +170,27 @@ public class SearchMatchCompareToTest {
         assertEquals(match5, matches.get(4), "Should sort by panel index");
     }
 
-    private MarkdownSearchMatch createMarkdownMatch(int markerId, int panelIndex, int rendererIndex,
-                                                   int componentVisualOrder, int subComponentIndex) {
-        return new MarkdownSearchMatch(markerId, MOCK_COMPONENT, panelIndex, rendererIndex,
-                                     componentVisualOrder, subComponentIndex);
+    private MarkdownSearchMatch createMarkdownMatch(
+            int markerId, int panelIndex, int rendererIndex, int componentVisualOrder, int subComponentIndex) {
+        return new MarkdownSearchMatch(
+                markerId, MOCK_COMPONENT, panelIndex, rendererIndex, componentVisualOrder, subComponentIndex);
     }
 
-    private CodeSearchMatch createCodeMatch(int startOffset, int endOffset, int panelIndex, int rendererIndex,
-                                          int componentVisualOrder, int subComponentIndex) {
-        return new CodeSearchMatch(null, startOffset, endOffset, MOCK_COMPONENT, panelIndex, rendererIndex,
-                                 componentVisualOrder, subComponentIndex);
+    private CodeSearchMatch createCodeMatch(
+            int startOffset,
+            int endOffset,
+            int panelIndex,
+            int rendererIndex,
+            int componentVisualOrder,
+            int subComponentIndex) {
+        return new CodeSearchMatch(
+                null,
+                startOffset,
+                endOffset,
+                MOCK_COMPONENT,
+                panelIndex,
+                rendererIndex,
+                componentVisualOrder,
+                subComponentIndex);
     }
 }

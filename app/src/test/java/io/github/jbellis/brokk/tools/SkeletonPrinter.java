@@ -2,31 +2,24 @@ package io.github.jbellis.brokk.tools;
 
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.analyzer.*;
-import io.github.jbellis.brokk.git.IGitRepo;
-
-import java.lang.reflect.Field;
-
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.file.Files;
 import java.nio.file.Path;
-import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 
 /**
- * Utility to print skeleton output for files in a directory or a specific file.
- * Usage: java SkeletonPrinter [--skeleton-only] [--no-color] <path> <language>
+ * Utility to print skeleton output for files in a directory or a specific file. Usage: java SkeletonPrinter
+ * [--skeleton-only] [--no-color] <path> <language>
  *
- * Options:
- *   --skeleton-only    Only show skeleton output, not original content
- *   --no-color         Disable colored output
+ * <p>Options: --skeleton-only Only show skeleton output, not original content --no-color Disable colored output
  *
- * Path can be:
- *   - A directory: Analyze all files of the specified language in the directory
- *   - A specific file: Analyze only that file (language must still match)
+ * <p>Path can be: - A directory: Analyze all files of the specified language in the directory - A specific file:
+ * Analyze only that file (language must still match)
  *
- * Supported languages: typescript, javascript, java, python
+ * <p>Supported languages: typescript, javascript, java, python
  */
 public class SkeletonPrinter {
 
@@ -59,8 +52,8 @@ public class SkeletonPrinter {
 
         @Override
         public Set<Language> getAnalyzerLanguages() {
-                return Set.of(language);
-            }
+            return Set.of(language);
+        }
 
         @Override
         public Path getRoot() {
@@ -70,8 +63,7 @@ public class SkeletonPrinter {
         @Override
         public Set<ProjectFile> getAllFiles() {
             try (Stream<Path> stream = Files.walk(root)) {
-                return stream
-                        .filter(Files::isRegularFile)
+                return stream.filter(Files::isRegularFile)
                         .filter(p -> matchesLanguage(p, language))
                         .map(p -> new ProjectFile(root, root.relativize(p)))
                         .collect(Collectors.toSet());
@@ -227,7 +219,8 @@ public class SkeletonPrinter {
             return;
         }
 
-        var projectFile = new ProjectFile(parentDir.toAbsolutePath(), parentDir.toAbsolutePath().relativize(filePath.toAbsolutePath()));
+        var projectFile = new ProjectFile(
+                parentDir.toAbsolutePath(), parentDir.toAbsolutePath().relativize(filePath.toAbsolutePath()));
 
         System.out.println(colorize(BOLD + CYAN, "=== SKELETON ANALYSIS FOR " + language.name() + " FILE ==="));
         System.out.println(colorize(BLUE, "File: ") + filePath);
@@ -250,9 +243,11 @@ public class SkeletonPrinter {
 
     private static void printFileSkeletons(IAnalyzer analyzer, ProjectFile file) {
         System.out.println();
-        System.out.println(colorize(BOLD + PURPLE, "================================================================================"));
+        System.out.println(colorize(
+                BOLD + PURPLE, "================================================================================"));
         System.out.println(colorize(BOLD + GREEN, "FILE: ") + colorize(CYAN, file.toString()));
-        System.out.println(colorize(BOLD + PURPLE, "================================================================================"));
+        System.out.println(colorize(
+                BOLD + PURPLE, "================================================================================"));
 
         if (!skeletonOnly) {
             // Print original file content
@@ -298,7 +293,8 @@ public class SkeletonPrinter {
             System.out.println();
         }
 
-        System.out.println(colorize(BOLD + PURPLE, "================================================================================"));
+        System.out.println(colorize(
+                BOLD + PURPLE, "================================================================================"));
     }
 
     private static Integer getSourceStartPosition(TreeSitterAnalyzer analyzer, CodeUnit cu) {
@@ -339,8 +335,9 @@ public class SkeletonPrinter {
         String highlighted = skeleton;
 
         // Highlight keywords
-        highlighted = highlighted.replaceAll("\\b(export|class|interface|enum|function|const|let|var|type|namespace)\\b",
-                                            colorize(BOLD + BLUE, "$1"));
+        highlighted = highlighted.replaceAll(
+                "\\b(export|class|interface|enum|function|const|let|var|type|namespace)\\b",
+                colorize(BOLD + BLUE, "$1"));
 
         // Highlight method bodies placeholder
         highlighted = highlighted.replaceAll("\\{ \\.\\.\\. \\}", colorize(YELLOW, "{ ... }"));
@@ -349,8 +346,8 @@ public class SkeletonPrinter {
         highlighted = highlighted.replaceAll("@\\w+", colorize(PURPLE, "$0"));
 
         // Highlight access modifiers
-        highlighted = highlighted.replaceAll("\\b(public|private|protected|readonly|static|async|abstract)\\b",
-                                            colorize(CYAN, "$1"));
+        highlighted = highlighted.replaceAll(
+                "\\b(public|private|protected|readonly|static|async|abstract)\\b", colorize(CYAN, "$1"));
 
         return highlighted;
     }
@@ -364,20 +361,23 @@ public class SkeletonPrinter {
         String highlighted = content;
 
         // Highlight keywords (TypeScript/JavaScript)
-        highlighted = highlighted.replaceAll("\\b(export|default|class|interface|enum|function|const|let|var|type|namespace|import|from|as)\\b",
-                                            colorize(BOLD + BLUE, "$1"));
+        highlighted = highlighted.replaceAll(
+                "\\b(export|default|class|interface|enum|function|const|let|var|type|namespace|import|from|as)\\b",
+                colorize(BOLD + BLUE, "$1"));
 
         // Highlight control flow keywords
-        highlighted = highlighted.replaceAll("\\b(if|else|for|while|do|switch|case|break|continue|return|throw|try|catch|finally)\\b",
-                                            colorize(BLUE, "$1"));
+        highlighted = highlighted.replaceAll(
+                "\\b(if|else|for|while|do|switch|case|break|continue|return|throw|try|catch|finally)\\b",
+                colorize(BLUE, "$1"));
 
         // Highlight access modifiers and other modifiers
-        highlighted = highlighted.replaceAll("\\b(public|private|protected|readonly|static|async|abstract|extends|implements)\\b",
-                                            colorize(CYAN, "$1"));
+        highlighted = highlighted.replaceAll(
+                "\\b(public|private|protected|readonly|static|async|abstract|extends|implements)\\b",
+                colorize(CYAN, "$1"));
 
         // Highlight primitive types
-        highlighted = highlighted.replaceAll("\\b(string|number|boolean|void|any|unknown|never|object|null|undefined)\\b",
-                                            colorize(GREEN, "$1"));
+        highlighted = highlighted.replaceAll(
+                "\\b(string|number|boolean|void|any|unknown|never|object|null|undefined)\\b", colorize(GREEN, "$1"));
 
         // Highlight decorators
         highlighted = highlighted.replaceAll("@\\w+", colorize(PURPLE, "$0"));
@@ -392,7 +392,8 @@ public class SkeletonPrinter {
 
         // Highlight comments
         highlighted = highlighted.replaceAll("(?m)//.*$", colorize(GRAY, "$0")); // Dark gray for single-line comments
-        highlighted = highlighted.replaceAll("/\\*[\\s\\S]*?\\*/", colorize(GRAY, "$0")); // Dark gray for multi-line comments
+        highlighted =
+                highlighted.replaceAll("/\\*[\\s\\S]*?\\*/", colorize(GRAY, "$0")); // Dark gray for multi-line comments
 
         // Highlight operators (arrow functions, etc.)
         highlighted = highlighted.replaceAll("=>", colorize(YELLOW, "=>"));
@@ -400,5 +401,4 @@ public class SkeletonPrinter {
 
         return highlighted;
     }
-
 }

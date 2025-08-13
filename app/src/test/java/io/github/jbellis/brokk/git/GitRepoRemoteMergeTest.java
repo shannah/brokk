@@ -1,9 +1,13 @@
 package io.github.jbellis.brokk.git;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import org.eclipse.jgit.api.Git;
 import org.eclipse.jgit.api.MergeResult;
 import org.eclipse.jgit.api.errors.GitAPIException;
-import org.eclipse.jgit.lib.Ref;
 import org.eclipse.jgit.transport.RefSpec;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
@@ -11,16 +15,7 @@ import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.DisabledIfEnvironmentVariable;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.charset.StandardCharsets;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for GitRepo remote merge functionality via fast-forward, squash, and rebase modes.
- */
+/** Tests for GitRepo remote merge functionality via fast-forward, squash, and rebase modes. */
 @DisabledIfEnvironmentVariable(named = "RUNNER_OS", matches = "Windows")
 public class GitRepoRemoteMergeTest {
 
@@ -73,7 +68,10 @@ public class GitRepoRemoteMergeTest {
         Files.writeString(featureFile, "feature content\n", StandardCharsets.UTF_8);
         localGit.add().addFilepattern("feature.txt").call();
         localGit.commit().setMessage("Add feature").call();
-        localGit.push().setRemote("origin").setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature")).call();
+        localGit.push()
+                .setRemote("origin")
+                .setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature"))
+                .call();
 
         // Switch back to master
         localGit.checkout().setName("master").call();
@@ -109,7 +107,10 @@ public class GitRepoRemoteMergeTest {
         localGit.add().addFilepattern("feature.txt").call();
         localGit.commit().setMessage("Update feature file").call();
 
-        localGit.push().setRemote("origin").setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature")).call();
+        localGit.push()
+                .setRemote("origin")
+                .setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature"))
+                .call();
 
         // Switch back to master and create a divergent commit
         localGit.checkout().setName("master").call();
@@ -127,13 +128,15 @@ public class GitRepoRemoteMergeTest {
         // Verify merge was successful
         assertTrue(GitRepo.isMergeSuccessful(result, GitRepo.MergeMode.SQUASH_COMMIT));
         // Squash merge can result in either FAST_FORWARD_SQUASHED or MERGED_SQUASHED depending on the situation
-        assertTrue(result.getMergeStatus() == MergeResult.MergeStatus.FAST_FORWARD_SQUASHED ||
-                   result.getMergeStatus() == MergeResult.MergeStatus.MERGED_SQUASHED);
+        assertTrue(result.getMergeStatus() == MergeResult.MergeStatus.FAST_FORWARD_SQUASHED
+                || result.getMergeStatus() == MergeResult.MergeStatus.MERGED_SQUASHED);
 
         // Verify both files exist
         assertTrue(Files.exists(featureFile));
         assertTrue(Files.exists(masterFile));
-        assertEquals(String.format("feature content%supdated%s", n, n), Files.readString(featureFile, StandardCharsets.UTF_8));
+        assertEquals(
+                String.format("feature content%supdated%s", n, n),
+                Files.readString(featureFile, StandardCharsets.UTF_8));
     }
 
     @Test
@@ -144,7 +147,10 @@ public class GitRepoRemoteMergeTest {
         Files.writeString(featureFile, "feature content\n", StandardCharsets.UTF_8);
         localGit.add().addFilepattern("feature.txt").call();
         localGit.commit().setMessage("Add feature file").call();
-        localGit.push().setRemote("origin").setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature")).call();
+        localGit.push()
+                .setRemote("origin")
+                .setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature"))
+                .call();
 
         // Switch back to master and create a divergent commit
         localGit.checkout().setName("master").call();
@@ -178,7 +184,10 @@ public class GitRepoRemoteMergeTest {
         Files.writeString(featureFile, "feature content\n", StandardCharsets.UTF_8);
         localGit.add().addFilepattern("feature-only.txt").call();
         localGit.commit().setMessage("Add feature only file").call();
-        localGit.push().setRemote("origin").setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature")).call();
+        localGit.push()
+                .setRemote("origin")
+                .setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature"))
+                .call();
 
         // Switch back to master and add different file
         localGit.checkout().setName("master").call();
@@ -191,7 +200,8 @@ public class GitRepoRemoteMergeTest {
         localGit.fetch().call();
 
         // Test conflict detection methods work (should return null for no conflicts)
-        String conflictCheck = localRepo.checkMergeConflicts("origin/feature", "master", GitRepo.MergeMode.MERGE_COMMIT);
+        String conflictCheck =
+                localRepo.checkMergeConflicts("origin/feature", "master", GitRepo.MergeMode.MERGE_COMMIT);
         assertNull(conflictCheck, "No conflicts should be detected for non-overlapping files");
 
         conflictCheck = localRepo.checkMergeConflicts("origin/feature", "master", GitRepo.MergeMode.SQUASH_COMMIT);
@@ -209,7 +219,10 @@ public class GitRepoRemoteMergeTest {
         Files.writeString(featureFile, "feature content\n", StandardCharsets.UTF_8);
         localGit.add().addFilepattern("feature.txt").call();
         localGit.commit().setMessage("Add feature").call();
-        localGit.push().setRemote("origin").setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature")).call();
+        localGit.push()
+                .setRemote("origin")
+                .setRefSpecs(new RefSpec("refs/heads/feature:refs/heads/feature"))
+                .call();
 
         // Switch back to master
         localGit.checkout().setName("master").call();

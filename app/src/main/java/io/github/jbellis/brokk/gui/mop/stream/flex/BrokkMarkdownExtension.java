@@ -5,23 +5,17 @@ import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.util.data.DataKey;
 import com.vladsch.flexmark.util.data.MutableDataHolder;
 
-
 /**
- * Flexmark extension for Brokk-specific Markdown syntax.
- * Registers custom block parsers for edit blocks and code fences.
+ * Flexmark extension for Brokk-specific Markdown syntax. Registers custom block parsers for edit blocks and code
+ * fences.
  */
 public class BrokkMarkdownExtension implements Parser.ParserExtension, HtmlRenderer.HtmlRendererExtension {
-    
-    /**
-     * DataKey to control whether edit blocks should be enabled.
-     * Default is true (enabled).
-     */
-    public static final DataKey<Boolean> ENABLE_EDIT_BLOCK = 
-            new DataKey<>("BROKK_ENABLE_EDIT_BLOCK", true);
-    
-    private BrokkMarkdownExtension() {
-    }
-    
+
+    /** DataKey to control whether edit blocks should be enabled. Default is true (enabled). */
+    public static final DataKey<Boolean> ENABLE_EDIT_BLOCK = new DataKey<>("BROKK_ENABLE_EDIT_BLOCK", true);
+
+    private BrokkMarkdownExtension() {}
+
     public static BrokkMarkdownExtension create() {
         return new BrokkMarkdownExtension();
     }

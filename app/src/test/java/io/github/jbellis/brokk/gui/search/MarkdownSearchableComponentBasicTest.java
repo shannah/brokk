@@ -1,23 +1,20 @@
 package io.github.jbellis.brokk.gui.search;
 
-import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.parallel.Execution;
-import org.junit.jupiter.api.parallel.ExecutionMode;
+import static org.junit.jupiter.api.Assertions.*;
 
-import javax.swing.*;
+import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import java.util.List;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.parallel.Execution;
+import org.junit.jupiter.api.parallel.ExecutionMode;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Core basic tests for MarkdownSearchableComponent.
- */
+/** Core basic tests for MarkdownSearchableComponent. */
 @Execution(ExecutionMode.SAME_THREAD)
 public class MarkdownSearchableComponentBasicTest {
 

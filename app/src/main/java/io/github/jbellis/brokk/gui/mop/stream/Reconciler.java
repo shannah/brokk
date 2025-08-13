@@ -1,39 +1,36 @@
 package io.github.jbellis.brokk.gui.mop.stream;
 
 import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentData;
-
-import javax.swing.*;
 import java.util.HashSet;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /**
- * Utility class for reconciling Swing components with ComponentData in a JPanel.
- * Reuses existing components when possible to minimize UI flickering and maintain scroll/caret positions.
+ * Utility class for reconciling Swing components with ComponentData in a JPanel. Reuses existing components when
+ * possible to minimize UI flickering and maintain scroll/caret positions.
  */
 public final class Reconciler {
     private static final Logger logger = LogManager.getLogger(Reconciler.class);
 
-    /**
-     * Tracks a rendered component and its current fingerprint.
-     */
-    public record BlockEntry(JComponent comp, String fp) {
-    }
+    /** Tracks a rendered component and its current fingerprint. */
+    public record BlockEntry(JComponent comp, String fp) {}
 
     /**
-     * Reconciles the components in the given container with the desired list of ComponentData.
-     * Reuses existing components when possible, updates them if their fingerprint changes,
-     * removes stale components, and ensures correct order.
+     * Reconciles the components in the given container with the desired list of ComponentData. Reuses existing
+     * components when possible, updates them if their fingerprint changes, removes stale components, and ensures
+     * correct order.
      *
      * @param container The JPanel to update
-     * @param desired   The list of desired ComponentData objects
-     * @param registry  The map tracking existing components and their fingerprints
+     * @param desired The list of desired ComponentData objects
+     * @param registry The map tracking existing components and their fingerprints
      * @param darkTheme Whether to use dark theme styling for new components
      */
-    public static void reconcile(JPanel container, List<ComponentData> desired, Map<Integer, BlockEntry> registry, boolean darkTheme) {
+    public static void reconcile(
+            JPanel container, List<ComponentData> desired, Map<Integer, BlockEntry> registry, boolean darkTheme) {
         Set<Integer> seen = new HashSet<>();
 
         // Process each desired component
@@ -84,8 +81,12 @@ public final class Reconciler {
                 int targetIndex = i;
                 int currentCount = container.getComponentCount();
                 if (targetIndex > currentCount || targetIndex < 0) {
-                    logger.warn("Reconciler: Invalid targetIndex {} for component id {} (container count: {}). "
-                                + "Correcting by appending.", targetIndex, cd.id(), currentCount);
+                    logger.warn(
+                            "Reconciler: Invalid targetIndex {} for component id {} (container count: {}). "
+                                    + "Correcting by appending.",
+                            targetIndex,
+                            cd.id(),
+                            currentCount);
                     targetIndex = currentCount; // append at end
                 }
                 container.add(entry.comp, targetIndex); // inserts or moves in-place

@@ -6,9 +6,7 @@ import java.util.ArrayList;
 import java.util.List;
 
 public class ComponentUtils {
-    /**
-     * Finds all components of a specific type within a container.
-     */
+    /** Finds all components of a specific type within a container. */
     public static <T extends Component> List<T> findComponentsOfType(Container container, Class<T> type) {
         List<T> result = new ArrayList<>();
         for (Component comp : container.getComponents()) {

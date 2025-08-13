@@ -1,39 +1,43 @@
 package io.github.jbellis.brokk.gui.mop.stream.flex;
 
+import static io.github.jbellis.brokk.gui.mop.stream.flex.EditBlockUtils.*;
+
 import com.vladsch.flexmark.parser.InlineParser;
 import com.vladsch.flexmark.parser.block.AbstractBlockParser;
 import com.vladsch.flexmark.parser.block.BlockContinue;
+import com.vladsch.flexmark.parser.block.BlockParserFactory;
 import com.vladsch.flexmark.parser.block.BlockStart;
 import com.vladsch.flexmark.parser.block.CustomBlockParserFactory;
 import com.vladsch.flexmark.parser.block.MatchedBlockParser;
 import com.vladsch.flexmark.parser.block.ParserState;
-import com.vladsch.flexmark.parser.block.BlockParserFactory;
 import com.vladsch.flexmark.util.ast.Block;
 import com.vladsch.flexmark.util.data.DataHolder;
 import com.vladsch.flexmark.util.sequence.BasedSequence;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import java.util.Collections;
+import java.util.Objects;
+import java.util.Set;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-import java.util.Collections;
-import java.util.Objects;
-import java.util.Set;
-import java.util.regex.Matcher;
-
-import static io.github.jbellis.brokk.gui.mop.stream.flex.EditBlockUtils.*;
-
 /**
- * Parser for Brokk-specific EDIT BLOCK syntax.
- * Supports two formats:
- * 1. Fenced:    ```\n<filename>\n<<<<<<< SEARCH\n...\n=======\n...\n>>>>>>> REPLACE\n```
- * 2. Unfenced:  <<<<<<< SEARCH <filename>\n...\n======= <filename>\n...\n>>>>>>> REPLACE
+ * Parser for Brokk-specific EDIT BLOCK syntax. Supports two formats: 1. Fenced: ```\n<filename>\n<<<<<<<
+ * SEARCH\n...\n=======\n...\n>>>>>>> REPLACE\n``` 2. Unfenced: <<<<<<< SEARCH <filename>\n...\n=======
+ * <filename>\n...\n>>>>>>> REPLACE
  */
 public class EditBlockParser extends AbstractBlockParser {
     private static final Logger logger = LogManager.getLogger(EditBlockParser.class);
 
     // Parser states
-    private enum Phase { FENCE, FILENAME, SEARCH, DIVIDER, REPLACE, DONE }
+    private enum Phase {
+        FENCE,
+        FILENAME,
+        SEARCH,
+        DIVIDER,
+        REPLACE,
+        DONE
+    }
 
     private final EditBlockNode block = new EditBlockNode();
     private final BasedSequence openingMarker;
@@ -51,7 +55,12 @@ public class EditBlockParser extends AbstractBlockParser {
     private boolean sawHeadLine = false;
     private @Nullable String currentFilename = null;
 
-    EditBlockParser(BasedSequence openingMarker, BasedSequence searchKeyword, BasedSequence initialLine, boolean isFenced, @Nullable String filename) {
+    EditBlockParser(
+            BasedSequence openingMarker,
+            BasedSequence searchKeyword,
+            BasedSequence initialLine,
+            boolean isFenced,
+            @Nullable String filename) {
         this.openingMarker = openingMarker;
         this.searchKeyword = searchKeyword;
         this.parsingFenced = isFenced;
@@ -84,96 +93,107 @@ public class EditBlockParser extends AbstractBlockParser {
         var line = state.getLine();
         var lineStr = line.toString();
 
-        var blockContinueResult = switch (phase) {
-            case FILENAME -> {
-                // First line after opening fence should be the filename
-                var possibleFilename = stripFilename(lineStr);
+        var blockContinueResult =
+                switch (phase) {
+                    case FILENAME -> {
+                        // First line after opening fence should be the filename
+                        var possibleFilename = stripFilename(lineStr);
 
-                // If this is already a SEARCH line, don't treat it as filename
-                if (HEAD.matcher(lineStr).matches()) {
-                    sawHeadLine = true;
-                    phase = Phase.SEARCH;
+                        // If this is already a SEARCH line, don't treat it as filename
+                        if (HEAD.matcher(lineStr).matches()) {
+                            sawHeadLine = true;
+                            phase = Phase.SEARCH;
 
-                    // Try to extract filename from the SEARCH line
-                    var headMatcher = HEAD.matcher(lineStr);
-                    if (headMatcher.matches() && headMatcher.group(1) != null) {
-                        currentFilename = headMatcher.group(1).trim();
-                        block.setFilename(currentFilename);
-                        logger.trace("Set filename from HEAD line: {}", currentFilename);
-                    }
-                } else if (possibleFilename != null && !possibleFilename.isBlank()) {
-                    // Got a valid filename
-                    currentFilename = possibleFilename;
-                    block.setFilename(currentFilename);
-                    phase = Phase.SEARCH;
-                    logger.trace("Set filename from line after fence: {}", currentFilename);
-                }
-                yield BlockContinue.atIndex(state.getIndex());
-            }
-            case SEARCH -> {
-                // Check for HEAD marker (<<<<<<< SEARCH)
-                if (!sawHeadLine && HEAD.matcher(lineStr).matches()) {
-                    sawHeadLine = true;
-                    // Extract filename from head line if none was provided before
-                    if ((currentFilename == null || currentFilename.isBlank()) && lineStr.trim().length() > 14) {
-                        var filenameMatcher = HEAD.matcher(lineStr);
-                        if (filenameMatcher.matches() && filenameMatcher.group(1) != null) {
-                            currentFilename = filenameMatcher.group(1).trim();
+                            // Try to extract filename from the SEARCH line
+                            var headMatcher = HEAD.matcher(lineStr);
+                            if (headMatcher.matches() && headMatcher.group(1) != null) {
+                                currentFilename = headMatcher.group(1).trim();
+                                block.setFilename(currentFilename);
+                                logger.trace("Set filename from HEAD line: {}", currentFilename);
+                            }
+                        } else if (possibleFilename != null && !possibleFilename.isBlank()) {
+                            // Got a valid filename
+                            currentFilename = possibleFilename;
                             block.setFilename(currentFilename);
+                            phase = Phase.SEARCH;
+                            logger.trace("Set filename from line after fence: {}", currentFilename);
                         }
+                        yield BlockContinue.atIndex(state.getIndex());
                     }
-                    yield BlockContinue.atIndex(state.getIndex());
-                }
+                    case SEARCH -> {
+                        // Check for HEAD marker (<<<<<<< SEARCH)
+                        if (!sawHeadLine && HEAD.matcher(lineStr).matches()) {
+                            sawHeadLine = true;
+                            // Extract filename from head line if none was provided before
+                            if ((currentFilename == null || currentFilename.isBlank())
+                                    && lineStr.trim().length() > 14) {
+                                var filenameMatcher = HEAD.matcher(lineStr);
+                                if (filenameMatcher.matches() && filenameMatcher.group(1) != null) {
+                                    currentFilename = filenameMatcher.group(1).trim();
+                                    block.setFilename(currentFilename);
+                                }
+                            }
+                            yield BlockContinue.atIndex(state.getIndex());
+                        }
 
-                // Check for divider (=======)
-                if (DIVIDER.matcher(lineStr).matches()) {
-                    phase = Phase.REPLACE;
-                    this.divider = line;
-                    yield BlockContinue.atIndex(state.getIndex());
-                }
+                        // Check for divider (=======)
+                        if (DIVIDER.matcher(lineStr).matches()) {
+                            phase = Phase.REPLACE;
+                            this.divider = line;
+                            yield BlockContinue.atIndex(state.getIndex());
+                        }
 
-                // Still in search part - only add content after we've seen the HEAD marker
-                if (sawHeadLine || !parsingFenced) {
-                    searchContent.append(searchContent.length() > 0 ? "\n" : "").append(line);
-                }
-                yield BlockContinue.atIndex(state.getIndex());
-            }
-            case REPLACE -> {
-                // Check for end marker (>>>>>>> REPLACE)
-                if (UPDATED.matcher(lineStr).matches()) {
-                    phase = Phase.DONE;
-                    this.closingMarker = line;
-                    replaceKeyword = BasedSequence.of("REPLACE");
-
-                    var beforeText = stripQuotedWrapping(searchContent.toString(), Objects.toString(currentFilename, ""));
-                    var afterText = stripQuotedWrapping(replaceContent.toString(), Objects.toString(currentFilename, ""));
-
-                    block.setSegments(openingMarker, searchKeyword,
-                                      BasedSequence.of(beforeText),
-                                      divider, replaceKeyword,
-                                      BasedSequence.of(afterText),
-                                      closingMarker);
-
-                    if (!parsingFenced) {
-                        yield BlockContinue.finished();
+                        // Still in search part - only add content after we've seen the HEAD marker
+                        if (sawHeadLine || !parsingFenced) {
+                            searchContent
+                                    .append(searchContent.length() > 0 ? "\n" : "")
+                                    .append(line);
+                        }
+                        yield BlockContinue.atIndex(state.getIndex());
                     }
-                    yield BlockContinue.atIndex(state.getIndex());
-                }
+                    case REPLACE -> {
+                        // Check for end marker (>>>>>>> REPLACE)
+                        if (UPDATED.matcher(lineStr).matches()) {
+                            phase = Phase.DONE;
+                            this.closingMarker = line;
+                            replaceKeyword = BasedSequence.of("REPLACE");
 
-                // Still in replace part
-                replaceContent.append(replaceContent.length() > 0 ? "\n" : "").append(line);
-                yield BlockContinue.atIndex(state.getIndex());
-            }
-            case DONE -> {
-                // We're done parsing this block
-                if (parsingFenced && lineStr.trim().equals(DEFAULT_FENCE.get(0))) {
-                    // Consume the closing fence line and finish
-                    yield BlockContinue.finished();
-                }
-                yield BlockContinue.atIndex(state.getIndex());
-            }
-            default -> BlockContinue.none();
-        };
+                            var beforeText = stripQuotedWrapping(
+                                    searchContent.toString(), Objects.toString(currentFilename, ""));
+                            var afterText = stripQuotedWrapping(
+                                    replaceContent.toString(), Objects.toString(currentFilename, ""));
+
+                            block.setSegments(
+                                    openingMarker,
+                                    searchKeyword,
+                                    BasedSequence.of(beforeText),
+                                    divider,
+                                    replaceKeyword,
+                                    BasedSequence.of(afterText),
+                                    closingMarker);
+
+                            if (!parsingFenced) {
+                                yield BlockContinue.finished();
+                            }
+                            yield BlockContinue.atIndex(state.getIndex());
+                        }
+
+                        // Still in replace part
+                        replaceContent
+                                .append(replaceContent.length() > 0 ? "\n" : "")
+                                .append(line);
+                        yield BlockContinue.atIndex(state.getIndex());
+                    }
+                    case DONE -> {
+                        // We're done parsing this block
+                        if (parsingFenced && lineStr.trim().equals(DEFAULT_FENCE.get(0))) {
+                            // Consume the closing fence line and finish
+                            yield BlockContinue.finished();
+                        }
+                        yield BlockContinue.atIndex(state.getIndex());
+                    }
+                    default -> BlockContinue.none();
+                };
         return blockContinueResult;
     }
 
@@ -189,12 +209,14 @@ public class EditBlockParser extends AbstractBlockParser {
             var beforeText = stripQuotedWrapping(searchContent.toString(), Objects.toString(currentFilename, ""));
             var afterText = stripQuotedWrapping(replaceContent.toString(), Objects.toString(currentFilename, ""));
 
-            block.setSegments(openingMarker, searchKeyword,
-                              BasedSequence.of(beforeText),
-                              divider, // already defaults to BasedSequence.NULL
-                              replaceKeyword, // already defaults to BasedSequence.NULL
-                              BasedSequence.of(afterText),
-                              closingMarker); // already defaults to BasedSequence.NULL
+            block.setSegments(
+                    openingMarker,
+                    searchKeyword,
+                    BasedSequence.of(beforeText),
+                    divider, // already defaults to BasedSequence.NULL
+                    replaceKeyword, // already defaults to BasedSequence.NULL
+                    BasedSequence.of(afterText),
+                    closingMarker); // already defaults to BasedSequence.NULL
         }
 
         // Ensure filename is set
@@ -203,9 +225,7 @@ public class EditBlockParser extends AbstractBlockParser {
         }
     }
 
-    /**
-     * Factory for creating EditBlockParser.
-     */
+    /** Factory for creating EditBlockParser. */
     public static class Factory implements CustomBlockParserFactory {
         @Override
         public BlockParserFactory apply(DataHolder options) {
@@ -226,8 +246,8 @@ public class EditBlockParser extends AbstractBlockParser {
                         // logger.trace("Found potential fence opening: {}", line);
 
                         // Look-ahead: is there a <<<<<<< SEARCH before the closing fence?
-                        var doc = line.getBaseSequence();          // whole document
-                        int pos = line.getEndOffset();             // character after the opening ```
+                        var doc = line.getBaseSequence(); // whole document
+                        int pos = line.getEndOffset(); // character after the opening ```
                         int linesChecked = 0;
                         boolean headFound = false;
                         boolean fenceClosed = false;
@@ -238,7 +258,7 @@ public class EditBlockParser extends AbstractBlockParser {
                             var nextLine = doc.subSequence(pos, eol).toString();
 
                             if (OPENING_FENCE.matcher(nextLine).matches()) fenceClosed = true;
-                            if (HEAD.matcher(nextLine).matches())          headFound = true;
+                            if (HEAD.matcher(nextLine).matches()) headFound = true;
 
                             pos = eol + 1;
                             linesChecked++;
@@ -246,7 +266,7 @@ public class EditBlockParser extends AbstractBlockParser {
 
                         if (!headFound) {
                             // No SEARCH marker before the closing fence -> not an edit block
-                            return BlockStart.none();               // let Flexmark parse it as code-fence
+                            return BlockStart.none(); // let Flexmark parse it as code-fence
                         }
 
                         // Extract token from fence line (may be language or filename)
@@ -281,7 +301,8 @@ public class EditBlockParser extends AbstractBlockParser {
                         if (endOfSearch < lineStr.length()) {
                             var afterSearch = lineStr.substring(endOfSearch).trim();
                             if (!afterSearch.isEmpty()) {
-                                searchText = line.subSequence(endOfSearch + (lineStr.charAt(endOfSearch) == ' ' ? 1 : 0));
+                                searchText =
+                                        line.subSequence(endOfSearch + (lineStr.charAt(endOfSearch) == ' ' ? 1 : 0));
                             }
                         }
 
@@ -315,17 +336,20 @@ public class EditBlockParser extends AbstractBlockParser {
                             // If we found a filename in the line directly before current line,
                             // we need to handle it differently in unfenced mode:
                             // It should NOT be included in the SEARCH content
-                            if (filename != null && lineIdx > 0 &&
-                                    filename.equals(stripFilename(allLines[lineIdx-1]))) {
+                            if (filename != null
+                                    && lineIdx > 0
+                                    && filename.equals(stripFilename(allLines[lineIdx - 1]))) {
                                 // Skip this line by advancing the parser index
-                                return BlockStart.of(new EditBlockParser(openingMarker, searchKeyword, searchText, false, filename))
+                                return BlockStart.of(new EditBlockParser(
+                                                openingMarker, searchKeyword, searchText, false, filename))
                                         .atIndex(state.getIndex() + 1);
                             }
                         }
 
                         logger.trace("Found edit block start: {}, filename: {}", line, filename);
 
-                        return BlockStart.of(new EditBlockParser(openingMarker, searchKeyword, searchText, false, filename))
+                        return BlockStart.of(
+                                        new EditBlockParser(openingMarker, searchKeyword, searchText, false, filename))
                                 .atIndex(state.getIndex());
                     }
 

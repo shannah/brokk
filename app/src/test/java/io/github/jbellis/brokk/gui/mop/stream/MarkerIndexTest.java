@@ -1,18 +1,13 @@
 package io.github.jbellis.brokk.gui.mop.stream;
 
+import static org.junit.jupiter.api.Assertions.*;
+
+import java.util.concurrent.atomic.AtomicReference;
+import javax.swing.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import javax.swing.*;
-import java.util.List;
-import java.util.Set;
-import java.util.concurrent.atomic.AtomicReference;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Verifies that IncrementalBlockRenderer can locate Swing components by marker id.
- */
+/** Verifies that IncrementalBlockRenderer can locate Swing components by marker id. */
 public class MarkerIndexTest {
 
     private IncrementalBlockRenderer renderer;
@@ -24,8 +19,7 @@ public class MarkerIndexTest {
 
     @Test
     public void testFindByMarkerId() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("alpha", true, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("alpha", true, true, "<mark>", "</mark>"));
 
         // Run update on EDT to ensure components are created
         SwingUtilities.invokeAndWait(() -> renderer.update("one alpha two"));
@@ -35,20 +29,17 @@ public class MarkerIndexTest {
         int id = ids.iterator().next();
 
         AtomicReference<JComponent> ref = new AtomicReference<>();
-        SwingUtilities.invokeAndWait(() ->
-                ref.set(renderer.findByMarkerId(id).orElse(null)));
+        SwingUtilities.invokeAndWait(() -> ref.set(renderer.findByMarkerId(id).orElse(null)));
 
         assertNotNull(ref.get(), "Renderer should resolve component for marker id");
     }
 
     @Test
     public void testMultipleMarkerIds() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("test", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("test", false, true, "<mark>", "</mark>"));
 
         // Text with multiple occurrences of 'test'
-        SwingUtilities.invokeAndWait(() -> 
-            renderer.update("First test, second test, third test."));
+        SwingUtilities.invokeAndWait(() -> renderer.update("First test, second test, third test."));
 
         var ids = renderer.getIndexedMarkerIds();
         assertEquals(3, ids.size(), "Should have three marker ids");
@@ -79,8 +70,7 @@ public class MarkerIndexTest {
 
     @Test
     public void testNoMarkersWhenNoMatches() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("notfound", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("notfound", false, true, "<mark>", "</mark>"));
 
         SwingUtilities.invokeAndWait(() -> renderer.update("text with no matches"));
 
@@ -90,8 +80,7 @@ public class MarkerIndexTest {
 
     @Test
     public void testMarkerIdNotFound() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("test", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("test", false, true, "<mark>", "</mark>"));
 
         SwingUtilities.invokeAndWait(() -> renderer.update("test content"));
 
@@ -107,18 +96,17 @@ public class MarkerIndexTest {
 
     @Test
     public void testMarkerIndexRebuildAfterUpdate() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("word", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("word", false, true, "<mark>", "</mark>"));
 
         // Initial content
         SwingUtilities.invokeAndWait(() -> renderer.update("first word"));
-        
+
         var initialIds = renderer.getIndexedMarkerIds();
         assertEquals(1, initialIds.size(), "Should have one marker initially");
 
         // Update with more content
         SwingUtilities.invokeAndWait(() -> renderer.update("first word second word"));
-        
+
         var updatedIds = renderer.getIndexedMarkerIds();
         assertEquals(2, updatedIds.size(), "Should have two markers after update");
 
@@ -126,7 +114,7 @@ public class MarkerIndexTest {
         AtomicReference<Boolean> allResolved = new AtomicReference<>();
         SwingUtilities.invokeAndWait(() -> {
             boolean resolved = updatedIds.stream()
-                .allMatch(id -> renderer.findByMarkerId(id).isPresent());
+                    .allMatch(id -> renderer.findByMarkerId(id).isPresent());
             allResolved.set(resolved);
         });
 
@@ -136,52 +124,50 @@ public class MarkerIndexTest {
     @Test
     public void testMarkerIndexAfterCustomizerChange() throws Exception {
         // Start with one customizer
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("alpha", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("alpha", false, true, "<mark>", "</mark>"));
 
         SwingUtilities.invokeAndWait(() -> renderer.update("alpha beta gamma"));
-        
+
         var alphaIds = renderer.getIndexedMarkerIds();
         assertEquals(1, alphaIds.size(), "Should have one marker for alpha");
 
         // Switch to different customizer
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("beta", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("beta", false, true, "<mark>", "</mark>"));
 
         SwingUtilities.invokeAndWait(() -> renderer.reprocessForCustomizer());
-        
+
         // Note: reprocessForCustomizer is async, so we test the core buildComponentData method
         var html = renderer.createHtml("alpha beta gamma");
         var components = renderer.buildComponentData(html);
-        
+
         // Extract HTML and verify beta is highlighted, not alpha
         String resultHtml = components.stream()
-            .filter(cd -> cd instanceof io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData)
-            .map(cd -> ((io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData) cd).html())
-            .reduce("", (a, b) -> a + b);
-        
+                .filter(cd -> cd instanceof io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData)
+                .map(cd -> ((io.github.jbellis.brokk.gui.mop.stream.blocks.MarkdownComponentData) cd).html())
+                .reduce("", (a, b) -> a + b);
+
         assertTrue(resultHtml.contains("beta"), "Should contain beta");
         assertFalse(resultHtml.contains("<mark>alpha"), "Should not highlight alpha anymore");
     }
 
     @Test
     public void testMarkerIndexWithComplexContent() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("item", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("item", false, true, "<mark>", "</mark>"));
 
-        String complexMarkdown = """
+        String complexMarkdown =
+                """
             # Header with item
-            
+
             List of items:
             * First item
-            * Second item  
+            * Second item
             * Third item
-            
+
             Code block (should not match):
             ```
             item = "value"
             ```
-            
+
             Final item in text.
             """;
 
@@ -194,8 +180,8 @@ public class MarkerIndexTest {
         // Verify all ids resolve to components
         AtomicReference<Boolean> allResolved = new AtomicReference<>();
         SwingUtilities.invokeAndWait(() -> {
-            boolean resolved = ids.stream()
-                .allMatch(id -> renderer.findByMarkerId(id).isPresent());
+            boolean resolved =
+                    ids.stream().allMatch(id -> renderer.findByMarkerId(id).isPresent());
             allResolved.set(resolved);
         });
 
@@ -204,8 +190,7 @@ public class MarkerIndexTest {
 
     @Test
     public void testMarkerIndexAfterCompaction() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("target", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("target", false, true, "<mark>", "</mark>"));
 
         String markdown = "First target and second target.";
         SwingUtilities.invokeAndWait(() -> renderer.update(markdown));
@@ -215,10 +200,9 @@ public class MarkerIndexTest {
 
         // Build compacted snapshot
         var compactedComponents = renderer.buildCompactedSnapshot(1L);
-        
+
         if (compactedComponents != null) {
-            SwingUtilities.invokeAndWait(() -> 
-                renderer.applyCompactedSnapshot(compactedComponents, 1L));
+            SwingUtilities.invokeAndWait(() -> renderer.applyCompactedSnapshot(compactedComponents, 1L));
 
             var postCompactionIds = renderer.getIndexedMarkerIds();
             assertEquals(2, postCompactionIds.size(), "Should still have two markers after compaction");
@@ -227,7 +211,7 @@ public class MarkerIndexTest {
             AtomicReference<Boolean> allResolved = new AtomicReference<>();
             SwingUtilities.invokeAndWait(() -> {
                 boolean resolved = postCompactionIds.stream()
-                    .allMatch(id -> renderer.findByMarkerId(id).isPresent());
+                        .allMatch(id -> renderer.findByMarkerId(id).isPresent());
                 allResolved.set(resolved);
             });
 
@@ -251,8 +235,7 @@ public class MarkerIndexTest {
 
     @Test
     public void testMarkerIndexImmutability() throws Exception {
-        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("test", false, true,
-                                                                "<mark>", "</mark>"));
+        renderer.setHtmlCustomizer(new TextNodeMarkerCustomizer("test", false, true, "<mark>", "</mark>"));
 
         SwingUtilities.invokeAndWait(() -> renderer.update("test content"));
 
@@ -260,8 +243,11 @@ public class MarkerIndexTest {
         assertEquals(1, ids.size(), "Should have one marker");
 
         // Try to modify the returned set (should be immutable)
-        assertThrows(UnsupportedOperationException.class, () -> {
-            ids.add(999);
-        }, "Returned marker ids set should be immutable");
+        assertThrows(
+                UnsupportedOperationException.class,
+                () -> {
+                    ids.add(999);
+                },
+                "Returned marker ids set should be immutable");
     }
 }

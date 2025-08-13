@@ -9,22 +9,21 @@ import io.github.jbellis.brokk.difftool.ui.BufferSource;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitWorkflowService;
 import io.github.jbellis.brokk.gui.widgets.FileStatusTable;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.jetbrains.annotations.Nullable;
-
-import javax.swing.*;
-import javax.swing.table.DefaultTableModel;
 import java.awt.*;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
 import java.util.stream.Collectors;
+import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * Panel for the "Changes" tab (formerly "Commit" tab) in the Git Panel.
- * Handles displaying uncommitted changes, staging, committing, and stashing.
+ * Panel for the "Changes" tab (formerly "Commit" tab) in the Git Panel. Handles displaying uncommitted changes,
+ * staging, committing, and stashing.
  */
 public class GitCommitTab extends JPanel {
 
@@ -40,6 +39,7 @@ public class GitCommitTab extends JPanel {
     private FileStatusTable fileStatusPane;
     private JButton commitButton;
     private JButton stashButton;
+
     @Nullable
     private ProjectFile rightClickedFile = null; // Store the file that was right-clicked
 
@@ -52,11 +52,8 @@ public class GitCommitTab extends JPanel {
         buildCommitTabUI();
     }
 
-    /**
-     * Builds the Changes tab UI elements.
-     */
-    private void buildCommitTabUI()
-    {
+    /** Builds the Changes tab UI elements. */
+    private void buildCommitTabUI() {
         // Table for uncommitted files
         fileStatusPane = new FileStatusTable();
         uncommittedFilesTable = fileStatusPane.getTable();
@@ -73,7 +70,8 @@ public class GitCommitTab extends JPanel {
                     if (row >= 0) {
                         // keep the visual feedback
                         uncommittedFilesTable.setRowSelectionInterval(row, row);
-                        var clickedFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                        var clickedFile =
+                                (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
                         openDiffForAllUncommittedFiles(clickedFile);
                     }
                 }
@@ -111,7 +109,8 @@ public class GitCommitTab extends JPanel {
                     int row = uncommittedFilesTable.rowAtPoint(point);
                     if (row >= 0) {
                         // Store the right-clicked file for later use
-                        rightClickedFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                        rightClickedFile =
+                                (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
                         if (!uncommittedFilesTable.isRowSelected(row)) {
                             uncommittedFilesTable.setRowSelectionInterval(row, row);
                         }
@@ -119,17 +118,17 @@ public class GitCommitTab extends JPanel {
                         rightClickedFile = null;
                     }
                     // Update menu items
-                    updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem, rollbackChangesItem);
+                    updateUncommittedContextMenuState(
+                            captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem, rollbackChangesItem);
                 });
             }
 
             @Override
-            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {
-            }
+            public void popupMenuWillBecomeInvisible(javax.swing.event.PopupMenuEvent e) {}
 
             @Override
             public void popupMenuCanceled(javax.swing.event.PopupMenuEvent e) {
-                 // Reset rightClickedFile if menu is cancelled
+                // Reset rightClickedFile if menu is cancelled
                 rightClickedFile = null;
             }
         });
@@ -161,7 +160,8 @@ public class GitCommitTab extends JPanel {
             } else { // Fallback to selection if rightClickedFile is somehow null
                 int row = uncommittedFilesTable.getSelectedRow();
                 if (row >= 0) {
-                    var projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+                    var projectFile =
+                            (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
                     gitPanel.addFileHistoryTab(projectFile);
                 }
             }
@@ -177,7 +177,8 @@ public class GitCommitTab extends JPanel {
         // Selection => update context menu item states
         uncommittedFilesTable.getSelectionModel().addListSelectionListener(e -> {
             if (!e.getValueIsAdjusting()) {
-                updateUncommittedContextMenuState(captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem, rollbackChangesItem);
+                updateUncommittedContextMenuState(
+                        captureDiffItem, viewDiffItem, editFileItem, viewHistoryItem, rollbackChangesItem);
             }
         });
 
@@ -212,13 +213,12 @@ public class GitCommitTab extends JPanel {
                     filesToCommit,
                     commitResult -> { // This is the onCommitSuccessCallback
                         chrome.systemOutput("Committed "
-                                            + GitUiUtil.shortenCommitId(commitResult.commitId())
-                                            + ": " + commitResult.firstLine());
+                                + GitUiUtil.shortenCommitId(commitResult.commitId())
+                                + ": " + commitResult.firstLine());
                         updateCommitPanel(); // Refresh file list
                         gitPanel.updateLogTab();
                         gitPanel.selectCurrentBranchInLogTab();
-                    }
-            );
+                    });
             dialog.setVisible(true);
         });
         buttonPanel.add(commitButton);
@@ -239,7 +239,8 @@ public class GitCommitTab extends JPanel {
                     performStash(selectedFiles, stashMessage);
                 } catch (GitAPIException ex) {
                     logger.error("Error stashing changes:", ex);
-                    SwingUtilities.invokeLater(() -> chrome.toolError("Error stashing changes: " + ex.getMessage(), "Stash Error"));
+                    SwingUtilities.invokeLater(
+                            () -> chrome.toolError("Error stashing changes: " + ex.getMessage(), "Stash Error"));
                 }
             });
         });
@@ -256,9 +257,7 @@ public class GitCommitTab extends JPanel {
         add(buttonPanel, BorderLayout.SOUTH);
     }
 
-    /**
-     * Updates the enabled state of commit and stash buttons based on file changes.
-     */
+    /** Updates the enabled state of commit and stash buttons based on file changes. */
     private void updateButtonEnablement() {
         // Enablement depends on whether there are changes in the table
         boolean hasChanges = uncommittedFilesTable.getRowCount() > 0;
@@ -266,18 +265,13 @@ public class GitCommitTab extends JPanel {
         stashButton.setEnabled(hasChanges);
     }
 
-
-    /**
-     * Returns the current GitRepo from ContextManager.
-     */
+    /** Returns the current GitRepo from ContextManager. */
     private GitRepo getRepo() {
         var repo = contextManager.getProject().getRepo();
         return (GitRepo) repo;
     }
 
-    /**
-     * Populates the uncommitted files table and enables/disables commit-related buttons.
-     */
+    /** Populates the uncommitted files table and enables/disables commit-related buttons. */
     public void updateCommitPanel() {
         logger.trace("Starting updateCommitPanel");
         // Store currently selected rows before updating
@@ -288,7 +282,8 @@ public class GitCommitTab extends JPanel {
         if (uncommittedFilesTable.getModel().getRowCount() > 0) { // Check if table has rows before accessing
             for (int rowIndex : selectedRowsIndices) {
                 if (rowIndex < uncommittedFilesTable.getModel().getRowCount()) { // Bounds check
-                    ProjectFile pf = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(rowIndex, 2);
+                    ProjectFile pf =
+                            (ProjectFile) uncommittedFilesTable.getModel().getValueAt(rowIndex, 2);
                     if (pf != null) { // getValueAt can return null if model is being cleared
                         previouslySelectedFiles.add(pf);
                     }
@@ -342,9 +337,7 @@ public class GitCommitTab extends JPanel {
         });
     }
 
-    /**
-     * Adjusts the commit and stash button labels depending on file selection.
-     */
+    /** Adjusts the commit and stash button labels depending on file selection. */
     private void updateCommitButtonText() {
         int selectedRowCount = uncommittedFilesTable.getSelectedRowCount();
         if (selectedRowCount > 0) {
@@ -361,10 +354,14 @@ public class GitCommitTab extends JPanel {
     }
 
     /**
-     * Updates the enabled state of context menu items for the uncommitted files table
-     * based on the current selection.
+     * Updates the enabled state of context menu items for the uncommitted files table based on the current selection.
      */
-    private void updateUncommittedContextMenuState(JMenuItem captureDiffItem, JMenuItem viewDiffItem, JMenuItem editFileItem, JMenuItem viewHistoryItem, JMenuItem rollbackChangesItem) {
+    private void updateUncommittedContextMenuState(
+            JMenuItem captureDiffItem,
+            JMenuItem viewDiffItem,
+            JMenuItem editFileItem,
+            JMenuItem viewHistoryItem,
+            JMenuItem rollbackChangesItem) {
         int[] selectedRows = uncommittedFilesTable.getSelectedRows();
         int selectionCount = selectedRows.length;
 
@@ -389,7 +386,8 @@ public class GitCommitTab extends JPanel {
 
             // Get file details for conditional enablement
             int row = selectedRows[0];
-            ProjectFile projectFile = (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
+            ProjectFile projectFile =
+                    (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
             String status = fileStatusPane.statusFor(projectFile);
 
             // Enable Edit File
@@ -399,9 +397,8 @@ public class GitCommitTab extends JPanel {
             // Conditionally enable View History (disable for new files)
             boolean isNew = "new".equals(status);
             viewHistoryItem.setEnabled(!isNew);
-            viewHistoryItem.setToolTipText(isNew ?
-                                           "Cannot view history for a new file" :
-                                           "View commit history for this file");
+            viewHistoryItem.setToolTipText(
+                    isNew ? "Cannot view history for a new file" : "View commit history for this file");
 
             // Enable Rollback Changes for all files
             rollbackChangesItem.setEnabled(true);
@@ -423,11 +420,8 @@ public class GitCommitTab extends JPanel {
         }
     }
 
-    /**
-     * Helper to get a list of selected files from the uncommittedFilesTable.
-     */
-    private List<ProjectFile> getSelectedFilesFromTable()
-    {
+    /** Helper to get a list of selected files from the uncommittedFilesTable. */
+    private List<ProjectFile> getSelectedFilesFromTable() {
         var model = (DefaultTableModel) uncommittedFilesTable.getModel();
         var selectedRows = uncommittedFilesTable.getSelectedRows();
         var files = new ArrayList<ProjectFile>();
@@ -440,11 +434,8 @@ public class GitCommitTab extends JPanel {
         return files;
     }
 
-    /**
-     * Helper to get a list of all files from the uncommittedFilesTable.
-     */
-    private List<ProjectFile> getAllFilesFromTable()
-    {
+    /** Helper to get a list of all files from the uncommittedFilesTable. */
+    private List<ProjectFile> getAllFilesFromTable() {
         var model = (DefaultTableModel) uncommittedFilesTable.getModel();
         var files = new ArrayList<ProjectFile>();
         int rowCount = model.getRowCount();
@@ -459,6 +450,7 @@ public class GitCommitTab extends JPanel {
 
     /**
      * Opens a diff view for all uncommitted files in the table.
+     *
      * @param priorityFile File to show first (e.g., the double-clicked file), or null for default ordering
      */
     private void openDiffForAllUncommittedFiles(@Nullable ProjectFile priorityFile) {
@@ -502,9 +494,7 @@ public class GitCommitTab extends JPanel {
                 var builder = new BrokkDiffPanel.Builder(chrome.themeManager, contextManager);
 
                 for (var file : orderedFiles) {
-                    var rightSource = new BufferSource.FileSource(
-                            file.absPath().toFile(), file.getFileName()
-                    );
+                    var rightSource = new BufferSource.FileSource(file.absPath().toFile(), file.getFileName());
 
                     String headContent = "";
                     try {
@@ -515,9 +505,7 @@ public class GitCommitTab extends JPanel {
                         headContent = "";
                     }
 
-                    var leftSource = new BufferSource.StringSource(
-                            headContent, "HEAD", file.getFileName()
-                    );
+                    var leftSource = new BufferSource.StringSource(headContent, "HEAD", file.getFileName());
                     builder.addComparison(leftSource, rightSource);
                 }
 
@@ -532,13 +520,13 @@ public class GitCommitTab extends JPanel {
     }
 
     /**
-     * Rollback selected files to their HEAD state with undo support via ContextHistory.
-     * Snapshots the workspace before rollback to enable undo.
+     * Rollback selected files to their HEAD state with undo support via ContextHistory. Snapshots the workspace before
+     * rollback to enable undo.
      */
     private void rollbackChangesWithUndo(List<ProjectFile> selectedFiles) {
         if (selectedFiles.isEmpty()) {
             chrome.toolError("No files selected for rollback");
-return;
+            return;
         }
 
         contextManager.submitUserTask("Rolling back files", () -> {
@@ -547,7 +535,8 @@ return;
                 // so they are part of the snapshot and we can undo the rollback if we want
                 var filesNotInWorkspace = selectedFiles.stream()
                         .filter(pf -> contextManager.topContext().allFragments().noneMatch(f -> {
-                            return (f.getType() == ContextFragment.FragmentType.PROJECT_PATH) && f.files().iterator().next().equals(pf);
+                            return (f.getType() == ContextFragment.FragmentType.PROJECT_PATH)
+                                    && f.files().iterator().next().equals(pf);
                         }))
                         .collect(Collectors.toSet());
                 contextManager.editFiles(filesNotInWorkspace); // read-only files are ignored during undo/redo
@@ -563,14 +552,16 @@ return;
                         rollbackDescription,
                         new ContextFragment.TaskFragment(contextManager, List.of(), rollbackDescription),
                         new HashSet<>(selectedFiles),
-                        new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS)
-                );
+                        new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
                 contextManager.addToHistory(taskResult, false);
 
                 // drop the files from the workspace that weren't there originally
-                var fragmentsAdded = contextManager.topContext().editableFiles()
+                var fragmentsAdded = contextManager
+                        .topContext()
+                        .editableFiles()
                         .filter(f -> (f.getType() == ContextFragment.FragmentType.PROJECT_PATH)
-                                     && filesNotInWorkspace.contains(f.files().iterator().next()))
+                                && filesNotInWorkspace.contains(
+                                        f.files().iterator().next()))
                         .toList();
                 contextManager.drop(fragmentsAdded);
 
@@ -588,9 +579,7 @@ return;
         });
     }
 
-    /**
-     * Performs the actual stash operation and updates the UI.
-     */
+    /** Performs the actual stash operation and updates the UI. */
     private void performStash(List<ProjectFile> selectedFiles, String stashDescription) throws GitAPIException {
         assert !SwingUtilities.isEventDispatchThread();
 

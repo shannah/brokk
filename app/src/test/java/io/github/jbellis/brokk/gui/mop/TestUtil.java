@@ -2,17 +2,13 @@ package io.github.jbellis.brokk.gui.mop;
 
 import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentData;
-
-import java.lang.reflect.Method;
 import java.util.List;
 
-/**
- * Test utilities for markdown rendering tests.
- */
+/** Test utilities for markdown rendering tests. */
 public final class TestUtil {
     /**
-     * Parses markdown text into a list of ComponentData objects using reflection
-     * to access the private buildComponentData method.
+     * Parses markdown text into a list of ComponentData objects using reflection to access the private
+     * buildComponentData method.
      *
      * @param md Markdown text to parse
      * @return List of ComponentData objects parsed from the markdown
@@ -34,8 +30,8 @@ public final class TestUtil {
     }
 
     /**
-     * Convert HTML to a list of ComponentData objects using reflection.
-     * Useful for testing the direct HTML parsing path.
+     * Convert HTML to a list of ComponentData objects using reflection. Useful for testing the direct HTML parsing
+     * path.
      *
      * @param html HTML string to parse
      * @return List of ComponentData objects parsed from the HTML

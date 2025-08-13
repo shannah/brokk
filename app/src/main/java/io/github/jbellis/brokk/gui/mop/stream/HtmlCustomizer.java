@@ -3,18 +3,15 @@ package io.github.jbellis.brokk.gui.mop.stream;
 import org.jsoup.nodes.Element;
 
 /**
- * Functional interface allowing callers to tweak the parsed HTML DOM
- * (already produced from Markdown) in&nbsp;place before Swing components
- * are built.  Implementations may freely mutate the supplied element tree
- * but MUST NOT replace the root element.
+ * Functional interface allowing callers to tweak the parsed HTML DOM (already produced from Markdown) in&nbsp;place
+ * before Swing components are built. Implementations may freely mutate the supplied element tree but MUST NOT replace
+ * the root element.
  */
 @FunctionalInterface
 public interface HtmlCustomizer {
 
-    /**
-     * No-op customizer that leaves the DOM unchanged.
-     */
-    HtmlCustomizer DEFAULT = root -> { };
+    /** No-op customizer that leaves the DOM unchanged. */
+    HtmlCustomizer DEFAULT = root -> {};
 
     /**
      * Convenience accessor for the {@link #DEFAULT} instance.

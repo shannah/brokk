@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk.gui.mop.stream;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import org.jsoup.Jsoup;
 import org.jsoup.nodes.Document;
 import org.jsoup.nodes.Element;
@@ -8,11 +10,7 @@ import org.junit.jupiter.params.ParameterizedTest;
 import org.junit.jupiter.params.provider.CsvSource;
 import org.junit.jupiter.params.provider.ValueSource;
 
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Comprehensive unit tests for {@link TextNodeMarkerCustomizer}.
- */
+/** Comprehensive unit tests for {@link TextNodeMarkerCustomizer}. */
 public class TextNodeMarkerCustomizerTest {
 
     // Helper method to apply customizer and return the resulting body
@@ -20,9 +18,7 @@ public class TextNodeMarkerCustomizerTest {
         Document doc = Jsoup.parseBodyFragment(html);
         Element body = doc.body();
 
-        HtmlCustomizer customizer = new TextNodeMarkerCustomizer(
-            term, caseSensitive, wholeWord, "<mark>", "</mark>"
-        );
+        HtmlCustomizer customizer = new TextNodeMarkerCustomizer(term, caseSensitive, wholeWord, "<mark>", "</mark>");
         customizer.customize(body);
 
         return body;
@@ -84,8 +80,7 @@ public class TextNodeMarkerCustomizerTest {
         Element result = applyCustomizer(html, "test", false, true);
 
         assertEquals(1, countMarks(result), "Should only match outside " + tagName);
-        assertEquals(0, result.select(tagName + " mark").size(),
-            "Should not match inside " + tagName);
+        assertEquals(0, result.select(tagName + " mark").size(), "Should not match inside " + tagName);
     }
 
     @Test
@@ -95,8 +90,7 @@ public class TextNodeMarkerCustomizerTest {
         Element result = applyCustomizer(html, "test", false, true);
 
         assertEquals(1, countMarks(result), "Should only match outside img tag");
-        assertEquals(0, result.select("img mark").size(),
-            "Should not match inside img");
+        assertEquals(0, result.select("img mark").size(), "Should not match inside img");
     }
 
     @Test
@@ -116,10 +110,7 @@ public class TextNodeMarkerCustomizerTest {
 
         // Verify each has unique ID
         var marks = result.select("mark");
-        var ids = marks.stream()
-            .map(m -> m.attr("data-brokk-id"))
-            .distinct()
-            .toList();
+        var ids = marks.stream().map(m -> m.attr("data-brokk-id")).distinct().toList();
         assertEquals(3, ids.size(), "Each match should have unique ID");
     }
 
@@ -166,8 +157,10 @@ public class TextNodeMarkerCustomizerTest {
         Element result = applyCustomizer(html, "test", false, true);
 
         assertEquals(0, countMarks(result), "Should not create marks when no match");
-        assertEquals(html, "<p>" + result.select("p").first().html() + "</p>",
-            "HTML should remain unchanged when no matches");
+        assertEquals(
+                html,
+                "<p>" + result.select("p").first().html() + "</p>",
+                "HTML should remain unchanged when no matches");
     }
 
     @Test
@@ -191,7 +184,7 @@ public class TextNodeMarkerCustomizerTest {
         "'test case', 'test', true, 1",
         "'test case', 'case', true, 1",
         "'test-case', 'test', true, 1",
-        "'test_case', 'case', true, 0",  // Underscore is word character, so 'case' is not word boundary
+        "'test_case', 'case', true, 0", // Underscore is word character, so 'case' is not word boundary
         "'testcase', 'test', true, 0",
         "'testcase', 'case', true, 0"
     })
@@ -199,8 +192,10 @@ public class TextNodeMarkerCustomizerTest {
         String html = "<p>" + text + "</p>";
         Element result = applyCustomizer(html, term, false, wholeWord);
 
-        assertEquals(expected, countMarks(result),
-            String.format("'%s' searching for '%s' with wholeWord=%s", text, term, wholeWord));
+        assertEquals(
+                expected,
+                countMarks(result),
+                String.format("'%s' searching for '%s' with wholeWord=%s", text, term, wholeWord));
     }
 
     @Test
@@ -210,10 +205,7 @@ public class TextNodeMarkerCustomizerTest {
         Element body = doc.body();
 
         HtmlCustomizer customizer = new TextNodeMarkerCustomizer(
-            "test", false, true,
-            "<span class='highlight' style='background: yellow'>",
-            "</span>"
-        );
+                "test", false, true, "<span class='highlight' style='background: yellow'>", "</span>");
         customizer.customize(body);
 
         var spans = body.select("span.highlight");
@@ -224,9 +216,7 @@ public class TextNodeMarkerCustomizerTest {
 
     @Test
     public void testMightMatchOptimization() {
-        TextNodeMarkerCustomizer customizer = new TextNodeMarkerCustomizer(
-            "test", false, true, "<mark>", "</mark>"
-        );
+        TextNodeMarkerCustomizer customizer = new TextNodeMarkerCustomizer("test", false, true, "<mark>", "</mark>");
 
         // Should match (case-insensitive)
         assertTrue(customizer.mightMatch("This is a test"));
@@ -244,12 +234,13 @@ public class TextNodeMarkerCustomizerTest {
     @Test
     public void testInvalidTermHandling() {
         // Empty term should throw
-        assertThrows(IllegalArgumentException.class,
-            () -> new TextNodeMarkerCustomizer("", false, true, "<mark>", "</mark>"));
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> new TextNodeMarkerCustomizer("", false, true, "<mark>", "</mark>"));
 
         // Null term should throw
-        assertThrows(NullPointerException.class,
-            () -> new TextNodeMarkerCustomizer(null, false, true, "<mark>", "</mark>"));
+        assertThrows(
+                NullPointerException.class, () -> new TextNodeMarkerCustomizer(null, false, true, "<mark>", "</mark>"));
     }
 
     @Test
@@ -261,16 +252,16 @@ public class TextNodeMarkerCustomizerTest {
 
         // Verify existing mark doesn't get data-brokk attributes
         var existingMark = result.select("mark").stream()
-            .filter(m -> "existing".equals(m.text()))
-            .findFirst()
-            .orElseThrow();
-        assertFalse(existingMark.hasAttr("data-brokk-id"),
-            "Existing marks should not get brokk attributes");
+                .filter(m -> "existing".equals(m.text()))
+                .findFirst()
+                .orElseThrow();
+        assertFalse(existingMark.hasAttr("data-brokk-id"), "Existing marks should not get brokk attributes");
     }
 
     @Test
     public void testComplexHtmlStructure() {
-        String html = """
+        String html =
+                """
             <div>
                 <h1>Test Header</h1>
                 <p>First test paragraph with <strong>bold test</strong></p>
@@ -309,9 +300,7 @@ public class TextNodeMarkerCustomizerTest {
         Document doc = Jsoup.parseBodyFragment(html);
         Element body = doc.body();
 
-        HtmlCustomizer customizer = new TextNodeMarkerCustomizer(
-            "test", false, true, "<mark>", "</mark>"
-        );
+        HtmlCustomizer customizer = new TextNodeMarkerCustomizer("test", false, true, "<mark>", "</mark>");
 
         // Apply twice
         customizer.customize(body);

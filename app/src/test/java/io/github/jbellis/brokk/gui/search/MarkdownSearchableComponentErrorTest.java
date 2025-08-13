@@ -1,21 +1,18 @@
 package io.github.jbellis.brokk.gui.search;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
+import java.util.List;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.TimeUnit;
+import javax.swing.*;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.parallel.Execution;
 import org.junit.jupiter.api.parallel.ExecutionMode;
 
-import javax.swing.*;
-import java.util.List;
-import java.util.concurrent.CountDownLatch;
-import java.util.concurrent.TimeUnit;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for error handling in MarkdownSearchableComponent.
- */
+/** Tests for error handling in MarkdownSearchableComponent. */
 @Execution(ExecutionMode.SAME_THREAD)
 public class MarkdownSearchableComponentErrorTest {
 
@@ -52,11 +49,9 @@ public class MarkdownSearchableComponentErrorTest {
                 searchDone.countDown();
             });
 
-            SwingUtilities.invokeLater(() ->
-                searchComponent.highlightAll(searchTerm, false));
+            SwingUtilities.invokeLater(() -> searchComponent.highlightAll(searchTerm, false));
 
-            assertTrue(searchDone.await(10, TimeUnit.SECONDS),
-                      "Search for '" + searchTerm + "' should complete");
+            assertTrue(searchDone.await(10, TimeUnit.SECONDS), "Search for '" + searchTerm + "' should complete");
         }
     }
 }

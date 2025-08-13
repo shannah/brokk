@@ -1,20 +1,17 @@
 package io.github.jbellis.brokk.flex;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import com.vladsch.flexmark.html.HtmlRenderer;
 import com.vladsch.flexmark.parser.Parser;
 import com.vladsch.flexmark.util.data.MutableDataSet;
 import io.github.jbellis.brokk.gui.mop.stream.flex.BrokkMarkdownExtension;
 import io.github.jbellis.brokk.gui.mop.stream.flex.IdProvider;
+import java.util.List;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 
-import java.util.List;
-
-import static org.junit.jupiter.api.Assertions.*;
-
-/**
- * Tests for the various forms of SEARCH/REPLACE block syntax recognition.
- */
+/** Tests for the various forms of SEARCH/REPLACE block syntax recognition. */
 class SearchReplaceBlocksTest {
     private Parser parser;
     private HtmlRenderer renderer;
@@ -22,7 +19,7 @@ class SearchReplaceBlocksTest {
 
     @BeforeEach
     void setUp() {
-        idProvider = new IdProvider();  // Reset counter for each test
+        idProvider = new IdProvider(); // Reset counter for each test
         MutableDataSet options = new MutableDataSet()
                 .set(Parser.EXTENSIONS, List.of(BrokkMarkdownExtension.create()))
                 .set(IdProvider.ID_PROVIDER, idProvider)
@@ -36,7 +33,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void normalSyntaxTest() {
-        var md = """
+        var md =
+                """
                 file1.txt
                 <<<<<<< SEARCH
                 one
@@ -51,13 +49,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");
@@ -66,7 +64,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void conflictSyntaxTest() {
-        var md = """
+        var md =
+                """
                 <<<<<<< SEARCH file1.txt
                 one
                 ======= file1.txt
@@ -80,13 +79,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");
@@ -95,7 +94,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void normalSyntaxInCodeFencesTest() {
-        var md = """
+        var md =
+                """
                 ```
                 file1.txt
                 <<<<<<< SEARCH
@@ -112,13 +112,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers or fence markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");
@@ -128,7 +128,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void conflictSyntaxInCodeFencesTest() {
-        var md = """
+        var md =
+                """
                 ```
                 <<<<<<< SEARCH file1.txt
                 one
@@ -144,13 +145,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers or fence markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");
@@ -160,7 +161,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void normalSyntaxInCodeFencesWithLanguageTest() {
-        var md = """
+        var md =
+                """
                 ```java
                 file1.txt
                 <<<<<<< SEARCH
@@ -177,13 +179,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers or fence markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");
@@ -193,7 +195,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void conflictSyntaxInCodeFencesWithLanguageTest() {
-        var md = """
+        var md =
+                """
                 ```java
                 <<<<<<< SEARCH file1.txt
                 one
@@ -209,13 +212,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers or fence markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");
@@ -225,7 +228,8 @@ class SearchReplaceBlocksTest {
 
     @Test
     void strangeSyntaxTest() {
-        var md = """
+        var md =
+                """
                 ```file1.txt
                 <<<<<<< SEARCH
                 one
@@ -241,13 +245,13 @@ class SearchReplaceBlocksTest {
         // Verify it's recognized as an edit block
         assertTrue(html.contains("<edit-block"), "should be recognized as an edit block");
         assertEquals(1, html.split("<edit-block").length - 1, "should have exactly one edit block");
-        
+
         // Verify attributes
         assertTrue(html.contains("data-file=\"file1.txt\""), "filename attribute should be correct");
         assertTrue(html.contains("data-adds=\"1\""), "adds count should be correct");
         assertTrue(html.contains("data-dels=\"1\""), "dels count should be correct");
         assertTrue(html.contains("data-changed=\"1\""), "changed count should be correct");
-        
+
         // Verify no raw markers or fence markers
         assertFalse(html.contains("<<<<<<<"), "raw markers should not appear in output");
         assertFalse(html.contains("======="), "raw markers should not appear in output");

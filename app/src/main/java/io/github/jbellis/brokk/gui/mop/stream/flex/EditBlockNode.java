@@ -6,8 +6,8 @@ import io.github.jbellis.brokk.git.GitStatus;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Represents an EDIT BLOCK in the Flexmark AST.
- * These blocks have the format: &lt;<<<< SEARCH foo ===== REPLACE bar >>>>>.
+ * Represents an EDIT BLOCK in the Flexmark AST. These blocks have the format: &lt;<<<< SEARCH foo ===== REPLACE bar
+ * >>>>>.
  */
 public class EditBlockNode extends Block {
     private BasedSequence openingMarker = BasedSequence.NULL;
@@ -19,42 +19,32 @@ public class EditBlockNode extends Block {
     private BasedSequence closingMarker = BasedSequence.NULL;
     private @Nullable String filename;
     private GitStatus status = GitStatus.UNKNOWN;
-    
-    /**
-     * Get the filename if specified or empty sequence if not.
-     */
+
+    /** Get the filename if specified or empty sequence if not. */
     public BasedSequence getFilename() {
         return filename != null ? BasedSequence.of(filename) : BasedSequence.NULL;
     }
-    
-    /**
-     * Set the filename for this block.
-     */
+
+    /** Set the filename for this block. */
     public void setFilename(@Nullable String filename) {
         this.filename = filename;
     }
-    
-    /**
-     * Get the number of added lines in the edit block.
-     */
+
+    /** Get the number of added lines in the edit block. */
     public int getAdds() {
         String content = replaceText.toString().trim();
         if (content.isEmpty()) return 0;
-        return (int)content.lines().count();
+        return (int) content.lines().count();
     }
-    
-    /**
-     * Get the number of deleted lines in the edit block.
-     */
+
+    /** Get the number of deleted lines in the edit block. */
     public int getDels() {
         String content = searchText.toString().trim();
         if (content.isEmpty()) return 0;
-        return (int)content.lines().count();
+        return (int) content.lines().count();
     }
-    
-    /**
-     * Get the number of changed lines (lines modified in place).
-     */
+
+    /** Get the number of changed lines (lines modified in place). */
     public int getChangedLines() {
         return Math.min(getAdds(), getDels());
     }
@@ -63,30 +53,25 @@ public class EditBlockNode extends Block {
         return openingMarker;
     }
 
-    /**
-     * Get the git status of this edit block.
-     */
+    /** Get the git status of this edit block. */
     public GitStatus getStatus() {
         return status;
     }
-    
-    /**
-     * Set the git status of this edit block.
-     */
+
+    /** Set the git status of this edit block. */
     public void setStatus(GitStatus status) {
         this.status = status;
     }
 
-    /**
-     * Set segments of this node based on parsed sequences.
-     */
-    public void setSegments(BasedSequence openingMarker, 
-                           BasedSequence searchKeyword,
-                           BasedSequence searchText,
-                           BasedSequence divider,
-                           BasedSequence replaceKeyword,
-                           BasedSequence replaceText, 
-                           BasedSequence closingMarker) {
+    /** Set segments of this node based on parsed sequences. */
+    public void setSegments(
+            BasedSequence openingMarker,
+            BasedSequence searchKeyword,
+            BasedSequence searchText,
+            BasedSequence divider,
+            BasedSequence replaceKeyword,
+            BasedSequence replaceText,
+            BasedSequence closingMarker) {
         this.openingMarker = openingMarker;
         this.searchKeyword = searchKeyword;
         this.searchText = searchText;
@@ -95,17 +80,11 @@ public class EditBlockNode extends Block {
         this.replaceText = replaceText;
         this.closingMarker = closingMarker;
     }
-    
+
     @Override
     public BasedSequence[] getSegments() {
         return new BasedSequence[] {
-            openingMarker,
-            searchKeyword,
-            searchText,
-            divider,
-            replaceKeyword,
-            replaceText,
-            closingMarker
+            openingMarker, searchKeyword, searchText, divider, replaceKeyword, replaceText, closingMarker
         };
     }
 }

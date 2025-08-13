@@ -1,13 +1,7 @@
 package io.github.jbellis.brokk.util;
 
-
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.gui.Chrome;
-import org.jetbrains.annotations.Nullable;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
-import javax.swing.*;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
@@ -17,9 +11,12 @@ import java.nio.file.Path;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.TimeUnit;
-
 import java.util.function.BiFunction;
 import java.util.function.Consumer;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 public class Environment {
     private static final Logger logger = LogManager.getLogger(Environment.class);
@@ -37,16 +34,16 @@ public class Environment {
     public static BiFunction<String, Path, ShellCommandRunner> shellCommandRunnerFactory =
             DEFAULT_SHELL_COMMAND_RUNNER_FACTORY;
 
+    @Nullable
+    private TrayIcon brokkTrayIcon = null;
 
-    @Nullable private TrayIcon brokkTrayIcon = null;
-
-    private Environment() {
-    }
+    private Environment() {}
 
     /**
-     * Runs a shell command using the appropriate shell for the current OS,
-     * returning combined stdout and stderr. The command is executed in the directory
-     * specified by {@code root}. Output lines are passed to the consumer as they are generated.
+     * Runs a shell command using the appropriate shell for the current OS, returning combined stdout and stderr. The
+     * command is executed in the directory specified by {@code root}. Output lines are passed to the consumer as they
+     * are generated.
+     *
      * @param command The command to execute.
      * @param root The working directory for the command.
      * @param outputConsumer A consumer that accepts output lines (from stdout or stderr) as they are produced.
@@ -54,22 +51,16 @@ public class Environment {
      * @throws InterruptedException if the thread is interrupted.
      */
     public String runShellCommand(String command, Path root, Consumer<String> outputConsumer)
-            throws SubprocessException, InterruptedException
-    {
+            throws SubprocessException, InterruptedException {
         return shellCommandRunnerFactory.apply(command, root).run(outputConsumer);
     }
 
     /**
-     * Runs a shell command with optional sandbox.
-     * When {@code sandbox} is {@code false} this is identical to
+     * Runs a shell command with optional sandbox. When {@code sandbox} is {@code false} this is identical to
      * {@link #runShellCommand(String, Path, Consumer)}.
      */
-    public String runShellCommand(String command,
-                                  Path root,
-                                  boolean sandbox,
-                                  Consumer<String> outputConsumer)
-            throws SubprocessException, InterruptedException
-    {
+    public String runShellCommand(String command, Path root, boolean sandbox, Consumer<String> outputConsumer)
+            throws SubprocessException, InterruptedException {
         if (!sandbox) {
             return runShellCommand(command, root, outputConsumer);
         }
@@ -80,16 +71,17 @@ public class Environment {
             throws SubprocessException, InterruptedException {
         logger.debug("Running internal `{}` in `{}`", command, root);
         String shell = isWindows() ? "cmd.exe" : "/bin/sh";
-        String[] shellCommand = isWindows()
-                                ? new String[]{"cmd.exe", "/c", command}
-                                : new String[]{"/bin/sh", "-c", command};
+        String[] shellCommand =
+                isWindows() ? new String[] {"cmd.exe", "/c", command} : new String[] {"/bin/sh", "-c", command};
 
         ProcessBuilder pb = createProcessBuilder(root, shellCommand);
         Process process;
         try {
             process = pb.start();
         } catch (IOException e) {
-            throw new StartupException("unable to start %s in %s for command: `%s` (%s)".formatted(shell, root, command, e.getMessage()), "");
+            throw new StartupException(
+                    "unable to start %s in %s for command: `%s` (%s)".formatted(shell, root, command, e.getMessage()),
+                    "");
         }
 
         // start draining stdout/stderr immediately to avoid pipe-buffer deadlock
@@ -106,7 +98,8 @@ public class Environment {
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
                 combinedOutput = formatOutput(stdout, stderr);
-                throw new TimeoutException("process '%s' did not complete within 120 seconds".formatted(command), combinedOutput);
+                throw new TimeoutException(
+                        "process '%s' did not complete within 120 seconds".formatted(command), combinedOutput);
             }
         } catch (InterruptedException ie) {
             process.destroyForcibly();
@@ -123,21 +116,17 @@ public class Environment {
         int exitCode = process.exitValue();
 
         if (exitCode != 0) {
-            throw new FailureException("process '%s' signalled error code %d".formatted(command, exitCode), combinedOutput);
+            throw new FailureException(
+                    "process '%s' signalled error code %d".formatted(command, exitCode), combinedOutput);
         }
 
         return combinedOutput;
     }
 
-    /**
-     * Internal helper that supports running the command in a sandbox when requested.
-     */
-    private static String runShellCommandInternal(String command,
-                                                  Path root,
-                                                  boolean sandbox,
-                                                  Consumer<String> outputConsumer)
-            throws SubprocessException, InterruptedException 
-    {
+    /** Internal helper that supports running the command in a sandbox when requested. */
+    private static String runShellCommandInternal(
+            String command, Path root, boolean sandbox, Consumer<String> outputConsumer)
+            throws SubprocessException, InterruptedException {
         logger.debug("Running internal `{}` in `{}` (sandbox={})", command, root, sandbox);
 
         String[] shellCommand;
@@ -155,8 +144,8 @@ public class Environment {
                     if (realPath.equals(absPath)) {
                         writeRule = "(allow file-write* (subpath \"" + escapeForSeatbelt(absPath) + "\"))";
                     } else {
-                        writeRule = "(allow file-write* (subpath \"" + escapeForSeatbelt(absPath) + "\") " +
-                                "(subpath \"" + escapeForSeatbelt(realPath) + "\"))";
+                        writeRule = "(allow file-write* (subpath \"" + escapeForSeatbelt(absPath) + "\") "
+                                + "(subpath \"" + escapeForSeatbelt(realPath) + "\"))";
                     }
                 } catch (IOException e) {
                     // Fallback to only the absolute path if realPath resolution fails
@@ -175,23 +164,15 @@ public class Environment {
                 }
                 policyFile.toFile().deleteOnExit();
 
-                shellCommand = new String[]{
-                        "sandbox-exec",
-                        "-f",
-                        policyFile.toString(),
-                        "--",
-                        "/bin/sh",
-                        "-c",
-                        command
-                };
+                shellCommand =
+                        new String[] {"sandbox-exec", "-f", policyFile.toString(), "--", "/bin/sh", "-c", command};
             } else {
                 // TODO
                 throw new UnsupportedOperationException();
             }
         } else {
-            shellCommand = isWindows()
-                    ? new String[]{"cmd.exe", "/c", command}
-                    : new String[]{"/bin/sh", "-c", command};
+            shellCommand =
+                    isWindows() ? new String[] {"cmd.exe", "/c", command} : new String[] {"/bin/sh", "-c", command};
         }
 
         ProcessBuilder pb = createProcessBuilder(root, shellCommand);
@@ -200,7 +181,9 @@ public class Environment {
             process = pb.start();
         } catch (IOException e) {
             var shell = isWindows() ? "cmd.exe" : "/bin/sh";
-            throw new StartupException("unable to start %s in %s for command: `%s` (%s)".formatted(shell, root, command, e.getMessage()), "");
+            throw new StartupException(
+                    "unable to start %s in %s for command: `%s` (%s)".formatted(shell, root, command, e.getMessage()),
+                    "");
         }
 
         CompletableFuture<String> stdoutFuture =
@@ -215,7 +198,8 @@ public class Environment {
                 String stdout = stdoutFuture.join();
                 String stderr = stderrFuture.join();
                 combinedOutput = formatOutput(stdout, stderr);
-                throw new TimeoutException("process '%s' did not complete within 120 seconds".formatted(command), combinedOutput);
+                throw new TimeoutException(
+                        "process '%s' did not complete within 120 seconds".formatted(command), combinedOutput);
             }
         } catch (InterruptedException ie) {
             process.destroyForcibly();
@@ -231,7 +215,8 @@ public class Environment {
         int exitCode = process.exitValue();
 
         if (exitCode != 0) {
-            throw new FailureException("process '%s' signalled error code %d".formatted(command, exitCode), combinedOutput);
+            throw new FailureException(
+                    "process '%s' signalled error code %d".formatted(command, exitCode), combinedOutput);
         }
 
         return combinedOutput;
@@ -239,7 +224,8 @@ public class Environment {
 
     private static String readStream(java.io.InputStream in, java.util.function.Consumer<String> outputConsumer) {
         var lines = new java.util.ArrayList<String>();
-        try (var reader = new java.io.BufferedReader(new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))) {
+        try (var reader = new java.io.BufferedReader(
+                new java.io.InputStreamReader(in, java.nio.charset.StandardCharsets.UTF_8))) {
             String line;
             while ((line = reader.readLine()) != null) {
                 outputConsumer.accept(line);
@@ -256,10 +242,11 @@ public class Environment {
     private static final String ANSI_ESCAPE_PATTERN = "\\x1B(?:\\[[;\\d]*[ -/]*[@-~]|\\]\\d+;[^\\x07]*\\x07)";
 
     /**
-     * Seatbelt policy that grants read access everywhere and write access only
-     * to explicitly whitelisted roots. Networking remains blocked.
+     * Seatbelt policy that grants read access everywhere and write access only to explicitly whitelisted roots.
+     * Networking remains blocked.
      */
-    private static final String READ_ONLY_SEATBELT_POLICY = """
+    private static final String READ_ONLY_SEATBELT_POLICY =
+            """
         (version 1)
 
         (deny default)
@@ -328,7 +315,7 @@ public class Environment {
           (sysctl-name-prefix "hw.perflevel")
         )
         """;
-    
+
     /** Escape a path for inclusion inside a seatbelt policy. */
     private static String escapeForSeatbelt(String path) {
         return path.replace("\\", "\\\\").replace("\"", "\\\"");
@@ -366,10 +353,8 @@ public class Environment {
         return pb;
     }
 
-    /**
-     * Base exception for subprocess errors.
-     */
-    public static abstract class SubprocessException extends IOException {
+    /** Base exception for subprocess errors. */
+    public abstract static class SubprocessException extends IOException {
         private final String output;
 
         public SubprocessException(String message, String output) {
@@ -382,36 +367,28 @@ public class Environment {
         }
     }
 
-    /**
-     * Exception thrown when a subprocess fails to start.
-     */
+    /** Exception thrown when a subprocess fails to start. */
     public static class StartupException extends SubprocessException {
         public StartupException(String message, String output) {
             super(message, output);
         }
     }
 
-    /**
-     * Exception thrown when a subprocess times out.
-     */
+    /** Exception thrown when a subprocess times out. */
     public static class TimeoutException extends SubprocessException {
         public TimeoutException(String message, String output) {
             super(message, output);
         }
     }
 
-    /**
-     * Exception thrown when a subprocess returns a non-zero exit code.
-     */
+    /** Exception thrown when a subprocess returns a non-zero exit code. */
     public static class FailureException extends SubprocessException {
         public FailureException(String message, String output) {
             super(message, output);
         }
     }
 
-    /**
-     * Determines if the current operating system is Windows.
-     */
+    /** Determines if the current operating system is Windows. */
     public static boolean isWindows() {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("win");
     }
@@ -420,16 +397,12 @@ public class Environment {
         return System.getProperty("os.name").toLowerCase(Locale.ROOT).contains("mac");
     }
 
-    /**
-     * Returns the current user's home directory as a Path.
-     */
+    /** Returns the current user's home directory as a Path. */
     public static Path getHomePath() {
         return Path.of(System.getProperty("user.home"));
     }
 
-    /**
-     * Determines if sandboxing is available on the current operating system.
-     */
+    /** Determines if sandboxing is available on the current operating system. */
     public static boolean isSandboxAvailable() {
         if (isWindows()) {
             return false;
@@ -444,7 +417,7 @@ public class Environment {
     /**
      * Sends a desktop notification asynchronously.
      *
-     * @param message  The message body of the notification.
+     * @param message The message body of the notification.
      */
     public void sendNotificationAsync(String message) {
         CompletableFuture.runAsync(() -> {
@@ -511,10 +484,9 @@ public class Environment {
     }
 
     /**
-     * Opens the specified URL in the default web browser.
-     * Handles common errors like browser unavailability.
+     * Opens the specified URL in the default web browser. Handles common errors like browser unavailability.
      *
-     * @param url      The URL to open.
+     * @param url The URL to open.
      * @param ancestor The parent window for displaying error dialogs, can be null.
      */
     public static void openInBrowser(String url, Window ancestor) {
@@ -525,8 +497,7 @@ public class Environment {
                         ancestor,
                         "Sorry, unable to open browser automatically. Desktop API not supported.\nPlease visit: " + url,
                         "Browser Unsupported",
-                        JOptionPane.WARNING_MESSAGE
-                );
+                        JOptionPane.WARNING_MESSAGE);
                 return;
             }
             Desktop.getDesktop().browse(new java.net.URI(url));
@@ -534,17 +505,17 @@ public class Environment {
             logger.error("Browser not supported on this platform (e.g., WSL): {}", url, ex);
             JOptionPane.showMessageDialog(
                     ancestor,
-                    "Sorry, unable to open browser automatically. This is a known problem on WSL.\nPlease visit: " + url,                    "Browser Unsupported",
-                    JOptionPane.WARNING_MESSAGE
-            );
+                    "Sorry, unable to open browser automatically. This is a known problem on WSL.\nPlease visit: "
+                            + url,
+                    "Browser Unsupported",
+                    JOptionPane.WARNING_MESSAGE);
         } catch (Exception ex) {
             logger.error("Failed to open URL: {}", url, ex);
             JOptionPane.showMessageDialog(
                     ancestor,
                     "Failed to open the browser. Please visit:\n" + url,
                     "Browser Error",
-                    JOptionPane.ERROR_MESSAGE
-            );
+                    JOptionPane.ERROR_MESSAGE);
         }
     }
 }

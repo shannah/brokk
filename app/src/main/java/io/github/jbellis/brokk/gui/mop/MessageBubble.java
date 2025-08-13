@@ -1,28 +1,33 @@
 package io.github.jbellis.brokk.gui.mop;
 
-import javax.swing.*;
 import java.awt.*;
 import java.awt.geom.RoundRectangle2D;
+import javax.swing.*;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Base component for chat message panels with common styling and structure.
- * Provides a standardized layout with header (icon + title) and content area.
+ * Base component for chat message panels with common styling and structure. Provides a standardized layout with header
+ * (icon + title) and content area.
  */
 public class MessageBubble extends JPanel {
 
     /**
-     * A panel that draws a rounded background and a highlight bar on the left.
-     * It contains the actual content component.
+     * A panel that draws a rounded background and a highlight bar on the left. It contains the actual content
+     * component.
      */
-        private static class RoundedHighlightPanel extends JPanel {
+    private static class RoundedHighlightPanel extends JPanel {
         private final Color backgroundColor;
         private final Color highlightColor;
         private final int arcSize;
         private final int highlightThickness;
 
-        public RoundedHighlightPanel(Component content, Color backgroundColor, Color highlightColor,
-                                           int arcSize, int highlightThickness, int padding) {
+        public RoundedHighlightPanel(
+                Component content,
+                Color backgroundColor,
+                Color highlightColor,
+                int arcSize,
+                int highlightThickness,
+                int padding) {
             super(new BorderLayout()); // Use BorderLayout to manage the content
             this.backgroundColor = backgroundColor;
             this.highlightColor = highlightColor;
@@ -38,12 +43,12 @@ public class MessageBubble extends JPanel {
             if (content instanceof JComponent jComponent) {
                 jComponent.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
             }
-            
+
             // Center JLabel
             if (content instanceof JLabel jLabel) {
                 jLabel.setHorizontalAlignment(SwingConstants.CENTER);
             }
-            
+
             add(content, BorderLayout.CENTER); // Add original content
         }
 
@@ -54,22 +59,22 @@ public class MessageBubble extends JPanel {
             g2d.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
 
             int width = getWidth();
-              int height = getHeight();
-              
-              // 1. Paint the rounded background using the painter (no stroke here)
-              RoundRectPainter.paint(g2d, 0, 0, width, height, arcSize, backgroundColor, null, 0);
-              
-              // 2. Paint the left highlight bar, clipped to the rounded rectangle shape
-              // Need to re-create the shape for clipping
-              var roundRectClip = new RoundRectangle2D.Float(0, 0, width, height, arcSize, arcSize);
-              g2d.setColor(highlightColor);
+            int height = getHeight();
+
+            // 1. Paint the rounded background using the painter (no stroke here)
+            RoundRectPainter.paint(g2d, 0, 0, width, height, arcSize, backgroundColor, null, 0);
+
+            // 2. Paint the left highlight bar, clipped to the rounded rectangle shape
+            // Need to re-create the shape for clipping
+            var roundRectClip = new RoundRectangle2D.Float(0, 0, width, height, arcSize, arcSize);
+            g2d.setColor(highlightColor);
             // Use clip for safety at corners
-              Shape oldClip = g2d.getClip();
-              g2d.clip(roundRectClip);
-              g2d.fillRect(0, 0, highlightThickness, height);
-              g2d.setClip(oldClip); // Restore original clip
-  
-              g2d.dispose();
+            Shape oldClip = g2d.getClip();
+            g2d.clip(roundRectClip);
+            g2d.fillRect(0, 0, highlightThickness, height);
+            g2d.setClip(oldClip); // Restore original clip
+
+            g2d.dispose();
 
             // Children are painted after this method returns by the Swing painting mechanism
         }
@@ -78,76 +83,81 @@ public class MessageBubble extends JPanel {
     /**
      * Creates a new base chat message panel with custom background and message colors.
      *
-     * @param title            The title text to display in the header
-     * @param iconText         Unicode icon text to display
+     * @param title The title text to display in the header
+     * @param iconText Unicode icon text to display
      * @param contentComponent The main content component to display
-     * @param isDarkTheme      Whether dark theme is active
-     * @param highlightColor   The color to use for the left highlight bar
-     * @param messageBgColor   The background color for the message (optional)
-     * @param chatBgColor      The background color for the chat panel (optional)
+     * @param isDarkTheme Whether dark theme is active
+     * @param highlightColor The color to use for the left highlight bar
+     * @param messageBgColor The background color for the message (optional)
+     * @param chatBgColor The background color for the chat panel (optional)
      */
-    public MessageBubble(String title, Icon iconText, Component contentComponent,
-                         boolean isDarkTheme, Color highlightColor,
-                         @Nullable Color messageBgColor, @Nullable Color chatBgColor)
-    {
-        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
-                   messageBgColor, chatBgColor);
+    public MessageBubble(
+            String title,
+            Icon iconText,
+            Component contentComponent,
+            boolean isDarkTheme,
+            Color highlightColor,
+            @Nullable Color messageBgColor,
+            @Nullable Color chatBgColor) {
+        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, messageBgColor, chatBgColor);
     }
 
     /**
      * Creates a new base chat message panel with custom message background color.
      *
-     * @param title            The title text to display in the header
-     * @param iconText         Unicode icon text to display
+     * @param title The title text to display in the header
+     * @param iconText Unicode icon text to display
      * @param contentComponent The main content component to display
-     * @param isDarkTheme      Whether dark theme is active
-     * @param highlightColor   The color to use for the left highlight bar
-     * @param messageBgColor   The background color for the message (optional)
+     * @param isDarkTheme Whether dark theme is active
+     * @param highlightColor The color to use for the left highlight bar
+     * @param messageBgColor The background color for the message (optional)
      */
-    public MessageBubble(String title, Icon iconText, Component contentComponent,
-                         boolean isDarkTheme, Color highlightColor, @Nullable Color messageBgColor)
-    {
-        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
-                   messageBgColor, null);
+    public MessageBubble(
+            String title,
+            Icon iconText,
+            Component contentComponent,
+            boolean isDarkTheme,
+            Color highlightColor,
+            @Nullable Color messageBgColor) {
+        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, messageBgColor, null);
     }
 
     /**
      * Creates a new base chat message panel with default colors.
      *
-     * @param title            The title text to display in the header
-     * @param iconText         Unicode icon text to display
+     * @param title The title text to display in the header
+     * @param iconText Unicode icon text to display
      * @param contentComponent The main content component to display
-     * @param isDarkTheme      Whether dark theme is active
-     * @param highlightColor   The color to use for the left highlight bar
+     * @param isDarkTheme Whether dark theme is active
+     * @param highlightColor The color to use for the left highlight bar
      */
-    public MessageBubble(String title, Icon iconText, Component contentComponent,
-                         boolean isDarkTheme, Color highlightColor)
-    {
-        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, 
-                   null, null);
+    public MessageBubble(
+            String title, Icon iconText, Component contentComponent, boolean isDarkTheme, Color highlightColor) {
+        initialize(title, iconText, contentComponent, isDarkTheme, highlightColor, null, null);
     }
 
-    /**
-     * Common initialization method for all constructors.
-     */
-    private void initialize(String title, Icon iconText, Component contentComponent,
-                            boolean isDarkTheme, Color highlightColor,
-                            @Nullable Color customMessageBgColor, @Nullable Color customChatBgColor)
-    {
+    /** Common initialization method for all constructors. */
+    private void initialize(
+            String title,
+            Icon iconText,
+            Component contentComponent,
+            boolean isDarkTheme,
+            Color highlightColor,
+            @Nullable Color customMessageBgColor,
+            @Nullable Color customChatBgColor) {
         setLayout(new BorderLayout());
-        Color chatBgColor = customChatBgColor != null ? 
-            customChatBgColor : 
-            ThemeColors.getColor(isDarkTheme, "chat_background");
+        Color chatBgColor =
+                customChatBgColor != null ? customChatBgColor : ThemeColors.getColor(isDarkTheme, "chat_background");
         setBackground(chatBgColor);
         // Overall padding for the entire message panel (header + content area)
         setBorder(BorderFactory.createEmptyBorder(20, 20, 20, 20));
-        setAlignmentX(Component.LEFT_ALIGNMENT);  // Also ensure *this* panel is left-aligned in its parent
+        setAlignmentX(Component.LEFT_ALIGNMENT); // Also ensure *this* panel is left-aligned in its parent
         setAlignmentY(Component.TOP_ALIGNMENT);
 
         // Get theme colors
-        Color messageBgColor = customMessageBgColor != null ? 
-            customMessageBgColor : 
-            ThemeColors.getColor(isDarkTheme, "message_background");
+        Color messageBgColor = customMessageBgColor != null
+                ? customMessageBgColor
+                : ThemeColors.getColor(isDarkTheme, "message_background");
 
         // Create a panel for the content area
         JPanel contentArea = new JPanel();
@@ -172,7 +182,7 @@ public class MessageBubble extends JPanel {
         iconTitlePanel.add(iconLabel);
 
         // Title
-        JLabel titleLabel = new JLabel(" " + title);  // Add a space after the icon
+        JLabel titleLabel = new JLabel(" " + title); // Add a space after the icon
         titleLabel.setForeground(highlightColor);
         titleLabel.setFont(titleLabel.getFont().deriveFont(Font.BOLD, 16f));
         iconTitlePanel.add(titleLabel);
@@ -198,13 +208,7 @@ public class MessageBubble extends JPanel {
         int highlightThickness = 4;
         int padding = 8;
         var contentWrapper = new RoundedHighlightPanel(
-                contentComponent,
-                messageBgColor,
-                highlightColor,
-                arcSize,
-                highlightThickness,
-                padding
-        );
+                contentComponent, messageBgColor, highlightColor, arcSize, highlightThickness, padding);
         // Center JLabel
         if (contentComponent instanceof JLabel) {
             contentWrapper.setAlignmentX(Component.LEFT_ALIGNMENT);
@@ -217,12 +221,11 @@ public class MessageBubble extends JPanel {
         } else {
             contentArea.add(contentWrapper);
         }
-        
+
         // Add the content area to the main panel
         add(contentArea, BorderLayout.CENTER);
 
         // Let this entire panel grow in both width and height if needed
         setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
     }
-
 }

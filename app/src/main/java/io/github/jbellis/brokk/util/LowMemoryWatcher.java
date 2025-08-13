@@ -7,16 +7,13 @@
 package io.github.jbellis.brokk.util;
 
 import io.github.jbellis.brokk.util.containers.WeakList;
+import java.util.concurrent.atomic.AtomicBoolean;
 import org.jetbrains.annotations.Contract;
 import org.jetbrains.annotations.NotNull;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
-import java.util.concurrent.atomic.AtomicBoolean;
-
-/**
- * @author Eugene Zhuravlev
- */
+/** @author Eugene Zhuravlev */
 public final class LowMemoryWatcher {
     private static final Logger logger = LoggerFactory.getLogger(LowMemoryWatcher.class);
 
@@ -51,29 +48,29 @@ public final class LowMemoryWatcher {
     /**
      * Registers a runnable to run on low memory events
      *
-     * @param runnable         the action which executes on low-memory condition. Can be executed:
-     *                         - in arbitrary thread
-     *                         - in unpredictable time
-     *                         - multiple copies in parallel, so please make it reentrant.
-     * @param notificationType When ONLY_AFTER_GC, then the runnable will be invoked only if the low-memory condition still exists after GC.
-     *                         When ALWAYS, then the runnable also will be invoked when the low-memory condition is detected before GC.
-     * @return a LowMemoryWatcher instance holding the runnable. This instance should be kept in memory while the
-     * low memory notification functionality is needed. As soon as it's garbage-collected, the runnable won't receive any further notifications.
+     * @param runnable the action which executes on low-memory condition. Can be executed: - in arbitrary thread - in
+     *     unpredictable time - multiple copies in parallel, so please make it reentrant.
+     * @param notificationType When ONLY_AFTER_GC, then the runnable will be invoked only if the low-memory condition
+     *     still exists after GC. When ALWAYS, then the runnable also will be invoked when the low-memory condition is
+     *     detected before GC.
+     * @return a LowMemoryWatcher instance holding the runnable. This instance should be kept in memory while the low
+     *     memory notification functionality is needed. As soon as it's garbage-collected, the runnable won't receive
+     *     any further notifications.
      */
     @Contract(pure = true) // to avoid ignoring the result
-    public static LowMemoryWatcher register(@NotNull Runnable runnable, @NotNull LowMemoryWatcherType notificationType) {
+    public static LowMemoryWatcher register(
+            @NotNull Runnable runnable, @NotNull LowMemoryWatcherType notificationType) {
         return new LowMemoryWatcher(runnable, notificationType);
     }
 
     /**
      * Registers a runnable to run on low memory events
      *
-     * @param runnable the action which executes on low-memory condition. Can be executed:
-     *                 - in arbitrary thread
-     *                 - in unpredictable time
-     *                 - multiple copies in parallel, so please make it reentrant.
-     * @return a LowMemoryWatcher instance holding the runnable. This instance should be kept in memory while the
-     * low memory notification functionality is needed. As soon as it's garbage-collected, the runnable won't receive any further notifications.
+     * @param runnable the action which executes on low-memory condition. Can be executed: - in arbitrary thread - in
+     *     unpredictable time - multiple copies in parallel, so please make it reentrant.
+     * @return a LowMemoryWatcher instance holding the runnable. This instance should be kept in memory while the low
+     *     memory notification functionality is needed. As soon as it's garbage-collected, the runnable won't receive
+     *     any further notifications.
      */
     @Contract(pure = true) // to avoid ignoring the result
     public static LowMemoryWatcher register(@NotNull Runnable runnable) {
@@ -91,9 +88,9 @@ public final class LowMemoryWatcher {
     }
 
     /**
-     * LowMemoryWatcher maintains a background thread where all the handlers are invoked.
-     * In server environments, this thread may run indefinitely and prevent the class loader from
-     * being gc-ed. Thus, it's necessary to invoke this method to stop that thread and let the classes be garbage-collected.
+     * LowMemoryWatcher maintains a background thread where all the handlers are invoked. In server environments, this
+     * thread may run indefinitely and prevent the class loader from being gc-ed. Thus, it's necessary to invoke this
+     * method to stop that thread and let the classes be garbage-collected.
      */
     static void stopAll() {
         ourListeners.clear();

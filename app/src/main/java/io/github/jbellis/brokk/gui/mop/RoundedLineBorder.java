@@ -1,12 +1,12 @@
 package io.github.jbellis.brokk.gui.mop;
 
-import javax.swing.border.AbstractBorder;
 import java.awt.*;
+import javax.swing.border.AbstractBorder;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * A border with rounded corners and a customizable thickness and color.
- * Used for badges and other UI elements that need rounded edges.
+ * A border with rounded corners and a customizable thickness and color. Used for badges and other UI elements that need
+ * rounded edges.
  */
 public class RoundedLineBorder extends AbstractBorder {
     private final Color color;
@@ -44,21 +44,27 @@ public class RoundedLineBorder extends AbstractBorder {
     }
 
     @Override
-      public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
-          Graphics2D g2 = (Graphics2D) g.create();
-          
-          // Delegate painting to the utility painter
-          // Width and height need adjustment because paintBorder provides outer bounds
-          int actualWidth = width - 1;
-          int actualHeight = height - 1;
-          
-          RoundRectPainter.paint(g2, x, y, actualWidth, actualHeight, radius, 
-                                 fillInside ? fillColor : null, // Fill color only if fillInside is true
-                                 color,                         // Border color
-                                 thickness);                    // Border thickness
-                                 
-          g2.dispose();
-      }
+    public void paintBorder(Component c, Graphics g, int x, int y, int width, int height) {
+        Graphics2D g2 = (Graphics2D) g.create();
+
+        // Delegate painting to the utility painter
+        // Width and height need adjustment because paintBorder provides outer bounds
+        int actualWidth = width - 1;
+        int actualHeight = height - 1;
+
+        RoundRectPainter.paint(
+                g2,
+                x,
+                y,
+                actualWidth,
+                actualHeight,
+                radius,
+                fillInside ? fillColor : null, // Fill color only if fillInside is true
+                color, // Border color
+                thickness); // Border thickness
+
+        g2.dispose();
+    }
 
     @Override
     public Insets getBorderInsets(Component c) {

@@ -1,29 +1,26 @@
 package io.github.jbellis.brokk.context;
 
-import io.github.jbellis.brokk.IConsoleIO;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
+import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
+import io.github.jbellis.brokk.IConsoleIO;
 import java.io.IOException;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.List;
 import java.util.UUID;
-
-import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Thread-safe undo/redo stack for *frozen* {@link Context} snapshots.
  *
- * <p>The newest entry is always at the tail of {@link #history}.
- * All public methods are {@code synchronized}, so callers need no extra
- * locking.</p>
+ * <p>The newest entry is always at the tail of {@link #history}. All public methods are {@code synchronized}, so
+ * callers need no extra locking.
  *
- * <p><strong>Contract:</strong> every {@code Context} handed to this class
- * <em>must already be frozen</em> (see {@link Context#freezeAndCleanup()}).  This class
- * never calls {@code freeze()} on its own.</p>
+ * <p><strong>Contract:</strong> every {@code Context} handed to this class <em>must already be frozen</em> (see
+ * {@link Context#freezeAndCleanup()}). This class never calls {@code freeze()} on its own.
  */
 public class ContextHistory {
     private static final Logger logger = LogManager.getLogger(ContextHistory.class);
@@ -32,7 +29,7 @@ public class ContextHistory {
     public record ResetEdge(UUID sourceId, UUID targetId) {}
 
     private final Deque<Context> history = new ArrayDeque<>();
-    private final Deque<Context> redo   = new ArrayDeque<>();
+    private final Deque<Context> redo = new ArrayDeque<>();
     private final List<ResetEdge> resetEdges = new ArrayList<>();
     private Context liveContext;
 
@@ -77,8 +74,13 @@ public class ContextHistory {
         return liveContext;
     }
 
-    public synchronized boolean hasUndoStates() { return history.size() > 1; }
-    public synchronized boolean hasRedoStates() { return !redo.isEmpty();  }
+    public synchronized boolean hasUndoStates() {
+        return history.size() > 1;
+    }
+
+    public synchronized boolean hasRedoStates() {
+        return !redo.isEmpty();
+    }
 
     public synchronized @Nullable Context getSelectedContext() {
         if (selected == null || !history.contains(selected)) {
@@ -89,6 +91,7 @@ public class ContextHistory {
 
     /**
      * Returns {@code true} iff {@code ctx} is present in history.
+     *
      * @param ctx the context to check
      * @return {@code true} iff {@code ctx} is present in history.
      */
@@ -98,14 +101,14 @@ public class ContextHistory {
             return true;
         }
         if (logger.isWarnEnabled()) {
-            logger.warn("Attempted to select context {} not present in history (history size: {}, available contexts: {})", 
-                       ctx == null ? "null" : ctx, 
-                       history.size(),
-                       history.stream().map(Context::toString).collect(java.util.stream.Collectors.joining(", ")));
+            logger.warn(
+                    "Attempted to select context {} not present in history (history size: {}, available contexts: {})",
+                    ctx == null ? "null" : ctx,
+                    history.size(),
+                    history.stream().map(Context::toString).collect(java.util.stream.Collectors.joining(", ")));
         }
         return false;
     }
-
 
     /**
      * Applies the given function to the live context, freezes the result, and pushes it to the history.
@@ -140,8 +143,8 @@ public class ContextHistory {
     }
 
     /**
-     * Replaces the most recent context in history with the provided live and frozen contexts.
-     * This is useful for coalescing rapid changes into a single history entry.
+     * Replaces the most recent context in history with the provided live and frozen contexts. This is useful for
+     * coalescing rapid changes into a single history entry.
      */
     public synchronized void replaceTop(Context newLive, Context newFrozen) {
         assert !newFrozen.containsDynamicFragments();
@@ -156,8 +159,13 @@ public class ContextHistory {
     /* ─────────────── undo / redo  ────────────── */
 
     public record UndoResult(boolean wasUndone, int steps) {
-        public static UndoResult none()            { return new UndoResult(false, 0); }
-        public static UndoResult success(int n)    { return new UndoResult(true, n);  }
+        public static UndoResult none() {
+            return new UndoResult(false, 0);
+        }
+
+        public static UndoResult success(int n) {
+            return new UndoResult(true, n);
+        }
     }
 
     public synchronized UndoResult undo(int steps, IConsoleIO io) {
@@ -190,6 +198,7 @@ public class ContextHistory {
 
     /**
      * Redoes the last undone operation.
+     *
      * @param io the console IO for feedback
      * @return {@code true} if something was redone.
      */
@@ -235,9 +244,7 @@ public class ContextHistory {
         return List.copyOf(resetEdges);
     }
 
-    /**
-     * Applies the state from a frozen context to the workspace by restoring files.
-     */
+    /** Applies the state from a frozen context to the workspace by restoring files. */
     private void applyFrozenContextToWorkspace(@Nullable Context frozenContext, IConsoleIO io) {
         if (frozenContext == null) {
             logger.warn("Attempted to apply null context to workspace");
@@ -252,7 +259,7 @@ public class ContextHistory {
             try {
                 var newContent = fragment.text();
                 var currentContent = pf.exists() ? pf.read() : "";
-                
+
                 if (!newContent.equals(currentContent)) {
                     var restoredFiles = new ArrayList<String>();
                     pf.write(newContent);

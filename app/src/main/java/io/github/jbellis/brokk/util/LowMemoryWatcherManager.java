@@ -7,15 +7,6 @@
 package io.github.jbellis.brokk.util;
 
 import io.github.jbellis.brokk.IConsoleIO;
-import org.jetbrains.annotations.NotNull;
-import org.slf4j.Logger;
-import org.slf4j.LoggerFactory;
-
-import javax.annotation.Nullable;
-import javax.management.Notification;
-import javax.management.NotificationEmitter;
-import javax.management.NotificationListener;
-import javax.swing.*;
 import java.lang.management.*;
 import java.text.NumberFormat;
 import java.util.*;
@@ -24,6 +15,14 @@ import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import javax.annotation.Nullable;
+import javax.management.Notification;
+import javax.management.NotificationEmitter;
+import javax.management.NotificationListener;
+import javax.swing.*;
+import org.jetbrains.annotations.NotNull;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 
 public final class LowMemoryWatcherManager implements AutoCloseable {
 
@@ -42,7 +41,8 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
     private final Consumer<Boolean> myJanitor = new Consumer<>() {
         @Override
         public void accept(@NotNull Boolean afterGc) {
-            // Clearing `mySubmitted` before all listeners are called, to avoid data races when a listener is added in the middle of execution
+            // Clearing `mySubmitted` before all listeners are called, to avoid data races when a listener is added in
+            // the middle of execution
             // and is lost. This may, however, cause listeners to execute more than once (potentially even in parallel).
             synchronized (myJanitor) {
                 mySubmitted = null;
@@ -61,12 +61,13 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
     }
 
     /**
-     * Registers an action with {@link io.github.jbellis.brokk.util.LowMemoryWatcher} and becomes the parent object holding
-     * the strong reference to it in order for it not to be garbage collected.
+     * Registers an action with {@link io.github.jbellis.brokk.util.LowMemoryWatcher} and becomes the parent object
+     * holding the strong reference to it in order for it not to be garbage collected.
      *
      * @param runnable the action to run on a low-memory event.
      */
-    public void registerWithStrongReference(@NotNull Runnable runnable, @NotNull LowMemoryWatcher.LowMemoryWatcherType notificationType) {
+    public void registerWithStrongReference(
+            @NotNull Runnable runnable, @NotNull LowMemoryWatcher.LowMemoryWatcherType notificationType) {
         final var reference = LowMemoryWatcher.register(runnable, notificationType);
         lowMemoryWatcherRefs.add(reference);
     }
@@ -105,7 +106,9 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
             public void run() {
                 try {
                     for (MemoryPoolMXBean bean : ManagementFactory.getMemoryPoolMXBeans()) {
-                        if (bean.getType() == MemoryType.HEAP && bean.isCollectionUsageThresholdSupported() && bean.isUsageThresholdSupported()) {
+                        if (bean.getType() == MemoryType.HEAP
+                                && bean.isCollectionUsageThresholdSupported()
+                                && bean.isUsageThresholdSupported()) {
                             long max = bean.getUsage().getMax();
                             long threshold = Math.min((long) (max * OCCUPIED_MEMORY_THRESHOLD), max - MEM_THRESHOLD);
                             if (threshold > 0) {
@@ -114,7 +117,8 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
                             }
                         }
                     }
-                    ((NotificationEmitter) ManagementFactory.getMemoryMXBean()).addNotificationListener(myLowMemoryListener, null, null);
+                    ((NotificationEmitter) ManagementFactory.getMemoryMXBean())
+                            .addNotificationListener(myLowMemoryListener, null, null);
                 } catch (Throwable e) {
                     // should not happen normally
                     logger.warn("Errors initializing LowMemoryWatcher: ", e);
@@ -132,8 +136,7 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
         private static final long WINDOW_SIZE_MS = 60_000; // 1 minute
         private final Queue<GcPeriod> gcPeriods = new ArrayDeque<>();
 
-        private record GcPeriod(long timestamp, long gcTime) {
-        }
+        private record GcPeriod(long timestamp, long gcTime) {}
 
         public synchronized long trackGcAndGetRecentTime(long currentGcTime, long previousGcTimeValue) {
             long currentTime = System.currentTimeMillis();
@@ -146,9 +149,7 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
                 gcPeriods.poll();
             }
 
-            return gcPeriods.stream()
-                    .mapToLong(period -> period.gcTime)
-                    .sum();
+            return gcPeriods.stream().mapToLong(period -> period.gcTime).sum();
         }
     }
 
@@ -159,7 +160,8 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
         public void handleNotification(Notification notification, Object __) {
             if (LowMemoryWatcher.notificationsSuppressed()) return;
             boolean memoryThreshold = MemoryNotificationInfo.MEMORY_THRESHOLD_EXCEEDED.equals(notification.getType());
-            boolean memoryCollectionThreshold = MemoryNotificationInfo.MEMORY_COLLECTION_THRESHOLD_EXCEEDED.equals(notification.getType());
+            boolean memoryCollectionThreshold =
+                    MemoryNotificationInfo.MEMORY_COLLECTION_THRESHOLD_EXCEEDED.equals(notification.getType());
 
             if (memoryThreshold || memoryCollectionThreshold) {
                 long currentGcTime = getMajorGcTime();
@@ -168,7 +170,8 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
 
                 synchronized (myJanitor) {
                     if (mySubmitted == null) {
-                        mySubmitted = myExecutorService.submit(() -> myJanitor.accept(recentGcTime > GC_TIME_THRESHOLD));
+                        mySubmitted =
+                                myExecutorService.submit(() -> myJanitor.accept(recentGcTime > GC_TIME_THRESHOLD));
                         // maybe it's executed too fast or even synchronously
                         if (mySubmitted.isDone()) {
                             mySubmitted = null;
@@ -198,13 +201,11 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
         LowMemoryWatcher.stopAll();
     }
 
-    /**
-     * Manages the frequency of low memory warnings sent to a user.
-     */
+    /** Manages the frequency of low memory warnings sent to a user. */
     public static class LowMemoryWarningManager {
 
-        private final static long WARNING_COOLDOWN = TimeUnit.MINUTES.toNanos(5);
-        private final static AtomicLong lastWarningTime = new AtomicLong(System.nanoTime() - WARNING_COOLDOWN);
+        private static final long WARNING_COOLDOWN = TimeUnit.MINUTES.toNanos(5);
+        private static final AtomicLong lastWarningTime = new AtomicLong(System.nanoTime() - WARNING_COOLDOWN);
 
         /**
          * Sends an alert request to let the user know that the current available memory is too low. To avoid
@@ -229,9 +230,7 @@ public final class LowMemoryWatcherManager implements AutoCloseable {
                             The IDE may become unresponsive. Current limit (-Xmx) is %s. Try reopening with:
                                 jbang run --java-options -Xmx%dM brokk@brokkai/brokk
                             """,
-                            currentMaxHeap,
-                            suggestedHeapSizeMb()
-                    );
+                            currentMaxHeap, suggestedHeapSizeMb());
                     // Ideally, we would set the next warning time on a callback triggered when the user acknowledges
                     // the dialog (presses OK), but for now we will simply use a cooldown
                     io.systemNotify(msg, "Low Available Memory", JOptionPane.WARNING_MESSAGE);

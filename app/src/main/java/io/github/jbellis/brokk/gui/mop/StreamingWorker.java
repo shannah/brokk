@@ -1,12 +1,9 @@
 package io.github.jbellis.brokk.gui.mop;
 
+import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
+
 import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
 import io.github.jbellis.brokk.gui.mop.stream.blocks.ComponentData;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
-
-import javax.swing.*;
 import java.util.List;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -15,18 +12,18 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.RejectedExecutionException;
 import java.util.concurrent.atomic.*;
-
-import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * Handles parsing and rendering of streaming Markdown content in a background thread.
- * Prevents UI freezes by moving heavy work off the EDT and throttling updates.
- * 
- * Thread-safety features:
- * 1. Heavy parsing work happens off EDT
- * 2. UI updates always on EDT via SwingUtilities.invokeLater
- * 3. Epoch tracking to prevent stale results from being applied
- * 4. Memory-bounded operation by clearing chunks after snapshot
+ * Handles parsing and rendering of streaming Markdown content in a background thread. Prevents UI freezes by moving
+ * heavy work off the EDT and throttling updates.
+ *
+ * <p>Thread-safety features: 1. Heavy parsing work happens off EDT 2. UI updates always on EDT via
+ * SwingUtilities.invokeLater 3. Epoch tracking to prevent stale results from being applied 4. Memory-bounded operation
+ * by clearing chunks after snapshot
  */
 final class StreamingWorker {
     private static final Logger logger = LogManager.getLogger(StreamingWorker.class);
@@ -44,7 +41,7 @@ final class StreamingWorker {
     private final AtomicBoolean updatePending = new AtomicBoolean(false);
     private final AtomicInteger epochGen = new AtomicInteger();
     private final AtomicInteger lastApplied = new AtomicInteger();
-    private final AtomicReference<CompletableFuture<Void>> inFlight = 
+    private final AtomicReference<CompletableFuture<Void>> inFlight =
             new AtomicReference<>(CompletableFuture.completedFuture(null));
 
     private final IncrementalBlockRenderer renderer;
@@ -53,7 +50,7 @@ final class StreamingWorker {
         this.renderer = renderer;
     }
 
-    /* called from EDT */ 
+    /* called from EDT */
     void appendChunk(String text) {
         if (text.isEmpty()) { // an empty string append is used by flush to trigger a parse
             if (fullText.length() > 0) { // only set flag if there's actual content that might need parsing
@@ -65,11 +62,8 @@ final class StreamingWorker {
         }
         tryScheduleParse();
     }
-    
-    /**
-     * Waits until all currently scheduled parses and renders are complete.
-     * Can be called from any thread.
-     */
+
+    /** Waits until all currently scheduled parses and renders are complete. Can be called from any thread. */
     void flush() {
         assert !SwingUtilities.isEventDispatchThread() : "StreamingWorker.flush() must not be called on EDT";
         // Make sure anything still in chunks becomes a task
@@ -92,8 +86,8 @@ final class StreamingWorker {
     }
 
     /**
-     * Returns a future that completes when the current batch of rendering is finished on the EDT.
-     * This method does not block.
+     * Returns a future that completes when the current batch of rendering is finished on the EDT. This method does not
+     * block.
      *
      * @return a CompletableFuture that will be completed on the EDT.
      */
@@ -107,22 +101,25 @@ final class StreamingWorker {
 
     private void tryScheduleParse() {
         // Only proceed if a parse isn't running AND there's new content or it's the first run
-        if (!contentAddedSinceLastParse.get() && lastApplied.get() > 0) { // lastApplied > 0 means at least one parse happened
-             // No new content since last parse completed, and it's not the initial parse
-            if (parseRunning.get()) { // if a parse is running, it will pick up the contentAddedSinceLastParse flag later
+        if (!contentAddedSinceLastParse.get()
+                && lastApplied.get() > 0) { // lastApplied > 0 means at least one parse happened
+            // No new content since last parse completed, and it's not the initial parse
+            if (parseRunning
+                    .get()) { // if a parse is running, it will pick up the contentAddedSinceLastParse flag later
                 return;
             }
             // if no parse is running and no content added, nothing to do.
             // This prevents scheduling empty parses if appendChunk("") is called multiple times by flush when idle.
             var currentInFlight = castNonNull(inFlight.get());
-            if (!currentInFlight.isDone()) { // If there's an active future (e.g. from a previous flush), let it complete.
+            if (!currentInFlight
+                    .isDone()) { // If there's an active future (e.g. from a previous flush), let it complete.
                 return;
             }
         }
 
         if (!parseRunning.compareAndSet(false, true)) {
             return; // Another thread just started a parse, or a parse is already running.
-                    // The contentAddedSinceLastParse flag will ensure this new text is picked up.
+            // The contentAddedSinceLastParse flag will ensure this new text is picked up.
         }
 
         // At this point, parseRunning is true, and this thread is responsible for the parse.
@@ -132,7 +129,7 @@ final class StreamingWorker {
         contentAddedSinceLastParse.set(false); // Reset flag, current parse will process this content
 
         int myEpoch = epochGen.incrementAndGet();
-        
+
         // Create a new future to track this task
         var taskDone = new CompletableFuture<Void>();
         inFlight.set(taskDone);
@@ -147,7 +144,8 @@ final class StreamingWorker {
             exec.submit(() -> parseAndRender(snapshot, myEpoch, taskDone));
         } catch (RejectedExecutionException e) {
             parseRunning.set(false); // Release the lock
-            taskDone.completeExceptionally(new CancellationException("Executor was shut down before task could be scheduled"));
+            taskDone.completeExceptionally(
+                    new CancellationException("Executor was shut down before task could be scheduled"));
             logger.trace("Task rejected due to executor shutdown", e);
         }
     }
@@ -158,14 +156,14 @@ final class StreamingWorker {
             // The markdownContent is a CharSequence (our StringBuilder instance)
             String html = renderer.createHtml(markdownContent);
             List<ComponentData> components = renderer.buildComponentData(html);
-            
+
             // Queue UI update on EDT with epoch check
             if (updatePending.getAndSet(true)) {
-                parseRunning.set(false);  // EDT will clear updatePending
-                done.complete(null);      // Mark this task done
-                return;                   // another update already queued
+                parseRunning.set(false); // EDT will clear updatePending
+                done.complete(null); // Mark this task done
+                return; // another update already queued
             }
-            
+
             SwingUtilities.invokeLater(() -> {
                 try {
                     if (myEpoch <= lastApplied.get()) {
@@ -175,14 +173,14 @@ final class StreamingWorker {
                         done.complete(null);
                         return;
                     }
-                    
+
                     // Apply UI changes on EDT
                     renderer.applyUI(components);
                     lastApplied.set(myEpoch);
-                    
+
                     updatePending.set(false);
                     parseRunning.set(false);
-                    
+
                     // If text changed while we were painting (or new text arrived), kick another parse
                     if (contentAddedSinceLastParse.get()) {
                         tryScheduleParse();

@@ -2,18 +2,16 @@ package io.github.jbellis.brokk.gui.search;
 
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import io.github.jbellis.brokk.gui.mop.stream.IncrementalBlockRenderer;
+import java.awt.*;
+import java.util.List;
+import java.util.concurrent.atomic.AtomicInteger;
+import javax.swing.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.RSyntaxTextArea;
 
-import javax.swing.*;
-import java.awt.*;
-import java.util.List;
-import java.util.concurrent.atomic.AtomicInteger;
-
 /**
- * Handles all debugging functionality for MarkdownSearchableComponent.
- * Separated from main class to reduce complexity.
+ * Handles all debugging functionality for MarkdownSearchableComponent. Separated from main class to reduce complexity.
  */
 public class MarkdownSearchDebugger {
     private static final Logger logger = LogManager.getLogger(MarkdownSearchDebugger.class);
@@ -24,23 +22,23 @@ public class MarkdownSearchDebugger {
         this.debugEnabled = debugEnabled;
     }
 
-    /**
-     * Logs navigation debug information.
-     */
+    /** Logs navigation debug information. */
     public void logNavigation(boolean forward, int oldIndex, int newIndex, List<SearchMatch> allMatches) {
         if (!debugEnabled) return;
 
-        logger.debug("NAVIGATION: {} from index {} to {}",
-                   forward ? "NEXT" : "PREV", oldIndex, newIndex);
+        logger.debug("NAVIGATION: {} from index {} to {}", forward ? "NEXT" : "PREV", oldIndex, newIndex);
         if (newIndex < allMatches.size()) {
             SearchMatch match = allMatches.get(newIndex);
-            logger.debug("  Moving to: {} at [P:{},R:{},C:{},S:{}]",
-                       match.getClass().getSimpleName(), match.panelIndex(), match.rendererIndex(),
-                       match.componentVisualOrderInRenderer(),
-                       switch (match) {
-                           case CodeSearchMatch codeMatch -> codeMatch.subComponentIndex();
-                           case MarkdownSearchMatch ignored -> 0;
-                       });
+            logger.debug(
+                    "  Moving to: {} at [P:{},R:{},C:{},S:{}]",
+                    match.getClass().getSimpleName(),
+                    match.panelIndex(),
+                    match.rendererIndex(),
+                    match.componentVisualOrderInRenderer(),
+                    switch (match) {
+                        case CodeSearchMatch codeMatch -> codeMatch.subComponentIndex();
+                        case MarkdownSearchMatch ignored -> 0;
+                    });
             switch (match) {
                 case CodeSearchMatch codeMatch -> {
                     logger.debug("  Code match: offsets {}-{}", codeMatch.startOffset(), codeMatch.endOffset());
@@ -52,82 +50,89 @@ public class MarkdownSearchDebugger {
         }
     }
 
-    /**
-     * Logs initial scroll debug information.
-     */
+    /** Logs initial scroll debug information. */
     public void logInitialScroll(SearchMatch firstMatch) {
         if (!debugEnabled) return;
 
-        logger.debug("INITIAL SCROLL: First match is {} at [P:{},R:{},C:{},S:{}] bounds={}",
-                   firstMatch.getClass().getSimpleName(), firstMatch.panelIndex(), firstMatch.rendererIndex(),
-                   firstMatch.componentVisualOrderInRenderer(),
-                   switch (firstMatch) {
-                       case CodeSearchMatch codeMatch -> codeMatch.subComponentIndex();
-                       case MarkdownSearchMatch ignored -> 0;
-                   },
-                   firstMatch.actualUiComponent().getBounds());
+        logger.debug(
+                "INITIAL SCROLL: First match is {} at [P:{},R:{},C:{},S:{}] bounds={}",
+                firstMatch.getClass().getSimpleName(),
+                firstMatch.panelIndex(),
+                firstMatch.rendererIndex(),
+                firstMatch.componentVisualOrderInRenderer(),
+                switch (firstMatch) {
+                    case CodeSearchMatch codeMatch -> codeMatch.subComponentIndex();
+                    case MarkdownSearchMatch ignored -> 0;
+                },
+                firstMatch.actualUiComponent().getBounds());
     }
 
-    /**
-     * Logs renderer debug information.
-     */
+    /** Logs renderer debug information. */
     public void logRendererDebug(int panelIdx, int rendererIdx, IncrementalBlockRenderer renderer) {
         if (!debugEnabled) return;
 
         var allMarkerIds = renderer.getIndexedMarkerIds();
-        logger.debug("RENDERER DEBUG: [P:{},R:{}] has {} indexed markers: {}",
-                   panelIdx, rendererIdx, allMarkerIds.size(),
-                   allMarkerIds.stream()
-                       .sorted()
-                       .map(String::valueOf)
-                       .collect(java.util.stream.Collectors.joining(", ")));
+        logger.debug(
+                "RENDERER DEBUG: [P:{},R:{}] has {} indexed markers: {}",
+                panelIdx,
+                rendererIdx,
+                allMarkerIds.size(),
+                allMarkerIds.stream().sorted().map(String::valueOf).collect(java.util.stream.Collectors.joining(", ")));
     }
 
-    /**
-     * Logs markdown match collection debug information.
-     */
-    public void logMarkdownMatches(JComponent component, int panelIdx, int rendererIdx, int compVisOrder,
-                                 java.util.List<Integer> foundIndexedMarkers, 
-                                 java.util.List<Integer> foundDirectMarkers,
-                                 java.util.List<Integer> componentMarkers) {
+    /** Logs markdown match collection debug information. */
+    public void logMarkdownMatches(
+            JComponent component,
+            int panelIdx,
+            int rendererIdx,
+            int compVisOrder,
+            java.util.List<Integer> foundIndexedMarkers,
+            java.util.List<Integer> foundDirectMarkers,
+            java.util.List<Integer> componentMarkers) {
         if (!debugEnabled) return;
 
         int indexedMatches = foundIndexedMarkers.size();
         int directMatches = foundDirectMarkers.size();
 
         if (indexedMatches > 0 || directMatches > 0) {
-            logger.debug("MARKDOWN MATCHES: {} at [P:{},R:{},C:{}]",
-                       component.getClass().getSimpleName(), panelIdx, rendererIdx, compVisOrder);
+            logger.debug(
+                    "MARKDOWN MATCHES: {} at [P:{},R:{},C:{}]",
+                    component.getClass().getSimpleName(),
+                    panelIdx,
+                    rendererIdx,
+                    compVisOrder);
             if (indexedMatches > 0) {
-                logger.debug("  Indexed markers ({}): {}", indexedMatches,
-                           foundIndexedMarkers.stream()
-                               .sorted()
-                               .map(String::valueOf)
-                               .collect(java.util.stream.Collectors.joining(", ")));
+                logger.debug(
+                        "  Indexed markers ({}): {}",
+                        indexedMatches,
+                        foundIndexedMarkers.stream()
+                                .sorted()
+                                .map(String::valueOf)
+                                .collect(java.util.stream.Collectors.joining(", ")));
             }
             if (directMatches > 0) {
-                logger.debug("  Direct markers ({}): {}", directMatches,
-                           foundDirectMarkers.stream()
-                               .sorted()
-                               .map(String::valueOf)
-                               .collect(java.util.stream.Collectors.joining(", ")));
+                logger.debug(
+                        "  Direct markers ({}): {}",
+                        directMatches,
+                        foundDirectMarkers.stream()
+                                .sorted()
+                                .map(String::valueOf)
+                                .collect(java.util.stream.Collectors.joining(", ")));
             }
-            logger.debug("  Final navigation order: {}",
-                       componentMarkers.stream()
-                           .map(String::valueOf)
-                           .collect(java.util.stream.Collectors.joining(", ")));
+            logger.debug(
+                    "  Final navigation order: {}",
+                    componentMarkers.stream().map(String::valueOf).collect(java.util.stream.Collectors.joining(", ")));
             logger.debug("  Total: {} matches", indexedMatches + directMatches);
         }
     }
 
-    /**
-     * Logs detailed marker context information.
-     */
-    public void logDetailedMarkerContext(JComponent component, 
-                                       java.util.List<Integer> foundIndexedMarkers,
-                                       java.util.List<Integer> foundDirectMarkers,
-                                       java.util.List<Integer> componentMarkers,
-                                       java.util.List<MarkerInfo> detailedMarkers) {
+    /** Logs detailed marker context information. */
+    public void logDetailedMarkerContext(
+            JComponent component,
+            java.util.List<Integer> foundIndexedMarkers,
+            java.util.List<Integer> foundDirectMarkers,
+            java.util.List<Integer> componentMarkers,
+            java.util.List<MarkerInfo> detailedMarkers) {
         if (!debugEnabled || detailedMarkers.isEmpty()) return;
 
         logger.debug("  Marker contexts (in document order):");
@@ -149,9 +154,7 @@ public class MarkdownSearchDebugger {
         }
     }
 
-    /**
-     * Prints comprehensive search results.
-     */
+    /** Prints comprehensive search results. */
     public void printSearchResults(List<SearchMatch> allMatches, int currentMatchIndex, String currentSearchTerm) {
         if (!debugEnabled) return;
 
@@ -162,9 +165,7 @@ public class MarkdownSearchDebugger {
         }
     }
 
-    /**
-     * Prints blocks with matches debug information.
-     */
+    /** Prints blocks with matches debug information. */
     public void printBlocksWithMatches(List<SearchMatch> allMatches, int currentMatchIndex) {
         if (!debugEnabled) return;
 
@@ -185,24 +186,26 @@ public class MarkdownSearchDebugger {
             SearchMatch match = allMatches.get(i);
 
             // Check if we've moved to a new block (including sub-component for code)
-            boolean newBlock = match.panelIndex() != currentPanelIdx ||
-                             match.rendererIndex() != currentRendererIdx ||
-                             match.componentVisualOrderInRenderer() != currentComponentIdx ||
-                             switch (match) {
-                                 case CodeSearchMatch codeMatch -> codeMatch.subComponentIndex() != currentSubComponentIdx;
-                                 case MarkdownSearchMatch ignored -> false;
-                             };
+            boolean newBlock = match.panelIndex() != currentPanelIdx
+                    || match.rendererIndex() != currentRendererIdx
+                    || match.componentVisualOrderInRenderer() != currentComponentIdx
+                    || switch (match) {
+                        case CodeSearchMatch codeMatch -> codeMatch.subComponentIndex() != currentSubComponentIdx;
+                        case MarkdownSearchMatch ignored -> false;
+                    };
 
             if (newBlock && i > 0) {
                 // Print previous block info
-                boolean isCurrentBlock = currentMatchIndex >= blockFirstMatchIdx &&
-                                       currentMatchIndex < blockFirstMatchIdx + blockMatchCount;
+                boolean isCurrentBlock = currentMatchIndex >= blockFirstMatchIdx
+                        && currentMatchIndex < blockFirstMatchIdx + blockMatchCount;
                 String marker = isCurrentBlock ? " <<<< CURRENT" : "";
                 String blockId = currentSubComponentIdx >= 0 && blockType.equals("CODE")
-                    ? String.format("[P:%d,R:%d,C:%d,S:%d]", currentPanelIdx, currentRendererIdx, currentComponentIdx, currentSubComponentIdx)
-                    : String.format("[P:%d,R:%d,C:%d]", currentPanelIdx, currentRendererIdx, currentComponentIdx);
-                logger.debug("Block {} ({}): {} hit(s) - {}{}",
-                    blockId, blockType, blockMatchCount, blockPreview, marker);
+                        ? String.format(
+                                "[P:%d,R:%d,C:%d,S:%d]",
+                                currentPanelIdx, currentRendererIdx, currentComponentIdx, currentSubComponentIdx)
+                        : String.format("[P:%d,R:%d,C:%d]", currentPanelIdx, currentRendererIdx, currentComponentIdx);
+                logger.debug(
+                        "Block {} ({}): {} hit(s) - {}{}", blockId, blockType, blockMatchCount, blockPreview, marker);
                 blockMatchCount = 0;
             }
 
@@ -223,15 +226,18 @@ public class MarkdownSearchDebugger {
 
                 // Get block preview
                 blockPreview = switch (match) {
-                    case MarkdownSearchMatch ignoredMD when match.actualUiComponent() instanceof JEditorPane editor -> {
+                    case MarkdownSearchMatch ignoredMD
+                    when match.actualUiComponent() instanceof JEditorPane editor -> {
                         String text = editor.getText();
                         // Strip HTML tags for preview
                         text = text.replaceAll("<[^>]+>", "").trim();
                         yield text.substring(0, Math.min(50, text.length())) + (text.length() > 50 ? "..." : "");
                     }
-                    case CodeSearchMatch ignoredCode when match.actualUiComponent() instanceof RSyntaxTextArea textArea -> {
+                    case CodeSearchMatch ignoredCode
+                    when match.actualUiComponent() instanceof RSyntaxTextArea textArea -> {
                         String text = textArea.getText();
-                        yield text.substring(0, Math.min(50, text.length())).replace("\n", " ") + (text.length() > 50 ? "..." : "");
+                        yield text.substring(0, Math.min(50, text.length())).replace("\n", " ")
+                                + (text.length() > 50 ? "..." : "");
                     }
                     default -> "";
                 };
@@ -242,23 +248,22 @@ public class MarkdownSearchDebugger {
 
         // Don't forget the last block
         if (!allMatches.isEmpty()) {
-            boolean isCurrentBlock = currentMatchIndex >= blockFirstMatchIdx &&
-                                   currentMatchIndex < blockFirstMatchIdx + blockMatchCount;
+            boolean isCurrentBlock =
+                    currentMatchIndex >= blockFirstMatchIdx && currentMatchIndex < blockFirstMatchIdx + blockMatchCount;
             String marker = isCurrentBlock ? " <<<< CURRENT" : "";
             String blockId = currentSubComponentIdx >= 0
-                ? String.format("[P:%d,R:%d,C:%d,S:%d]", currentPanelIdx, currentRendererIdx, currentComponentIdx, currentSubComponentIdx)
-                : String.format("[P:%d,R:%d,C:%d]", currentPanelIdx, currentRendererIdx, currentComponentIdx);
-            logger.debug("Block {} ({}): {} hit(s) - {}{}",
-                blockId, blockType, blockMatchCount, blockPreview, marker);
+                    ? String.format(
+                            "[P:%d,R:%d,C:%d,S:%d]",
+                            currentPanelIdx, currentRendererIdx, currentComponentIdx, currentSubComponentIdx)
+                    : String.format("[P:%d,R:%d,C:%d]", currentPanelIdx, currentRendererIdx, currentComponentIdx);
+            logger.debug("Block {} ({}): {} hit(s) - {}{}", blockId, blockType, blockMatchCount, blockPreview, marker);
         }
 
         logger.debug("\nTotal blocks with matches: {}", totalBlocksWithMatches);
         logger.debug("=== End Search Results ===\n");
     }
 
-    /**
-     * Prints all blocks in the document.
-     */
+    /** Prints all blocks in the document. */
     public void printAllBlocks(List<MarkdownOutputPanel> panels) {
         if (!debugEnabled) return;
 
@@ -285,7 +290,8 @@ public class MarkdownSearchDebugger {
         logger.debug("Total blocks in document: {}", blockCounter.get());
     }
 
-    private void printComponentHierarchy(Component comp, int panelIdx, int rendererIdx, int compIdx, int depth, AtomicInteger blockCounter) {
+    private void printComponentHierarchy(
+            Component comp, int panelIdx, int rendererIdx, int compIdx, int depth, AtomicInteger blockCounter) {
         String indent = "  ".repeat(depth);
         String blockType = "";
         String blockPreview = "";
@@ -313,8 +319,8 @@ public class MarkdownSearchDebugger {
             blockType = "CODE";
             String text = textArea.getText();
             if (text != null && !text.trim().isEmpty()) {
-                blockPreview = text.substring(0, Math.min(50, text.length())).replace("\n", " ") +
-                             (text.length() > 50 ? "..." : "");
+                blockPreview = text.substring(0, Math.min(50, text.length())).replace("\n", " ")
+                        + (text.length() > 50 ? "..." : "");
                 isContentBlock = true;
             }
         }
@@ -322,11 +328,26 @@ public class MarkdownSearchDebugger {
         if (isContentBlock) {
             int blockNum = blockCounter.incrementAndGet();
             if (depth == 0) {
-                logger.debug("{}Block {} [P:{},R:{},C:{}] ({}): {}",
-                    indent, blockNum, panelIdx, rendererIdx, compIdx, blockType, blockPreview);
+                logger.debug(
+                        "{}Block {} [P:{},R:{},C:{}] ({}): {}",
+                        indent,
+                        blockNum,
+                        panelIdx,
+                        rendererIdx,
+                        compIdx,
+                        blockType,
+                        blockPreview);
             } else {
-                logger.debug("{}Block {} [P:{},R:{},C:{}] ({}) [nested-depth:{}]: {}",
-                    indent, blockNum, panelIdx, rendererIdx, compIdx, blockType, depth, blockPreview);
+                logger.debug(
+                        "{}Block {} [P:{},R:{},C:{}] ({}) [nested-depth:{}]: {}",
+                        indent,
+                        blockNum,
+                        panelIdx,
+                        rendererIdx,
+                        compIdx,
+                        blockType,
+                        depth,
+                        blockPreview);
             }
         }
 
@@ -336,8 +357,14 @@ public class MarkdownSearchDebugger {
             if (children.length > 0) {
                 if (!isContentBlock && depth == 0) {
                     // Show container info only for top-level containers that don't have content
-                    logger.debug("{}[P:{},R:{},C:{}] CONTAINER ({}) with {} children:",
-                        indent, panelIdx, rendererIdx, compIdx, comp.getClass().getSimpleName(), children.length);
+                    logger.debug(
+                            "{}[P:{},R:{},C:{}] CONTAINER ({}) with {} children:",
+                            indent,
+                            panelIdx,
+                            rendererIdx,
+                            compIdx,
+                            comp.getClass().getSimpleName(),
+                            children.length);
                 }
 
                 for (Component child : children) {
@@ -347,16 +374,8 @@ public class MarkdownSearchDebugger {
         }
     }
 
-    /**
-     * Marker information record for detailed debugging.
-     */
-    public record MarkerInfo(
-        int markerId,
-        String beforeContext,
-        String content,
-        String afterContext,
-        int position
-    ) {
+    /** Marker information record for detailed debugging. */
+    public record MarkerInfo(int markerId, String beforeContext, String content, String afterContext, int position) {
         public MarkerInfo(int markerId, String beforeContext, String content, String afterContext, int position) {
             this.markerId = markerId;
             this.beforeContext = beforeContext.trim();
@@ -367,8 +386,7 @@ public class MarkdownSearchDebugger {
 
         @Override
         public String toString() {
-            return String.format("[%d] ...%s{%s}%s...",
-                               markerId, beforeContext, content, afterContext);
+            return String.format("[%d] ...%s{%s}%s...", markerId, beforeContext, content, afterContext);
         }
     }
 }

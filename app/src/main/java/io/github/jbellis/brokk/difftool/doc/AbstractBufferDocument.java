@@ -1,31 +1,43 @@
 package io.github.jbellis.brokk.difftool.doc;
 
-import javax.swing.event.DocumentEvent;
-import javax.swing.event.DocumentListener;
-import javax.swing.text.DefaultEditorKit;
-import javax.swing.text.Element;
-import javax.swing.text.BadLocationException;
-import javax.swing.text.GapContent;
-import javax.swing.text.PlainDocument;
 import java.io.Reader;
 import java.io.Writer;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.List;
-
+import java.util.Objects;
+import javax.swing.event.DocumentEvent;
+import javax.swing.event.DocumentListener;
+import javax.swing.text.BadLocationException;
+import javax.swing.text.DefaultEditorKit;
+import javax.swing.text.Element;
+import javax.swing.text.GapContent;
+import javax.swing.text.PlainDocument;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
-import java.util.Objects;
 
 public abstract class AbstractBufferDocument implements BufferDocumentIF, DocumentListener {
     private static final Logger log = LogManager.getLogger(AbstractBufferDocument.class);
-    @Nullable private String name;
-    @Nullable private String shortName;
-    @Nullable private Line[] lineArray;
-    @Nullable private int[] lineOffsetArray;
-    @Nullable private PlainDocument document;
-    @Nullable private MyGapContent content;
+
+    @Nullable
+    private String name;
+
+    @Nullable
+    private String shortName;
+
+    @Nullable
+    private Line[] lineArray;
+
+    @Nullable
+    private int[] lineOffsetArray;
+
+    @Nullable
+    private PlainDocument document;
+
+    @Nullable
+    private MyGapContent content;
+
     private final List<BufferDocumentChangeListenerIF> listeners;
 
     private boolean changed;
@@ -99,7 +111,8 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
         if (document == null) {
             // This indicates a severe issue if called before init or if init failed.
             // Throwing an ISE is better than returning null if contract is @NonNull.
-            throw new IllegalStateException("Document accessed before initialization or after failed initialization for " + getName());
+            throw new IllegalStateException(
+                    "Document accessed before initialization or after failed initialization for " + getName());
         }
         return document;
     }
@@ -139,7 +152,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     @Override
     public int getLineForOffset(int offset) {
         if (offset < 0) {
-            return 0; 
+            return 0;
         }
         initLines(); // Ensures document, lineArray and lineOffsetArray are initialized
         Objects.requireNonNull(document, "Document should be initialized by initLines");
@@ -290,7 +303,8 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
             this.element = element;
         }
 
-        @Nullable MyGapContent getContent() {
+        @Nullable
+        MyGapContent getContent() {
             // Content can be null if initializeAndRead fails.
             return content;
         }
@@ -322,10 +336,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
             if (thisContent == null || otherContent == null) {
                 return thisContent == otherContent; // Both null is equal, one null is not
             }
-            return thisContent.equals(
-                    otherContent,
-                    start1, end1, start2
-            );
+            return thisContent.equals(otherContent, start1, end1, start2);
         }
 
         @Override
@@ -338,9 +349,8 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
         }
 
         /**
-         * Returns the text for this line. If {@code getEndOffset()} goes beyond the
-         * document length (common for the last line with trailing newline),
-         * we clamp the end offset to the doc length before substring retrieval.
+         * Returns the text for this line. If {@code getEndOffset()} goes beyond the document length (common for the
+         * last line with trailing newline), we clamp the end offset to the doc length before substring retrieval.
          */
         @Override
         public String toString() {
@@ -349,7 +359,7 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
             }
 
             int start = getStartOffset();
-            int end   = Math.min(getEndOffset(), document.getLength());
+            int end = Math.min(getEndOffset(), document.getLength());
 
             if (start < 0 || start > end) {
                 return "<INVALID RANGE>";
@@ -445,20 +455,17 @@ public abstract class AbstractBufferDocument implements BufferDocumentIF, Docume
     }
 
     /**
-     * Returns the entire document as a list of strings, one per line.
-     * This is used directly by the diff logic.
-     * The result is cached until the document is changed.
+     * Returns the entire document as a list of strings, one per line. This is used directly by the diff logic. The
+     * result is cached until the document is changed.
      */
     @Override
-public List<String> getLineList() {
-    initLines();
-    if (lineArray == null || lineArray.length == 0) {
-        return List.of();
+    public List<String> getLineList() {
+        initLines();
+        if (lineArray == null || lineArray.length == 0) {
+            return List.of();
+        }
+        return Arrays.stream(lineArray).map(Line::toString).toList();
     }
-    return Arrays.stream(lineArray)
-                 .map(Line::toString)
-                 .toList();
-}
 
     @Override
     public String toString() {
