@@ -123,8 +123,28 @@ public class ASTTraversalUtils {
      */
     public static String safeSubstringFromByteOffsets(String source, int startByte, int endByte) {
         if (startByte < 0 || endByte < startByte) {
-            log.warn("Requstef bytes outside byte range for '{}' between {} and {}", source, startByte, endByte);
+            log.warn(
+                    "Requested bytes outside valid range for source text (length: {} bytes): startByte={}, endByte={}",
+                    source.getBytes(java.nio.charset.StandardCharsets.UTF_8).length,
+                    startByte,
+                    endByte);
             return "";
+        }
+
+        // Handle zero-width nodes (same start and end position) - valid case
+        if (startByte == endByte) {
+            return "";
+        }
+
+        // Validate byte offsets against actual source byte length
+        byte[] sourceBytes = source.getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        if (startByte >= sourceBytes.length) {
+            log.warn("Start byte offset {} exceeds source byte length {}", startByte, sourceBytes.length);
+            return "";
+        }
+        if (endByte > sourceBytes.length) {
+            log.warn("End byte offset {} exceeds source byte length {}, truncating", endByte, sourceBytes.length);
+            endByte = sourceBytes.length;
         }
 
         int startChar = byteOffsetToCharPosition(startByte, source);
