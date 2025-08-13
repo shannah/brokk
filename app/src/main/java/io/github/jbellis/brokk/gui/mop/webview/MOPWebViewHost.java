@@ -63,10 +63,9 @@ public final class MOPWebViewHost extends JPanel {
     private static double getPlatformScrollSpeedFactor() {
         if (Environment.isMacOs()) {
             return 0.3; // macOS trackpads are very sensitive
-        } else if (Environment.isWindows()) {
-            return 1.2; // Windows needs moderate adjustment
         } else {
-            return 1.7; // Linux and other platforms
+            // Windows, Linux, and other platforms
+            return 1.7;
         }
     }
 
