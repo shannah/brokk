@@ -1,24 +1,21 @@
 package io.github.jbellis.brokk.gui;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.testutil.TestProject;
-import org.junit.jupiter.api.BeforeEach;
-import org.junit.jupiter.api.Test;
-import org.junit.jupiter.api.io.TempDir;
-
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.List;
-import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
-import java.util.function.Predicate;
-
-import static org.junit.jupiter.api.Assertions.*;
+import org.junit.jupiter.api.BeforeEach;
+import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 class FileSelectionPanelResolveTest {
 
@@ -39,8 +36,7 @@ class FileSelectionPanelResolveTest {
                 multi,
                 bf -> {}, // no-op
                 false,
-                ""
-        );
+                "");
     }
 
     @BeforeEach
@@ -66,7 +62,9 @@ class FileSelectionPanelResolveTest {
         return new FileSelectionPanel(config(project, allowExternal, multi));
     }
 
-    private static String abs(Path p) { return p.toAbsolutePath().normalize().toString(); }
+    private static String abs(Path p) {
+        return p.toAbsolutePath().normalize().toString();
+    }
 
     @Test
     void emptyInputReturnsEmpty() {
@@ -123,7 +121,11 @@ class FileSelectionPanelResolveTest {
         var panel = panel(false, false);
         panel.setInputText("*.txt");
         var results = panel.resolveAndGetSelectedFiles();
-        var absPaths = results.stream().map(BrokkFile::absPath).map(Path::toString).sorted().toList();
+        var absPaths = results.stream()
+                .map(BrokkFile::absPath)
+                .map(Path::toString)
+                .sorted()
+                .toList();
         assertEquals(List.of(abs(projectRoot.resolve("a.txt"))), absPaths);
         assertTrue(results.stream().allMatch(bf -> bf instanceof ProjectFile));
     }
@@ -136,7 +138,9 @@ class FileSelectionPanelResolveTest {
         var results = panel.resolveAndGetSelectedFiles();
         assertEquals(1, results.size());
         assertTrue(results.getFirst() instanceof ProjectFile);
-        assertEquals(abs(projectRoot.resolve("dir/c.txt")), results.getFirst().absPath().toString());
+        assertEquals(
+                abs(projectRoot.resolve("dir/c.txt")),
+                results.getFirst().absPath().toString());
     }
 
     @Test
@@ -152,22 +156,27 @@ class FileSelectionPanelResolveTest {
         var results = panelAllow.resolveAndGetSelectedFiles();
         assertEquals(1, results.size());
         assertTrue(results.getFirst() instanceof ExternalFile);
-        assertEquals(abs(externalRoot.resolve("exdir/e2.txt")), results.getFirst().absPath().toString());
+        assertEquals(
+                abs(externalRoot.resolve("exdir/e2.txt")),
+                results.getFirst().absPath().toString());
     }
 
     @Test
     void multiSelectWithQuotesAndDedup() {
         var panel = panel(false, true);
         // Same file twice (one quoted), plus a file with spaces
-        var quotedWithSpace = "\"" + projectRoot.resolve("dir with space").resolve("file name.txt").toString() + "\"";
+        var quotedWithSpace = "\""
+                + projectRoot.resolve("dir with space").resolve("file name.txt").toString() + "\"";
         panel.setInputText("a.txt " + quotedWithSpace + " a.txt");
         var results = panel.resolveAndGetSelectedFiles();
         assertEquals(2, results.size()); // de-duplicated
         var paths = results.stream().map(bf -> bf.absPath().toString()).sorted().toList();
-        assertEquals(List.of(
-                abs(projectRoot.resolve("a.txt")),
-                abs(projectRoot.resolve("dir with space/file name.txt"))
-        ).stream().sorted().toList(), paths);
+        assertEquals(
+                List.of(abs(projectRoot.resolve("a.txt")), abs(projectRoot.resolve("dir with space/file name.txt")))
+                        .stream()
+                        .sorted()
+                        .toList(),
+                paths);
         assertTrue(results.stream().allMatch(bf -> bf instanceof ProjectFile));
     }
 }

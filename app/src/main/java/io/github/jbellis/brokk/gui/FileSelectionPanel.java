@@ -1,11 +1,31 @@
 package io.github.jbellis.brokk.gui;
 
+import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
+
 import com.google.common.base.Splitter;
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import java.awt.*;
+import java.awt.event.InputEvent;
+import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.util.*;
+import java.util.List;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.Future;
+import java.util.function.Consumer;
+import java.util.function.Predicate;
+import javax.swing.*;
+import javax.swing.text.JTextComponent;
+import javax.swing.tree.DefaultMutableTreeNode;
+import javax.swing.tree.TreePath;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.fife.ui.autocomplete.AutoCompletion;
@@ -14,40 +34,18 @@ import org.fife.ui.autocomplete.DefaultCompletionProvider;
 import org.fife.ui.autocomplete.ShorthandCompletion;
 import org.jetbrains.annotations.Nullable;
 
-import javax.swing.*;
-import javax.swing.text.JTextComponent;
-import javax.swing.tree.DefaultMutableTreeNode;
-import javax.swing.tree.TreePath;
-import java.awt.*;
-import java.awt.event.InputEvent;
-import java.awt.event.KeyEvent;
-import java.awt.event.MouseAdapter;
-import java.awt.event.MouseEvent;
-import java.io.File;
-import java.nio.file.Files;
-import java.nio.file.InvalidPathException;
-import java.nio.file.Path;
-import java.util.*;
-import java.util.List;
-import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.function.Consumer;
-import java.util.function.Predicate;
-
-import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
-
 public class FileSelectionPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(FileSelectionPanel.class);
 
-    public record Config(IProject project,
-                         boolean allowExternalFiles,
-                         Predicate<File> fileFilter,
-                         Future<List<Path>> autocompleteCandidates,
-                         boolean multiSelect,
-                         Consumer<BrokkFile> onSingleFileConfirmed,
-                         boolean includeProjectFilesInAutocomplete,
-                         String customHintText)
-    { }
+    public record Config(
+            IProject project,
+            boolean allowExternalFiles,
+            Predicate<File> fileFilter,
+            Future<List<Path>> autocompleteCandidates,
+            boolean multiSelect,
+            Consumer<BrokkFile> onSingleFileConfirmed,
+            boolean includeProjectFilesInAutocomplete,
+            String customHintText) {}
 
     private final Config config;
     private final IProject project;
@@ -68,16 +66,18 @@ public class FileSelectionPanel extends JPanel {
 
         // 2. AutoCompletion
         // The provider needs access to project, allowExternalFiles, and autocompleteCandidates from config
-        var provider = new FilePanelCompletionProvider(this.project,
-                                                       config.autocompleteCandidates(),
-                                                       config.allowExternalFiles(),
-                                                       config.multiSelect(),
-                                                       config.includeProjectFilesInAutocomplete());
+        var provider = new FilePanelCompletionProvider(
+                this.project,
+                config.autocompleteCandidates(),
+                config.allowExternalFiles(),
+                config.multiSelect(),
+                config.includeProjectFilesInAutocomplete());
         var autoCompletion = new AutoCompletion(provider);
         autoCompletion.setAutoActivationEnabled(false);
         autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
         autoCompletion.install(fileInputComponent);
-        AutoCompleteUtil.bindCtrlEnter(autoCompletion, fileInputComponent); // Ctrl+Enter on input might imply confirmation
+        AutoCompleteUtil.bindCtrlEnter(
+                autoCompletion, fileInputComponent); // Ctrl+Enter on input might imply confirmation
 
         // 3. FileTree
         tree = new FileSelectionTree(this.project, config.allowExternalFiles(), config.fileFilter());
@@ -171,7 +171,8 @@ public class FileSelectionPanel extends JPanel {
             }
         });
 
-        // Optional: Listener for Enter key in fileInputComponent if not handled by Ctrl+Enter binding from AutoCompleteUtil
+        // Optional: Listener for Enter key in fileInputComponent if not handled by Ctrl+Enter binding from
+        // AutoCompleteUtil
         // This depends on how dialogs want to use the panel. Usually, an OK button handles confirmation.
     }
 
@@ -219,9 +220,8 @@ public class FileSelectionPanel extends JPanel {
     }
 
     /**
-     * Parses the current text in the input component, resolves paths and globs,
-     * and returns a list of unique BrokkFile objects.
-     * This is the primary method to get the resolved selection from the panel.
+     * Parses the current text in the input component, resolves paths and globs, and returns a list of unique BrokkFile
+     * objects. This is the primary method to get the resolved selection from the panel.
      */
     public List<BrokkFile> resolveAndGetSelectedFiles() {
         String inputText = fileInputComponent.getText().trim();
@@ -310,10 +310,9 @@ public class FileSelectionPanel extends JPanel {
         return tokens;
     }
 
-
     /**
-     * Custom CompletionProvider for files in FileSelectionPanel.
-     * Handles project files, external paths, and different input component types.
+     * Custom CompletionProvider for files in FileSelectionPanel. Handles project files, external paths, and different
+     * input component types.
      */
     private static class FilePanelCompletionProvider extends DefaultCompletionProvider {
         private final IProject project;
@@ -322,12 +321,12 @@ public class FileSelectionPanel extends JPanel {
         private final boolean multiSelectMode; // To determine how to get_already_entered_text
         private final boolean includeProjectFilesInAutocomplete;
 
-        public FilePanelCompletionProvider(IProject project,
-                                           Future<List<Path>> autocompleteCandidatesFuture,
-                                           boolean allowExternalFiles,
-                                           boolean multiSelectMode,
-                                           boolean includeProjectFilesInAutocomplete)
-        {
+        public FilePanelCompletionProvider(
+                IProject project,
+                Future<List<Path>> autocompleteCandidatesFuture,
+                boolean allowExternalFiles,
+                boolean multiSelectMode,
+                boolean includeProjectFilesInAutocomplete) {
             super();
             this.project = project;
             this.autocompleteCandidatesFuture = autocompleteCandidatesFuture;
@@ -354,7 +353,6 @@ public class FileSelectionPanel extends JPanel {
             if (pattern.trim().isEmpty() && multiSelectMode)
                 return List.of(); // For multi, empty token = no completions
 
-
             Path potentialPath = null;
             boolean isAbsolutePattern = false;
             if (!pattern.trim().isEmpty()) { // Only try to parse if pattern is not just whitespace
@@ -366,7 +364,6 @@ public class FileSelectionPanel extends JPanel {
                     isAbsolutePattern = false;
                 }
             }
-
 
             // 1. External file completions if pattern is absolute and external files allowed
             if (allowExternalFiles && isAbsolutePattern) { // check potentialPath not null
@@ -386,13 +383,15 @@ public class FileSelectionPanel extends JPanel {
             // If project exists, add its files to the candidates for completion
             // The original MultiFSD used a Future<Set<ProjectFile>>. Here we have Future<List<Path>> from config.
             // If project files need to be dynamically added, the `autocompleteCandidatesFuture` should provide them.
-            // For simplicity, we assume `autocompleteCandidatesFuture` contains all relevant paths (project + external).
+            // For simplicity, we assume `autocompleteCandidatesFuture` contains all relevant paths (project +
+            // external).
             // Or, we can merge if project exists:
             Set<Path> allCandidatePaths = new java.util.HashSet<>(candidates);
             if (this.includeProjectFilesInAutocomplete) {
-                project.getRepo().getTrackedFiles().stream().map(ProjectFile::absPath).forEach(allCandidatePaths::add);
+                project.getRepo().getTrackedFiles().stream()
+                        .map(ProjectFile::absPath)
+                        .forEach(allCandidatePaths::add);
             }
-
 
             if (pattern.trim().isEmpty()) return List.of(); // Avoid processing empty patterns after merging
 
@@ -422,29 +421,30 @@ public class FileSelectionPanel extends JPanel {
             Path absolutePath = path.toAbsolutePath().normalize();
 
             String pathForReplacement;
-    if (absolutePath.startsWith(this.project.getRoot())) {
-        pathForReplacement = this.project.getRoot().relativize(absolutePath).toString();
-    } else {
-        pathForReplacement = absolutePath.toString();
-    }
+            if (absolutePath.startsWith(this.project.getRoot())) {
+                pathForReplacement =
+                        this.project.getRoot().relativize(absolutePath).toString();
+            } else {
+                pathForReplacement = absolutePath.toString();
+            }
 
             String summaryPathString = pathForReplacement; // same as replacement target
-            String displayFileName = Objects.requireNonNull(absolutePath.getFileName()).toString();
+            String displayFileName =
+                    Objects.requireNonNull(absolutePath.getFileName()).toString();
 
-            String replacementText = multiSelectMode
-                                     ? quotePathIfNecessary(pathForReplacement) + " "
-                                     : pathForReplacement;
+            String replacementText =
+                    multiSelectMode ? quotePathIfNecessary(pathForReplacement) + " " : pathForReplacement;
 
             return new ShorthandCompletion(this, displayFileName, replacementText, summaryPathString);
         }
-
 
         private List<Completion> getAbsolutePathCompletions(Path inputPath, String pattern) {
             List<Completion> pathCompletions = new ArrayList<>();
             try {
                 Path parentDir;
                 String filePrefix;
-                boolean endsWithSeparator = pattern.endsWith(inputPath.getFileSystem().getSeparator());
+                boolean endsWithSeparator =
+                        pattern.endsWith(inputPath.getFileSystem().getSeparator());
 
                 if (endsWithSeparator) {
                     parentDir = inputPath;
@@ -455,7 +455,9 @@ public class FileSelectionPanel extends JPanel {
                         parentDir = inputPath.getRoot();
                         filePrefix = "";
                     } else if (parentDir != null) {
-                        filePrefix = inputPath.getFileName() != null ? inputPath.getFileName().toString() : "";
+                        filePrefix = inputPath.getFileName() != null
+                                ? inputPath.getFileName().toString()
+                                : "";
                     } else {
                         parentDir = inputPath.getRoot(); // Fallback for e.g. "C:"
                         if (parentDir == null) return List.of();
@@ -468,16 +470,22 @@ public class FileSelectionPanel extends JPanel {
                 }
 
                 final String effectiveFilePrefix = filePrefix.toLowerCase(Locale.ROOT);
-                try (var stream = Files.newDirectoryStream(parentDir, p -> p.getFileName().toString().toLowerCase(Locale.ROOT).startsWith(effectiveFilePrefix))) {
+                try (var stream = Files.newDirectoryStream(
+                        parentDir,
+                        p -> p.getFileName().toString().toLowerCase(Locale.ROOT).startsWith(effectiveFilePrefix))) {
                     for (Path p : stream) {
                         String absolutePath = p.toAbsolutePath().toString();
                         String replacement = multiSelectMode ? quotePathIfNecessary(absolutePath) + " " : absolutePath;
                         String display = p.getFileName().toString();
                         if (Files.isDirectory(p)) {
                             display += p.getFileSystem().getSeparator(); // Indicate directory
-                            replacement = multiSelectMode ? quotePathIfNecessary(absolutePath + p.getFileSystem().getSeparator()) + " " : absolutePath + p.getFileSystem().getSeparator();
+                            replacement = multiSelectMode
+                                    ? quotePathIfNecessary(absolutePath
+                                                    + p.getFileSystem().getSeparator()) + " "
+                                    : absolutePath + p.getFileSystem().getSeparator();
                         }
-                        pathCompletions.add(new org.fife.ui.autocomplete.BasicCompletion(this, replacement, display, absolutePath));
+                        pathCompletions.add(
+                                new org.fife.ui.autocomplete.BasicCompletion(this, replacement, display, absolutePath));
                     }
                 } catch (java.io.IOException e) {
                     logger.debug("IOException listing directory for completion: {}", parentDir, e);
@@ -490,8 +498,8 @@ public class FileSelectionPanel extends JPanel {
         }
 
         /**
-         * Extracts the current token for completion in a JTextComponent, respecting quotes.
-         * Used for multi-select mode with JTextArea.
+         * Extracts the current token for completion in a JTextComponent, respecting quotes. Used for multi-select mode
+         * with JTextArea.
          */
         private String getCurrentTokenTextForCompletion(JTextComponent comp) {
             String text = comp.getText();
@@ -509,7 +517,6 @@ public class FileSelectionPanel extends JPanel {
                 if (chars[i] == '"') quoteCountBeforeCaret++;
             }
             inQuotes = (quoteCountBeforeCaret % 2) != 0;
-
 
             while (tokenStart >= 0) {
                 char c = chars[tokenStart];
@@ -534,7 +541,13 @@ public class FileSelectionPanel extends JPanel {
 
             // If token starts with a quote, and caret is effectively inside, pattern is from after quote
             String currentToken = text.substring(tokenStart, caretPos);
-            if (currentToken.startsWith("\"") && !(text.substring(tokenStart, caretPos).chars().filter(ch -> ch == '"').count() % 2 == 0)) {
+            if (currentToken.startsWith("\"")
+                    && !(text.substring(tokenStart, caretPos)
+                                            .chars()
+                                            .filter(ch -> ch == '"')
+                                            .count()
+                                    % 2
+                            == 0)) {
                 // if token starts with quote and we are "in" that quote block for completion
                 return currentToken.substring(1);
             }

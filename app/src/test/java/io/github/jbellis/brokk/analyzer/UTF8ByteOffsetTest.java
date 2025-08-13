@@ -1,21 +1,20 @@
 package io.github.jbellis.brokk.analyzer;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import org.junit.jupiter.api.Test;
 import org.treesitter.TSNode;
 import org.treesitter.TSParser;
 import org.treesitter.TSTree;
 import org.treesitter.TreeSitterJava;
 
-import java.nio.charset.StandardCharsets;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 public class UTF8ByteOffsetTest {
 
     @Test
     public void testUnicodeCharacterByteOffsetHandling() {
         // This is the exact content pattern from CpgCache.java that causes issues
-        String javaCodeWithUnicode = """
+        String javaCodeWithUnicode =
+                """
             package test;
 
             /* ─────────────────────────  Helpers  ───────────────────────── */
@@ -57,8 +56,7 @@ public class UTF8ByteOffsetTest {
             if (startByte < javaCodeWithUnicode.length() && endByte <= javaCodeWithUnicode.length()) {
                 String result = javaCodeWithUnicode.substring(startByte, endByte);
                 // If we get here without exception, check if extraction is wrong
-                assertFalse(result.contains("public class TestClass"),
-                    "Old approach should extract wrong content");
+                assertFalse(result.contains("public class TestClass"), "Old approach should extract wrong content");
             } else {
                 // Force the exception to demonstrate the issue
                 javaCodeWithUnicode.substring(startByte, endByte);
@@ -69,23 +67,23 @@ public class UTF8ByteOffsetTest {
         String extractedText = ASTTraversalUtils.safeSubstringFromByteOffsets(javaCodeWithUnicode, startByte, endByte);
 
         // Verify the fix works correctly
-        assertTrue(extractedText.contains("public class TestClass"),
-            "Fixed approach should correctly extract class declaration");
-        assertTrue(extractedText.contains("private String field"),
-            "Fixed approach should extract complete class content");
-        assertTrue(extractedText.contains("public void method()"),
-            "Fixed approach should extract method declaration");
+        assertTrue(
+                extractedText.contains("public class TestClass"),
+                "Fixed approach should correctly extract class declaration");
+        assertTrue(
+                extractedText.contains("private String field"), "Fixed approach should extract complete class content");
+        assertTrue(extractedText.contains("public void method()"), "Fixed approach should extract method declaration");
 
         // Also test ASTTraversalUtils.extractNodeText (which is also fixed)
         String nodeText = ASTTraversalUtils.extractNodeText(classNode, javaCodeWithUnicode);
-        assertTrue(nodeText.contains("public class TestClass"),
-            "ASTTraversalUtils should correctly extract node text");
+        assertTrue(nodeText.contains("public class TestClass"), "ASTTraversalUtils should correctly extract node text");
     }
 
     @Test
     public void testMultipleUnicodeCharacters() {
         // Test with more Unicode characters to amplify the offset drift
-        String codeWithManyUnicode = """
+        String codeWithManyUnicode =
+                """
             /* ═══════════════════════════════════════════════════════════ */
             /* ─────────────────────────  Setup  ──────────────────────── */
             /* ═══════════════════════════════════════════════════════════ */
@@ -116,16 +114,14 @@ public class UTF8ByteOffsetTest {
 
         // Old approach would definitely fail here
         if (startByte < codeWithManyUnicode.length()) {
-            String oldResult = codeWithManyUnicode.substring(startByte,
-                Math.min(endByte, codeWithManyUnicode.length()));
-            assertFalse(oldResult.trim().startsWith("public class"),
-                "Old approach should not extract class correctly");
+            String oldResult =
+                    codeWithManyUnicode.substring(startByte, Math.min(endByte, codeWithManyUnicode.length()));
+            assertFalse(oldResult.trim().startsWith("public class"), "Old approach should not extract class correctly");
         }
 
         // New approach should work
         String newResult = ASTTraversalUtils.safeSubstringFromByteOffsets(codeWithManyUnicode, startByte, endByte);
-        assertTrue(newResult.contains("public class UnicodeTest"),
-            "New approach should extract class correctly");
+        assertTrue(newResult.contains("public class UnicodeTest"), "New approach should extract class correctly");
     }
 
     // Helper method for finding nodes
