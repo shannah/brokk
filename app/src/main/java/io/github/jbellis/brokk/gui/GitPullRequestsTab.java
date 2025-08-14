@@ -4,6 +4,7 @@ import static java.util.Objects.requireNonNull;
 
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.GitHubAuth;
+import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.ICommitInfo;
 import io.github.jbellis.brokk.gui.components.GitHubTokenMissingPanel;
@@ -30,13 +31,12 @@ import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.transport.RefSpec;
 import org.jetbrains.annotations.Nullable;
+import org.kohsuke.github.GHIssue;
+import org.kohsuke.github.GHIssueComment;
 import org.kohsuke.github.GHIssueState;
 import org.kohsuke.github.GHLabel;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHUser;
-import io.github.jbellis.brokk.context.ContextFragment;
-import org.kohsuke.github.GHIssue;
-import org.kohsuke.github.GHIssueComment;
 
 public class GitPullRequestsTab extends JPanel implements SettingsChangeListener {
     private static final Logger logger = LogManager.getLogger(GitPullRequestsTab.class);
@@ -1438,7 +1438,8 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                     // as long as the prBaseSha commit itself is available. Fetching the branch helps ensure this.
                     ensureShaIsLocal(repo, prBaseSha, prBaseFetchRef, "origin");
 
-                    GitUiUtil.capturePrDiffToContext(contextManager, chrome, prTitle, prNumber, prHeadSha, prBaseSha, repo);
+                    GitUiUtil.capturePrDiffToContext(
+                            contextManager, chrome, prTitle, prNumber, prHeadSha, prBaseSha, repo);
 
                     // Also edit files mentioned in the diff
                     List<GitRepo.ModifiedFile> modifiedFiles =
@@ -1448,7 +1449,10 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                             .collect(Collectors.toSet());
                     if (!editableFiles.isEmpty()) {
                         contextManager.editFiles(editableFiles);
-                        logger.info("Added {} changed files from PR #{} to editable context", editableFiles.size(), prNumber);
+                        logger.info(
+                                "Added {} changed files from PR #{} to editable context",
+                                editableFiles.size(),
+                                prNumber);
                     }
 
                     // Capture PR description (markdown). If blank, try first issue comment by PR author.
@@ -1491,28 +1495,31 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                                             }
                                         }
                                     } catch (Exception inner) {
-                                        logger.debug("Skipping an issue comment while finding PR description: {}", inner.getMessage());
+                                        logger.debug(
+                                                "Skipping an issue comment while finding PR description: {}",
+                                                inner.getMessage());
                                     }
                                 }
                             } catch (Exception e) {
                                 logger.warn("Unable to fetch issue comments for PR #{}: {}", prNumber, e.getMessage());
                             }
                         } catch (Exception e) {
-                            logger.warn("Error while attempting PR description fallback for PR #{}: {}", prNumber, e.getMessage());
+                            logger.warn(
+                                    "Error while attempting PR description fallback for PR #{}: {}",
+                                    prNumber,
+                                    e.getMessage());
                         }
                     }
 
                     if (!descriptionText.isBlank()) {
                         try {
                             var descriptionFragment = new ContextFragment.StringFragment(
-                                    contextManager,
-                                    descriptionText,
-                                    "PR #" + prNumber + " Description",
-                                    "markdown");
+                                    contextManager, descriptionText, "PR #" + prNumber + " Description", "markdown");
                             contextManager.addVirtualFragment(descriptionFragment);
                             logger.info("Added PR description fragment for PR #{}", prNumber);
                         } catch (Exception e) {
-                            logger.warn("Failed to add PR description fragment for PR #{}: {}", prNumber, e.getMessage());
+                            logger.warn(
+                                    "Failed to add PR description fragment for PR #{}: {}", prNumber, e.getMessage());
                         }
                     }
 
