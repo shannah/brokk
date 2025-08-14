@@ -1,5 +1,55 @@
-// Get the version from the latest git tag and current version
+// Get the version from the latest git tag and current version with caching
 fun getVersionFromGit(): String {
+    val versionCacheFile = File(rootDir, "build/version.txt")
+
+    try {
+        // Get current git HEAD (works for both regular repos and worktrees)
+        val currentGitHead = getCurrentGitHead()
+
+        // Check if we can use cached version
+        if (versionCacheFile.exists() && currentGitHead != null) {
+            val cacheLines = versionCacheFile.readLines()
+            if (cacheLines.size >= 2) {
+                val cachedGitHead = cacheLines[0]
+                val cachedVersion = cacheLines[1]
+
+                // If git HEAD hasn't changed, use cached version
+                if (cachedGitHead == currentGitHead) {
+                    return cachedVersion
+                }
+            }
+        }
+
+        // Calculate version from git
+        val version = calculateVersionFromGit()
+
+        // Cache the result
+        if (currentGitHead != null) {
+            versionCacheFile.parentFile.mkdirs()
+            versionCacheFile.writeText("$currentGitHead\n$version\n")
+        }
+
+        return version
+    } catch (e: Exception) {
+        return "0.0.0-UNKNOWN"
+    }
+}
+
+fun getCurrentGitHead(): String? {
+    return try {
+        val gitHeadProcess = ProcessBuilder("git", "rev-parse", "HEAD")
+            .directory(rootDir)
+            .start()
+        gitHeadProcess.waitFor()
+        if (gitHeadProcess.exitValue() == 0) {
+            gitHeadProcess.inputStream.bufferedReader().readText().trim()
+        } else null
+    } catch (e: Exception) {
+        null
+    }
+}
+
+fun calculateVersionFromGit(): String {
     return try {
         // First, try to get exact tag match with version pattern
         val exactTagProcess = ProcessBuilder("git", "describe", "--tags", "--exact-match", "--match", "[0-9]*", "HEAD")
