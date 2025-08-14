@@ -57,9 +57,12 @@ tasks.register("printVersion") {
 }
 
 tasks.register("tidy") {
-    description = "Formats code using Spotless (alias for spotlessApply)"
+    description = "Formats code using Spotless (alias for spotlessApply in all projects)"
     group = "formatting"
-    dependsOn("spotlessApply")
+
+    dependsOn(
+        subprojects.map { it.tasks.matching { t -> t.name == "spotlessApply" } }
+    )
 }
 
 subprojects {
