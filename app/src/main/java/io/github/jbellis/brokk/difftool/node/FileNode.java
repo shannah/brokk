@@ -1,11 +1,11 @@
 package io.github.jbellis.brokk.difftool.node;
 
+import static java.util.Objects.requireNonNull;
+
 import io.github.jbellis.brokk.difftool.doc.FileDocument;
-import org.jetbrains.annotations.Nullable;
 import java.io.File;
 import java.lang.ref.SoftReference;
-
-import static java.util.Objects.requireNonNull;
+import org.jetbrains.annotations.Nullable;
 
 public class FileNode implements Comparable<FileNode>, BufferNode {
     private final String name;
@@ -16,8 +16,8 @@ public class FileNode implements Comparable<FileNode>, BufferNode {
     /**
      * Creates a FileNode for representing a real file on disk.
      *
-     * @param name Display name for the file, typically the absolute path for proper
-     *             ProjectFile creation, but can be customized for display purposes
+     * @param name Display name for the file, typically the absolute path for proper ProjectFile creation, but can be
+     *     customized for display purposes
      * @param file The actual File object pointing to the file on disk
      */
     public FileNode(String name, File file) {

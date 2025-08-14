@@ -1,19 +1,17 @@
 package io.github.jbellis.brokk.difftool.ui;
 
+import static org.junit.jupiter.api.Assertions.*;
+
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.condition.EnabledOnOs;
 import org.junit.jupiter.api.condition.OS;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.nio.file.Path;
-import java.nio.file.Paths;
-
-import static org.junit.jupiter.api.Assertions.*;
-
 /**
- * Test Windows-specific path handling issues in BufferDiffPanel.createProjectFile methods.
- * Specifically tests cross-drive and outside-project-root scenarios.
+ * Test Windows-specific path handling issues in BufferDiffPanel.createProjectFile methods. Specifically tests
+ * cross-drive and outside-project-root scenarios.
  */
 public class BufferDiffPanelCrossDriveTest {
 
@@ -40,9 +38,12 @@ public class BufferDiffPanelCrossDriveTest {
         var crossDriveFile = Path.of("D:\\external\\file.txt");
 
         // This should throw IllegalArgumentException on Windows
-        assertThrows(IllegalArgumentException.class, () -> {
-            projectRoot.relativize(crossDriveFile);
-        }, "Cross-drive relativize should throw IllegalArgumentException on Windows");
+        assertThrows(
+                IllegalArgumentException.class,
+                () -> {
+                    projectRoot.relativize(crossDriveFile);
+                },
+                "Cross-drive relativize should throw IllegalArgumentException on Windows");
     }
 
     @Test
@@ -53,8 +54,7 @@ public class BufferDiffPanelCrossDriveTest {
 
         // This should work and create a path with .. segments
         var relativePath = projectRoot.relativize(outsideFile);
-        assertTrue(relativePath.toString().startsWith(".."),
-            "Paths outside project root should start with ..");
+        assertTrue(relativePath.toString().startsWith(".."), "Paths outside project root should start with ..");
 
         // Verify ProjectFile can handle this
         var projectFile = new ProjectFile(projectRoot, relativePath);
@@ -130,19 +130,21 @@ public class BufferDiffPanelCrossDriveTest {
 
         // Test case 3: Simulate cross-drive scenario by testing exception handling pattern
         // The fixed code should handle IllegalArgumentException gracefully
-        assertDoesNotThrow(() -> {
-            try {
-                // This is the pattern the fixed createProjectFileFromFullPath uses
-                if (outsideFile.isAbsolute() && !outsideFile.startsWith(projectRoot)) {
-                    // Try relativize with exception handling
-                    var relative = projectRoot.relativize(outsideFile);
-                    new ProjectFile(projectRoot, relative);
-                }
-            } catch (IllegalArgumentException e) {
-                // Fixed code should catch this and return null (handled by caller)
-                // In tests, we just verify the exception handling pattern works
-            }
-        }, "Exception handling pattern should work without throwing");
+        assertDoesNotThrow(
+                () -> {
+                    try {
+                        // This is the pattern the fixed createProjectFileFromFullPath uses
+                        if (outsideFile.isAbsolute() && !outsideFile.startsWith(projectRoot)) {
+                            // Try relativize with exception handling
+                            var relative = projectRoot.relativize(outsideFile);
+                            new ProjectFile(projectRoot, relative);
+                        }
+                    } catch (IllegalArgumentException e) {
+                        // Fixed code should catch this and return null (handled by caller)
+                        // In tests, we just verify the exception handling pattern works
+                    }
+                },
+                "Exception handling pattern should work without throwing");
     }
 
     @Test
@@ -178,7 +180,9 @@ public class BufferDiffPanelCrossDriveTest {
 
         // The key insight: if we had captured baseline AFTER save, we'd get the modified content
         // But with the fix, we capture BEFORE save, so we get the original content for diff
-        assertNotEquals(preSaveContent, postSaveContent,
-            "Pre-save and post-save content should differ, proving timing fix works");
+        assertNotEquals(
+                preSaveContent,
+                postSaveContent,
+                "Pre-save and post-save content should differ, proving timing fix works");
     }
 }
