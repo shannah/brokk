@@ -34,6 +34,9 @@ import org.kohsuke.github.GHIssueState;
 import org.kohsuke.github.GHLabel;
 import org.kohsuke.github.GHPullRequest;
 import org.kohsuke.github.GHUser;
+import io.github.jbellis.brokk.context.ContextFragment;
+import org.kohsuke.github.GHIssue;
+import org.kohsuke.github.GHIssueComment;
 
 public class GitPullRequestsTab extends JPanel implements SettingsChangeListener {
     private static final Logger logger = LogManager.getLogger(GitPullRequestsTab.class);
@@ -578,7 +581,7 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
         JPopupMenu contextMenu = new JPopupMenu();
         chrome.themeManager.registerPopupMenu(contextMenu);
 
-        capturePrDiffMenuItemContextMenu = new JMenuItem("Capture Diff");
+        capturePrDiffMenuItemContextMenu = new JMenuItem("Capture for Review");
         capturePrDiffMenuItemContextMenu.addActionListener(e -> captureSelectedPrDiff());
         contextMenu.add(capturePrDiffMenuItemContextMenu);
 
@@ -1423,6 +1426,82 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                 ensureShaIsLocal(repo, prBaseSha, prBaseFetchRef, "origin");
 
                 GitUiUtil.capturePrDiffToContext(contextManager, chrome, prTitle, prNumber, prHeadSha, prBaseSha, repo);
+
+            // Also edit files mentioned in the diff
+            List<GitRepo.ModifiedFile> modifiedFiles =
+                    repo.listFilesChangedBetweenBranches(prHeadSha, prBaseSha);
+            var editableFiles = modifiedFiles.stream()
+                    .map(GitRepo.ModifiedFile::file)
+                    .collect(Collectors.toSet());
+            if (!editableFiles.isEmpty()) {
+                contextManager.editFiles(editableFiles);
+                logger.info("Added {} changed files from PR #{} to editable context", editableFiles.size(), prNumber);
+            }
+
+            // Capture PR description (markdown). If blank, try first issue comment by PR author.
+            String descriptionText = "";
+            try {
+                String body = pr.getBody();
+                if (body != null) {
+                    descriptionText = body.trim();
+                }
+            } catch (Exception e) {
+                logger.warn("Unable to fetch PR body for PR #{}: {}", prNumber, e.getMessage());
+            }
+
+            if (descriptionText.isBlank()) {
+                try {
+                    String authorLogin = null;
+                    try {
+                        var author = pr.getUser();
+                        if (author != null) {
+                            authorLogin = author.getLogin();
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Unable to fetch PR author for PR #{}: {}", prNumber, e.getMessage());
+                    }
+
+                    try {
+                        var auth = GitHubAuth.getOrCreateInstance(contextManager.getProject());
+                        GHIssue issue = auth.getIssue(prNumber);
+                        List<GHIssueComment> comments = issue.getComments();
+                        for (GHIssueComment c : comments) {
+                            try {
+                                var cUser = c.getUser();
+                                if (cUser != null
+                                        && authorLogin != null
+                                        && authorLogin.equals(cUser.getLogin())) {
+                                    String candidate = c.getBody();
+                                    if (candidate != null && !candidate.isBlank()) {
+                                        descriptionText = candidate.trim();
+                                        break;
+                                    }
+                                }
+                            } catch (Exception inner) {
+                                logger.debug("Skipping an issue comment while finding PR description: {}", inner.getMessage());
+                            }
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Unable to fetch issue comments for PR #{}: {}", prNumber, e.getMessage());
+                    }
+                } catch (Exception e) {
+                    logger.warn("Error while attempting PR description fallback for PR #{}: {}", prNumber, e.getMessage());
+                }
+            }
+
+            if (!descriptionText.isBlank()) {
+                try {
+                    var descriptionFragment = new ContextFragment.StringFragment(
+                            contextManager,
+                            descriptionText,
+                            "PR #" + prNumber + " Description",
+                            "markdown");
+                    contextManager.addVirtualFragment(descriptionFragment);
+                    logger.info("Added PR description fragment for PR #{}", prNumber);
+                } catch (Exception e) {
+                    logger.warn("Failed to add PR description fragment for PR #{}: {}", prNumber, e.getMessage());
+                }
+            }
 
             } catch (Exception ex) {
                 logger.error("Error capturing diff for PR #{}", pr.getNumber(), ex);
