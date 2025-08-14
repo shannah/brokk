@@ -1387,128 +1387,142 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
         GHPullRequest pr = displayedPrs.get(selectedRow);
         logger.info("Capturing diff for PR #{}", pr.getNumber());
 
-        // Check if instructions are empty and populate with PR title + review prompt if needed
-        SwingUtilities.invokeLater(() -> {
-            String currentInstructions = chrome.getInstructionsPanel().getInstructions();
-            if (currentInstructions.trim().isEmpty()) {
-                String reviewGuide = contextManager.getProject().getReviewGuide();
-                String reviewPrompt =
-                        String.format("Review PR #%d: %s\n\n%s", pr.getNumber(), pr.getTitle(), reviewGuide);
-                chrome.getInstructionsPanel().populateInstructionsArea(reviewPrompt);
+        String sessionName = "Review PR #" + pr.getNumber();
+
+        // Create a new session before capturing anything into the context
+        contextManager.createSessionAsync(sessionName).whenComplete((Object ignored, @Nullable Throwable err) -> {
+            if (err != null) {
+                logger.error("Failed to create review session '{}'", sessionName, err);
+                chrome.toolError(
+                        "Unable to create review session: " + sessionName + ": " + err.getMessage(),
+                        "Capture Diff Error");
+                return;
             }
-        });
 
-        contextManager.submitContextTask("Capture PR Diff #" + pr.getNumber(), () -> {
-            try {
-                var repo = getRepo();
-
-                String prHeadSha = pr.getHead().getSha();
-                String prBaseSha = pr.getBase().getSha();
-                String prTitle = pr.getTitle();
-                int prNumber = pr.getNumber();
-
-                // Ensure SHAs are local
-                String prHeadFetchRef =
-                        String.format("+refs/pull/%d/head:refs/remotes/origin/pr/%d/head", prNumber, prNumber);
-                String prBaseBranchName = pr.getBase().getRef();
-                String prBaseFetchRef =
-                        String.format("+refs/heads/%s:refs/remotes/origin/%s", prBaseBranchName, prBaseBranchName);
-
-                if (!ensureShaIsLocal(repo, prHeadSha, prHeadFetchRef, "origin")) {
-                    chrome.toolError(
-                            "Could not make PR head commit " + GitUiUtil.shortenCommitId(prHeadSha)
-                                    + " available locally.",
-                            "Capture Diff Error");
-                    return;
+            // After switching to the new session, populate instructions if empty
+            SwingUtilities.invokeLater(() -> {
+                String currentInstructions = chrome.getInstructionsPanel().getInstructions();
+                if (currentInstructions.trim().isEmpty()) {
+                    String reviewGuide = contextManager.getProject().getReviewGuide();
+                    String reviewPrompt =
+                            String.format("Review PR #%d: %s\n\n%s", pr.getNumber(), pr.getTitle(), reviewGuide);
+                    chrome.getInstructionsPanel().populateInstructionsArea(reviewPrompt);
                 }
-                // It's less critical for baseSha to be at the exact tip of the remote base branch for diffing,
-                // as long as the prBaseSha commit itself is available. Fetching the branch helps ensure this.
-                ensureShaIsLocal(repo, prBaseSha, prBaseFetchRef, "origin");
+            });
 
-                GitUiUtil.capturePrDiffToContext(contextManager, chrome, prTitle, prNumber, prHeadSha, prBaseSha, repo);
-
-            // Also edit files mentioned in the diff
-            List<GitRepo.ModifiedFile> modifiedFiles =
-                    repo.listFilesChangedBetweenBranches(prHeadSha, prBaseSha);
-            var editableFiles = modifiedFiles.stream()
-                    .map(GitRepo.ModifiedFile::file)
-                    .collect(Collectors.toSet());
-            if (!editableFiles.isEmpty()) {
-                contextManager.editFiles(editableFiles);
-                logger.info("Added {} changed files from PR #{} to editable context", editableFiles.size(), prNumber);
-            }
-
-            // Capture PR description (markdown). If blank, try first issue comment by PR author.
-            String descriptionText = "";
-            try {
-                String body = pr.getBody();
-                if (body != null) {
-                    descriptionText = body.trim();
-                }
-            } catch (Exception e) {
-                logger.warn("Unable to fetch PR body for PR #{}: {}", prNumber, e.getMessage());
-            }
-
-            if (descriptionText.isBlank()) {
+            // Now perform the capture into the newly created session
+            contextManager.submitContextTask("Capture PR Diff #" + pr.getNumber(), () -> {
                 try {
-                    String authorLogin = null;
-                    try {
-                        var author = pr.getUser();
-                        if (author != null) {
-                            authorLogin = author.getLogin();
-                        }
-                    } catch (Exception e) {
-                        logger.warn("Unable to fetch PR author for PR #{}: {}", prNumber, e.getMessage());
+                    var repo = getRepo();
+
+                    String prHeadSha = pr.getHead().getSha();
+                    String prBaseSha = pr.getBase().getSha();
+                    String prTitle = pr.getTitle();
+                    int prNumber = pr.getNumber();
+
+                    // Ensure SHAs are local
+                    String prHeadFetchRef =
+                            String.format("+refs/pull/%d/head:refs/remotes/origin/pr/%d/head", prNumber, prNumber);
+                    String prBaseBranchName = pr.getBase().getRef();
+                    String prBaseFetchRef =
+                            String.format("+refs/heads/%s:refs/remotes/origin/%s", prBaseBranchName, prBaseBranchName);
+
+                    if (!ensureShaIsLocal(repo, prHeadSha, prHeadFetchRef, "origin")) {
+                        chrome.toolError(
+                                "Could not make PR head commit " + GitUiUtil.shortenCommitId(prHeadSha)
+                                        + " available locally.",
+                                "Capture Diff Error");
+                        return;
+                    }
+                    // It's less critical for baseSha to be at the exact tip of the remote base branch for diffing,
+                    // as long as the prBaseSha commit itself is available. Fetching the branch helps ensure this.
+                    ensureShaIsLocal(repo, prBaseSha, prBaseFetchRef, "origin");
+
+                    GitUiUtil.capturePrDiffToContext(contextManager, chrome, prTitle, prNumber, prHeadSha, prBaseSha, repo);
+
+                    // Also edit files mentioned in the diff
+                    List<GitRepo.ModifiedFile> modifiedFiles =
+                            repo.listFilesChangedBetweenBranches(prHeadSha, prBaseSha);
+                    var editableFiles = modifiedFiles.stream()
+                            .map(GitRepo.ModifiedFile::file)
+                            .collect(Collectors.toSet());
+                    if (!editableFiles.isEmpty()) {
+                        contextManager.editFiles(editableFiles);
+                        logger.info("Added {} changed files from PR #{} to editable context", editableFiles.size(), prNumber);
                     }
 
+                    // Capture PR description (markdown). If blank, try first issue comment by PR author.
+                    String descriptionText = "";
                     try {
-                        var auth = GitHubAuth.getOrCreateInstance(contextManager.getProject());
-                        GHIssue issue = auth.getIssue(prNumber);
-                        List<GHIssueComment> comments = issue.getComments();
-                        for (GHIssueComment c : comments) {
+                        String body = pr.getBody();
+                        if (body != null) {
+                            descriptionText = body.trim();
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Unable to fetch PR body for PR #{}: {}", prNumber, e.getMessage());
+                    }
+
+                    if (descriptionText.isBlank()) {
+                        try {
+                            String authorLogin = null;
                             try {
-                                var cUser = c.getUser();
-                                if (cUser != null
-                                        && authorLogin != null
-                                        && authorLogin.equals(cUser.getLogin())) {
-                                    String candidate = c.getBody();
-                                    if (candidate != null && !candidate.isBlank()) {
-                                        descriptionText = candidate.trim();
-                                        break;
+                                var author = pr.getUser();
+                                if (author != null) {
+                                    authorLogin = author.getLogin();
+                                }
+                            } catch (Exception e) {
+                                logger.warn("Unable to fetch PR author for PR #{}: {}", prNumber, e.getMessage());
+                            }
+
+                            try {
+                                var auth = GitHubAuth.getOrCreateInstance(contextManager.getProject());
+                                GHIssue issue = auth.getIssue(prNumber);
+                                List<GHIssueComment> comments = issue.getComments();
+                                for (GHIssueComment c : comments) {
+                                    try {
+                                        var cUser = c.getUser();
+                                        if (cUser != null
+                                                && authorLogin != null
+                                                && authorLogin.equals(cUser.getLogin())) {
+                                            String candidate = c.getBody();
+                                            if (candidate != null && !candidate.isBlank()) {
+                                                descriptionText = candidate.trim();
+                                                break;
+                                            }
+                                        }
+                                    } catch (Exception inner) {
+                                        logger.debug("Skipping an issue comment while finding PR description: {}", inner.getMessage());
                                     }
                                 }
-                            } catch (Exception inner) {
-                                logger.debug("Skipping an issue comment while finding PR description: {}", inner.getMessage());
+                            } catch (Exception e) {
+                                logger.warn("Unable to fetch issue comments for PR #{}: {}", prNumber, e.getMessage());
                             }
+                        } catch (Exception e) {
+                            logger.warn("Error while attempting PR description fallback for PR #{}: {}", prNumber, e.getMessage());
                         }
-                    } catch (Exception e) {
-                        logger.warn("Unable to fetch issue comments for PR #{}: {}", prNumber, e.getMessage());
                     }
-                } catch (Exception e) {
-                    logger.warn("Error while attempting PR description fallback for PR #{}: {}", prNumber, e.getMessage());
-                }
-            }
 
-            if (!descriptionText.isBlank()) {
-                try {
-                    var descriptionFragment = new ContextFragment.StringFragment(
-                            contextManager,
-                            descriptionText,
-                            "PR #" + prNumber + " Description",
-                            "markdown");
-                    contextManager.addVirtualFragment(descriptionFragment);
-                    logger.info("Added PR description fragment for PR #{}", prNumber);
-                } catch (Exception e) {
-                    logger.warn("Failed to add PR description fragment for PR #{}: {}", prNumber, e.getMessage());
-                }
-            }
+                    if (!descriptionText.isBlank()) {
+                        try {
+                            var descriptionFragment = new ContextFragment.StringFragment(
+                                    contextManager,
+                                    descriptionText,
+                                    "PR #" + prNumber + " Description",
+                                    "markdown");
+                            contextManager.addVirtualFragment(descriptionFragment);
+                            logger.info("Added PR description fragment for PR #{}", prNumber);
+                        } catch (Exception e) {
+                            logger.warn("Failed to add PR description fragment for PR #{}: {}", prNumber, e.getMessage());
+                        }
+                    }
 
-            } catch (Exception ex) {
-                logger.error("Error capturing diff for PR #{}", pr.getNumber(), ex);
-                chrome.toolError(
-                        "Unable to capture diff for PR #" + pr.getNumber() + ": " + ex.getMessage(),
-                        "Capture Diff Error");
-            }
+                } catch (Exception ex) {
+                    logger.error("Error capturing diff for PR #{}", pr.getNumber(), ex);
+                    chrome.toolError(
+                            "Unable to capture diff for PR #" + pr.getNumber() + ": " + ex.getMessage(),
+                            "Capture Diff Error");
+                }
+            });
         });
     }
 
