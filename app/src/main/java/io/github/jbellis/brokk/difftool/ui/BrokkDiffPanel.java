@@ -396,8 +396,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         btnRedo.setEnabled(false);
         btnSaveAll.setEnabled(false);
 
-        // Other control buttons
-        captureDiffButton.setEnabled(false);
+        // Capture diff button should always remain enabled
 
         logger.debug("All control buttons disabled during file loading");
     }
@@ -531,6 +530,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             btnPrevious.setEnabled(false);
             btnNext.setEnabled(false);
         }
+
+        // Capture diff button should always be enabled
+        captureDiffButton.setEnabled(true);
 
         // Update save button text and enable state
         boolean hasUnsaved = hasUnsavedChanges();
