@@ -1795,7 +1795,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         int size = Math.max(icon.getIconWidth(), icon.getIconHeight());
         // add a little padding so the icon isn't flush against the border
         // tabs are usually a bit width biased, so let's also reduce width a bit
-        label.setPreferredSize(new Dimension(size + 4, size + 8));
+        label.setPreferredSize(new Dimension(size, size + 8));
         label.setMinimumSize(label.getPreferredSize());
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.setToolTipText(tooltip);
