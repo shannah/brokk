@@ -71,6 +71,10 @@ public interface IProject extends AutoCloseable {
         return this;
     }
 
+    default MainProject getMainProject() {
+        throw new UnsupportedOperationException();
+    }
+
     default boolean hasGit() {
         return false;
     }
