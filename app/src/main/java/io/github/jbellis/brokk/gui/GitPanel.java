@@ -14,7 +14,6 @@ import org.jetbrains.annotations.Nullable;
  * but the commit tab is now handled by GitCommitTab, and file-history is handled by GitHistoryTab.
  */
 public class GitPanel extends JPanel {
-
     private final Chrome chrome;
     private final ContextManager contextManager;
     private final JTabbedPane tabbedPane;
@@ -229,6 +228,11 @@ public class GitPanel extends JPanel {
 
     public GitCommitTab getCommitTab() {
         return commitTab;
+    }
+
+    public int getModifiedFileCount() {
+        // commitTab is final and always initialized in constructor - safe to call directly
+        return commitTab.getThreadSafeCachedModifiedFileCount();
     }
 
     /** Helper to return a short filename for tab titles, e.g. "Main.java" from "src/foo/Main.java". */
