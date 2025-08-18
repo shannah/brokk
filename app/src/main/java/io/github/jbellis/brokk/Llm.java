@@ -382,9 +382,7 @@ public class Llm {
             // don't retry on bad request errors
             if (lastError != null) {
                 var msg = requireNonNull(lastError.getMessage());
-                if (msg.contains("BadRequestError")
-                        || msg.contains("UnsupportedParamsError")
-                        || msg.contains("invalid_request_error")) {
+                if (msg.contains("BadRequestError") || msg.contains("UnsupportedParamsError")) {
                     // logged by doSingleStreamingCallInternal, don't be redundant
                     break;
                 }
