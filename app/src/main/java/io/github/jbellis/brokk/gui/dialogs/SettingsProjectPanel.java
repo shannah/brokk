@@ -1155,7 +1155,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
             runTestsInWorkspaceRadio.setSelected(true);
         }
 
-        buildTimeoutSpinner.setValue((int) ((MainProject) project).getRunCommandTimeoutSeconds());
+        buildTimeoutSpinner.setValue((int) project.getMainProject().getRunCommandTimeoutSeconds());
 
         var currentRefresh = project.getAnalyzerRefresh();
         cpgRefreshComboBox.setSelectedItem(
@@ -1235,7 +1235,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
             logger.debug("Applied Code Agent Test Scope: {}", selectedScope);
         }
 
-        var mainProject = (MainProject) project;
+        var mainProject = project.getMainProject();
         long timeout = ((Number) buildTimeoutSpinner.getValue()).longValue();
         if (timeout != mainProject.getRunCommandTimeoutSeconds()) {
             mainProject.setRunCommandTimeoutSeconds(timeout);

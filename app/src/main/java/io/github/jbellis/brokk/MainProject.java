@@ -274,6 +274,11 @@ public final class MainProject extends AbstractProject {
     }
 
     @Override
+    public MainProject getMainProject() {
+        return this;
+    }
+
+    @Override
     public Path getMasterRootPathForConfig() {
         return this.masterRootPathForConfig;
     }

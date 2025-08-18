@@ -20,6 +20,7 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.ContextFragment.TaskFragment;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
 import io.github.jbellis.brokk.gui.components.OverlayPanel;
 import io.github.jbellis.brokk.gui.components.SplitButton;
@@ -1207,13 +1208,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 Path newWorktreePath;
                 String actualBranchName;
 
-                IProject projectForWorktreeSetup = currentProject.getParent();
-                GitRepo mainGitRepo = (GitRepo) projectForWorktreeSetup.getRepo();
+                MainProject projectForWorktreeSetup = currentProject.getMainProject();
+                IGitRepo repo = projectForWorktreeSetup.getRepo();
+                if (!(repo instanceof GitRepo mainGitRepo)) {
+                    chrome.hideOutputSpinner();
+                    chrome.toolError(
+                            "Cannot create worktree: Main project repository does not support Git operations.");
+                    populateInstructionsArea(originalInstructions);
+                    return;
+                }
                 String sourceBranchForNew =
                         mainGitRepo.getCurrentBranch(); // New branch is created from current branch of main repo
 
                 var setupResult = GitWorktreeTab.setupNewGitWorktree(
-                        (MainProject) projectForWorktreeSetup,
+                        projectForWorktreeSetup,
                         mainGitRepo,
                         generatedBranchName,
                         true, // Always creating a new branch in this flow
