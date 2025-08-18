@@ -380,9 +380,12 @@ public class Llm {
             }
 
             // don't retry on bad request errors
-            if (lastError != null && requireNonNull(lastError.getMessage()).contains("BadRequestError")) {
-                // logged by doSingleStreamingCallInternal, don't be redundant
-                break;
+            if (lastError != null) {
+                var msg = requireNonNull(lastError.getMessage());
+                if (msg.contains("BadRequestError") || msg.contains("UnsupportedParamsError")) {
+                    // logged by doSingleStreamingCallInternal, don't be redundant
+                    break;
+                }
             }
 
             logger.debug("LLM error == {}, isEmpty == {}. Attempt={}", lastError, response.isEmpty(), attempt);
