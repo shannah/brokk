@@ -20,6 +20,7 @@ import io.github.jbellis.brokk.gui.mop.MarkdownOutputPool;
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.search.MarkdownSearchableComponent;
+import io.github.jbellis.brokk.gui.util.BadgedIcon;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.Messages;
 import java.awt.*;
@@ -112,6 +113,13 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     @Nullable
     private GitIssuesTab issuesPanel;
+
+    // Git tab badge components
+    @Nullable
+    private JLabel gitTabLabel;
+
+    @Nullable
+    private BadgedIcon gitTabBadgedIcon;
 
     // Reference to Tools ▸ BlitzForge… menu item so we can enable/disable it
     @SuppressWarnings("NullAway.Init") // Initialized by MenuBar after constructor
@@ -220,9 +228,12 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         if (getProject().hasGit()) {
             gitPanel = new GitPanel(this, contextManager);
             var gitIcon = requireNonNull(SwingUtil.uiIcon("Brokk.commit"));
-            leftTabbedPanel.addTab(null, gitIcon, gitPanel);
+
+            // Create badged icon for the git tab
+            gitTabBadgedIcon = new BadgedIcon(gitIcon, themeManager);
+            leftTabbedPanel.addTab(null, gitTabBadgedIcon, gitPanel);
             var gitTabIdx = leftTabbedPanel.indexOfComponent(gitPanel);
-            var gitTabLabel = createSquareTabLabel(gitIcon, "Git");
+            gitTabLabel = createSquareTabLabel(gitTabBadgedIcon, "Git");
             leftTabbedPanel.setTabComponentAt(gitTabIdx, gitTabLabel);
             gitTabLabel.addMouseListener(new MouseAdapter() {
                 @Override
@@ -1785,6 +1796,55 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             componentsWithChatBackground.forEach(c -> c.setBackground(newBackgroundColor));
             SwingUtilities.updateComponentTreeUI(this);
         }
+    }
+
+    /**
+     * Updates the git tab badge with the current number of modified files. Should be called whenever the git status
+     * changes
+     */
+    public void updateGitTabBadge(int modifiedCount) {
+        assert SwingUtilities.isEventDispatchThread() : "updateGitTabBadge(int) must be called on EDT";
+
+        if (gitTabBadgedIcon == null) {
+            return; // No git support
+        }
+
+        gitTabBadgedIcon.setCount(modifiedCount, leftTabbedPanel);
+
+        // Update tooltip to show the count
+        if (gitTabLabel != null) {
+            String tooltip = modifiedCount > 0
+                    ? String.format("Git (%d modified file%s)", modifiedCount, modifiedCount == 1 ? "" : "s")
+                    : "Git";
+            gitTabLabel.setToolTipText(tooltip);
+        }
+
+        // Repaint the tab to show the updated badge
+        if (gitTabLabel != null) {
+            gitTabLabel.repaint();
+        }
+    }
+
+    /**
+     * Updates the git tab badge with the current number of modified files. Should be called whenever the git status
+     * changes. This version fetches the count itself and should only be used when the count is not already available.
+     */
+    public void updateGitTabBadge() {
+        if (gitTabBadgedIcon == null || gitPanel == null) {
+            return; // No git support
+        }
+
+        // Fetch the modified count off-EDT to avoid blocking UI
+        contextManager.submitBackgroundTask("Updating git badge", () -> {
+            try {
+                int modifiedCount = gitPanel.getModifiedFileCount();
+                SwingUtilities.invokeLater(() -> updateGitTabBadge(modifiedCount));
+            } catch (Exception e) {
+                logger.warn("Error getting modified file count for badge: {}", e.getMessage());
+                SwingUtilities.invokeLater(() -> updateGitTabBadge(0));
+            }
+            return null;
+        });
     }
 
     /** Builds a JLabel for use as a square tab component, ensuring width == height. */

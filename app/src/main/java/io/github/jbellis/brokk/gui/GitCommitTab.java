@@ -44,6 +44,9 @@ public class GitCommitTab extends JPanel {
     @Nullable
     private ProjectFile rightClickedFile = null; // Store the file that was right-clicked
 
+    // Thread-safe cached count for badge updates
+    private volatile int cachedModifiedFileCount = 0;
+
     public GitCommitTab(Chrome chrome, ContextManager contextManager, GitPanel gitPanel) {
         super(new BorderLayout());
         this.chrome = chrome;
@@ -322,6 +325,9 @@ public class GitCommitTab extends JPanel {
 
                     updateButtonEnablement(); // General button enablement based on table content
                     updateCommitButtonText(); // Updates commit button label specifically
+
+                    // Update cached count and badge after status change
+                    updateAfterStatusChange(uncommittedFilesList.size());
                 });
             } catch (Exception e) {
                 logger.error("Error fetching uncommitted files:", e);
@@ -332,6 +338,8 @@ public class GitCommitTab extends JPanel {
                     if (uncommittedFilesTable.getModel() instanceof DefaultTableModel dtm) {
                         dtm.setRowCount(0); // Clear table on error
                     }
+                    // Update cached count and badge after error
+                    updateAfterStatusChange(0);
                 });
             }
             return null;
@@ -679,5 +687,19 @@ public class GitCommitTab extends JPanel {
     void enableButtons() {
         stashButton.setEnabled(true);
         commitButton.setEnabled(true);
+    }
+
+    public int getThreadSafeCachedModifiedFileCount() {
+        return cachedModifiedFileCount;
+    }
+
+    private void updateAfterStatusChange(int newCount) {
+        assert SwingUtilities.isEventDispatchThread() : "updateAfterStatusChange must be called on EDT";
+
+        // Update cached count for thread-safe access
+        cachedModifiedFileCount = newCount;
+
+        // Update the git tab badge
+        chrome.updateGitTabBadge(newCount);
     }
 }

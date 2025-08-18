@@ -72,6 +72,12 @@ public class ThemeColors {
         DARK_COLORS.put("git_changed", new Color(239, 202, 8)); // Amber/Yellow
         LIGHT_COLORS.put("git_changed", new Color(204, 143, 0)); // Darker Amber/Yellow
 
+        // Git tab badge colors
+        DARK_COLORS.put("git_badge_background", Color.decode("#007ACC")); // VSCode blue for dark theme
+        DARK_COLORS.put("git_badge_text", Color.WHITE);
+        LIGHT_COLORS.put("git_badge_background", Color.decode("#DC3545")); // Red for light theme
+        LIGHT_COLORS.put("git_badge_text", Color.WHITE);
+
         // File reference badge colors (same for both themes for now)
         Color badgeBorder = new Color(66, 139, 202);
         Color badgeForeground = new Color(66, 139, 202);
