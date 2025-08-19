@@ -2031,7 +2031,11 @@ public class WorkspacePanel extends JPanel {
                 }
                 double estimatedCost = pricing.estimateCost(inputTokens, 0, estimatedOutputTokens);
 
-                costEstimates.add(String.format("%s: $%.2f", config.name(), estimatedCost));
+                if (models.isFreeTier(config.name())) {
+                    costEstimates.add(String.format("%s: free", config.name()));
+                } else {
+                    costEstimates.add(String.format("%s: $%.2f", config.name(), estimatedCost));
+                }
                 seenModels.add(config.name());
 
             } catch (Exception e) {

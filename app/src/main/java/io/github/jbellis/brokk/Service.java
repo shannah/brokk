@@ -935,6 +935,27 @@ public class Service {
         return supports instanceof Boolean boolVal && boolVal;
     }
 
+    /**
+     * Returns true if the named model is marked as eligible for the free tier.
+     *
+     * <p>This looks up the model location from the configured display name, then consults the model info map for the
+     * "free_tier_eligible" boolean flag. Returns false if the model or metadata cannot be found.
+     */
+    public boolean isFreeTier(String modelName) {
+        var location = modelLocations.get(modelName);
+        if (location == null) {
+            logger.warn("Location not found for model name {}, assuming not free-tier.", modelName);
+            return false;
+        }
+        var info = getModelInfo(location);
+        if (info == null) {
+            logger.warn("Model info not found for location {}, assuming not free-tier.", location);
+            return false;
+        }
+        var v = info.get("free_tier_eligible");
+        return v instanceof Boolean b && b;
+    }
+
     public StreamingChatModel quickestModel() {
         return quickestModel;
     }
