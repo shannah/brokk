@@ -10,7 +10,11 @@ import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.testutil.NoOpConsoleIO;
+import io.github.jbellis.brokk.testutil.StubService;
+import io.github.jbellis.brokk.testutil.TestContextManager;
+import io.github.jbellis.brokk.testutil.TestProject;
 import io.github.jbellis.brokk.util.Messages;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -34,29 +38,7 @@ public class LlmTest {
     static void setUp() {
         // Create ContextManager, which initializes Models internally
         var consoleIO = new NoOpConsoleIO();
-        var project = new IProject() {
-            @Override
-            public Path getRoot() {
-                return tempDir;
-            }
-        };
-        var models = new Service(project);
-        contextManager = new IContextManager() {
-            @Override
-            public IConsoleIO getIo() {
-                return consoleIO;
-            }
-
-            @Override
-            public IProject getProject() {
-                return project;
-            }
-
-            @Override
-            public Service getService() {
-                return models;
-            }
-        };
+        contextManager = new TestContextManager(tempDir, consoleIO);
     }
 
     // Simple tool for testing
