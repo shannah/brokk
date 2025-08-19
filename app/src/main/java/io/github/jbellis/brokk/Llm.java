@@ -48,6 +48,7 @@ import java.util.Map;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
@@ -74,6 +75,9 @@ public class Llm {
     private final StreamingChatModel model;
     private final boolean allowPartialResponses;
     private final boolean tagRetain;
+
+    // Monotonically increasing sequence for emulated tool request IDs
+    private final AtomicInteger toolRequestIdSeq = new AtomicInteger();
 
     public Llm(
             StreamingChatModel model,
@@ -863,7 +867,7 @@ public class Llm {
      * Parse the model's JSON response into a ChatResponse that includes ToolExecutionRequests. Expects the top-level to
      * have a "tool_calls" array (or the root might be that array).
      */
-    private static NullSafeResponse parseJsonToToolRequests(StreamingResult result, ObjectMapper mapper) {
+    private NullSafeResponse parseJsonToToolRequests(StreamingResult result, ObjectMapper mapper) {
         // In the primary call path (emulateToolsCommon), if result.error() is null,
         // then result.chatResponse() is guaranteed to be non-null by StreamingResult's invariant.
         // This method is called in that context.
@@ -940,7 +944,7 @@ public class Llm {
                 thinkReasoning.add(arguments.get("reasoning").asText());
             }
             var toolExecutionRequest = ToolExecutionRequest.builder()
-                    .id(String.valueOf(i))
+                    .id(String.valueOf(toolRequestIdSeq.getAndIncrement()))
                     .name(toolName)
                     .arguments(argsStr)
                     .build();
