@@ -1569,7 +1569,7 @@ public class WorkspacePanel extends JPanel {
             ContextAction action, List<? extends ContextFragment> selectedFragments) // Use wildcard
             {
         // Use submitContextTask from ContextManager to run the action on the appropriate executor
-        return contextManager.submitContextTask(action + " action", () -> {
+        var future = contextManager.submitContextTask(action + " action", () -> {
             try {
                 switch (action) {
                     case EDIT -> doEditAction(selectedFragments);
@@ -1585,6 +1585,9 @@ public class WorkspacePanel extends JPanel {
             }
             // No finally block needed here as submitContextTask handles enabling buttons
         });
+        // Refocus the instructions input promptly after hotkey-triggered workspace actions
+        SwingUtilities.invokeLater(chrome::focusInput);
+        return future;
     }
 
     /** Edit Action: Only allows selecting Project Files */
