@@ -654,9 +654,7 @@ public class Llm {
         return processedMessages;
     }
 
-    /**
-     * Verifies that the given messages contain no native ToolExecutionRequests or ToolExecutionResultMessages
-     */
+    /** Verifies that the given messages contain no native ToolExecutionRequests or ToolExecutionResultMessages */
     private static void validateEmulatedToolMessages(List<ChatMessage> messages) {
         assert !containsRawToolResultMessages(messages)
                 : "emulateToolExecutionResults failed to fold a ToolExecutionResultMessage: "

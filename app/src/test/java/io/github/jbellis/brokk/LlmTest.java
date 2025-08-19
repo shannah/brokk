@@ -5,8 +5,8 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
+import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
@@ -335,7 +335,11 @@ public class LlmTest {
                 Messages.getText(result8.getFirst()).stripIndent());
 
         // Case 9: TERM followed by AiMessage with native tool calls; ensure tool calls are stringified and not retained
-        var toolReq9 = ToolExecutionRequest.builder().id("x1").name("toolX").arguments("{\"a\":1}").build();
+        var toolReq9 = ToolExecutionRequest.builder()
+                .id("x1")
+                .name("toolX")
+                .arguments("{\"a\":1}")
+                .build();
         var aiWithToolCalls = new AiMessage("AI with tool call", null, List.of(toolReq9));
         var messages9 = List.of(user1, term1, aiWithToolCalls, user2);
         var result9 = Llm.emulateToolExecutionResults(messages9);
