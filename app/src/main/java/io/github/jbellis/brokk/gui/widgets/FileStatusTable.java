@@ -90,12 +90,14 @@ public final class FileStatusTable extends JScrollPane {
 
         // Sort by parent path then filename to provide a stable, predictable order
         modifiedFiles.stream()
-                .sorted(Comparator.comparing((GitRepo.ModifiedFile mf) -> mf.file().getParent().toString())
+                .sorted(Comparator.comparing((GitRepo.ModifiedFile mf) ->
+                                mf.file().getParent().toString())
                         .thenComparing(mf -> mf.file().getFileName()))
                 .forEach(mf -> {
                     statusMap.put(mf.file(), mf.status());
-                    model.addRow(
-                            new Object[] {mf.file().getFileName(), mf.file().getParent().toString(), mf.file()});
+                    model.addRow(new Object[] {
+                        mf.file().getFileName(), mf.file().getParent().toString(), mf.file()
+                    });
                 });
     }
 

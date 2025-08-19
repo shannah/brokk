@@ -717,8 +717,8 @@ public class GitCommitTab extends JPanel {
     }
 
     /**
-     * Adjust the table's viewport and the surrounding scroll pane so the table only takes
-     * as much vertical space as it needs instead of expanding to fill the panel.
+     * Adjust the table's viewport and the surrounding scroll pane so the table only takes as much vertical space as it
+     * needs instead of expanding to fill the panel.
      */
     private void shrinkTableToContents() {
         assert SwingUtilities.isEventDispatchThread() : "shrinkTableToContents must be called on EDT";
