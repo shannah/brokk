@@ -94,18 +94,14 @@ public class MenuBar {
         undoItem = new JMenuItem(chrome.getGlobalUndoAction());
         redoItem = new JMenuItem(chrome.getGlobalRedoAction());
 
-        undoItem.setText("Undo"); // Ensure text is set if Action's name is different or null
+        undoItem.setText("Undo");
         undoItem.setAccelerator(KeyStroke.getKeyStroke(
                 KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         editMenu.add(undoItem);
 
-        redoItem.setText("Redo"); // Ensure text is set
-        // Standard accelerators for redo
-        // Ctrl+Shift+Z or Cmd+Shift+Z
+        redoItem.setText("Redo");
         redoItem.setAccelerator(KeyStroke.getKeyStroke(
                 KeyEvent.VK_Z, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
-        // For Windows/Linux, Ctrl+Y is also common. Adding it as an alternative if the Action itself doesn't set it.
-        // However, JMenuItem only supports one accelerator. The global keyboard shortcut in Chrome handles Ctrl+Y.
         editMenu.add(redoItem);
 
         editMenu.addSeparator();
