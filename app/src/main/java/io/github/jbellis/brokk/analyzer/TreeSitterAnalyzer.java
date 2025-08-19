@@ -794,7 +794,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                     if (nameNode != null && !nameNode.isNull()) {
                         simpleName = textSlice(nameNode, src);
                         if (simpleName.isBlank()) {
-                            log.warn(
+                            log.debug(
                                     "Name capture '{}' for definition '{}' in file {} resulted in a BLANK string. NameNode text: [{}], type: [{}]. Will attempt fallback.",
                                     expectedNameCapture,
                                     captureName,
@@ -804,7 +804,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                             simpleName = extractSimpleName(definitionNode, src).orElse(null);
                         }
                     } else {
-                        log.warn(
+                        log.debug(
                                 "Expected name capture '{}' not found for definition '{}' in match for file {}. Current captures in this match: {}. Falling back to extractSimpleName on definition node.",
                                 expectedNameCapture,
                                 captureName,
@@ -820,14 +820,14 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer {
                                         captureName, simpleName, sortedModifierStrings, decoratorNodesForMatch));
                     } else {
                         if (simpleName == null) {
-                            log.warn(
+                            log.debug(
                                     "Could not determine simple name (NULL) for definition capture {} (Node Type [{}], Line {}) in file {}.",
                                     captureName,
                                     definitionNode.getType(),
                                     definitionNode.getStartPoint().getRow() + 1,
                                     file);
                         } else {
-                            log.warn(
+                            log.debug(
                                     "Determined simple name for definition capture {} (Node Type [{}], Line {}) in file {} is BLANK. Definition will be skipped.",
                                     captureName,
                                     definitionNode.getType(),
