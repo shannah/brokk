@@ -812,6 +812,10 @@ public class Service {
             return true;
         }
 
+        if (location.contains("gpt-5")) {
+            return true;
+        }
+
         // if it doesn't support function calling then we need to emulate
         var b = info.get("supports_function_calling");
         return !(b instanceof Boolean bVal) || !bVal;
