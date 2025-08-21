@@ -294,7 +294,7 @@ public final class HistoryIo {
                 collectedTaskDtos.put(ctx.getParsedOutput().id(), DtoMapper.toTaskFragmentDto(ctx.getParsedOutput()));
             }
         }
-        
+
         Files.createDirectories(target.getParent());
         try (var zos = new ZipOutputStream(Files.newOutputStream(target))) {
             var allFragmentsDto = new AllFragmentsDto(
