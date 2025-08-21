@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui.dialogs;
 
 import static io.github.jbellis.brokk.SessionManager.SessionInfo;
 
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextHistory;
@@ -327,7 +328,10 @@ public class SessionsDialog extends JDialog {
         // Add rows for each context in history
         for (var ctx : history.getHistory()) {
             // Add icon for AI responses, null for user actions
-            Icon iconEmoji = (ctx.getParsedOutput() != null) ? SwingUtil.uiIcon("Brokk.ai-robot") : null;
+            boolean hasAiMessages = ctx.getParsedOutput() != null
+                    && ctx.getParsedOutput().messages().stream()
+                            .anyMatch(chatMessage -> chatMessage.type() == ChatMessageType.AI);
+            Icon iconEmoji = hasAiMessages ? SwingUtil.uiIcon("Brokk.ai-robot") : null;
             activityTableModel.addRow(
                     new Object[] {iconEmoji, ctx.getAction(), ctx // Store the actual context object in hidden column
                     });
