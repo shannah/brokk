@@ -139,8 +139,9 @@ public class JMDiffNode implements TreeNode {
             long averageLineLength = contentLength / Math.max(1, numberOfLines);
 
             // Skip if few lines with huge average line length
-            if (doc.getLineList().stream().anyMatch(s -> s.length() > PerformanceConstants.SINGLE_LINE_THRESHOLD_BYTES)
-                    || averageLineLength > PerformanceConstants.MAX_DIFF_LINE_LENGTH_BYTES) {
+            if (averageLineLength > PerformanceConstants.MAX_DIFF_LINE_LENGTH_BYTES
+                    || doc.getLineList().stream()
+                            .anyMatch(s -> s.length() > PerformanceConstants.SINGLE_LINE_THRESHOLD_BYTES)) {
                 logger.info(
                         "JMDiffNode: Detected huge single-line file {}: {} lines, {}KB total, avg {}KB/line - SKIPPING DIFF",
                         doc.getName(),
