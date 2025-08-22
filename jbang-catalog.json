@@ -14,7 +14,7 @@
       "java-options": [
         "--add-modules=jdk.incubator.vector"
       ],
-      "deps": [
+      "dependencies": [
         "org.openjfx:javafx-controls:22.0.1",
         "org.openjfx:javafx-fxml:22.0.1",
         "org.openjfx:javafx-swing:22.0.1",
