@@ -190,6 +190,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         stopButton.addActionListener(e -> chrome.getContextManager().interruptUserActionThread());
 
         modelSelector = new ModelSelector(chrome);
+        modelSelector.selectConfig(chrome.getProject().getCodeModelConfig());
+        modelSelector.addSelectionListener(cfg -> chrome.getProject().setCodeModelConfig(cfg));
 
         // Top Bar (History, Configure Models, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
@@ -1304,6 +1306,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         Service.ModelConfig config;
         try {
             config = modelSelector.getModel();
+            chrome.getProject().setCodeModelConfig(config);
         } catch (IllegalStateException e) {
             chrome.toolError("Please finish configuring your custom model or select a favorite first.");
             return;

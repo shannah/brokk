@@ -8,8 +8,11 @@ import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.util.ArrayList;
+import java.util.List;
+import java.util.Objects;
 import java.util.Locale;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.function.Consumer;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
@@ -27,6 +30,7 @@ public class ModelSelector {
     private final AtomicBoolean updating = new AtomicBoolean(false);
     private volatile boolean dialogOpen = false;
     private @Nullable Service.FavoriteModel lastSelected;
+    private final List<Consumer<Service.ModelConfig>> selectionListeners = new ArrayList<>();
 
     public ModelSelector(Chrome chrome) {
         this.chrome = chrome;
@@ -48,6 +52,10 @@ public class ModelSelector {
             Object sel = combo.getSelectedItem();
             if (sel instanceof Service.FavoriteModel fm) {
                 lastSelected = fm;
+                // notify listeners of selection changes
+                for (var listener : selectionListeners) {
+                    listener.accept(fm.config());
+                }
             } else if (sel instanceof String s && "Custom...".equals(s)) {
                 openCustomDialog();
             }
@@ -58,6 +66,41 @@ public class ModelSelector {
 
     public JComponent getComponent() {
         return combo;
+    }
+
+    public void addSelectionListener(Consumer<Service.ModelConfig> listener) {
+        selectionListeners.add(listener);
+    }
+
+    /**
+     * Attempt to programmatically select the given model configuration.
+     *
+     * @param desired the configuration to select
+     * @return true if the configuration was found and selected, false otherwise
+     */
+    public boolean selectConfig(Service.ModelConfig desired) {
+        Objects.requireNonNull(desired, "desired config must not be null");
+        if (dialogOpen) {
+            return false; // don't interfere with an open dialog
+        }
+
+        refresh(); // make sure the combo is up to date
+
+        for (int i = 0; i < combo.getItemCount(); i++) {
+            Object item = combo.getItemAt(i);
+            if (item instanceof Service.FavoriteModel fm && fm.config().equals(desired)) {
+                updating.set(true);
+                try {
+                    combo.setSelectedIndex(i);
+                    lastSelected = fm;
+                } finally {
+                    updating.set(false);
+                }
+                return true;
+            }
+        }
+
+        return false; // not found
     }
 
     public Service.ModelConfig getModel() {
