@@ -370,7 +370,7 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             }
             String defaultModel = availableModelNames.length > 0 ? availableModelNames[0] : "";
             quickModelsTableModel.addFavorite(
-                    new Service.FavoriteModel("new-alias", defaultModel, Service.ReasoningLevel.DEFAULT));
+                    new Service.FavoriteModel("new-alias", new Service.ModelConfig(defaultModel)));
             int modelRowIndex = quickModelsTableModel.getRowCount() - 1;
             int viewRowIndex = quickModelsTable.convertRowIndexToView(modelRowIndex);
             quickModelsTable.setRowSelectionInterval(viewRowIndex, viewRowIndex);
@@ -935,8 +935,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             Service.FavoriteModel favorite = favorites.get(rowIndex);
             return switch (columnIndex) {
                 case 0 -> favorite.alias();
-                case 1 -> favorite.modelName();
-                case 2 -> favorite.reasoning();
+                case 1 -> favorite.config().name();
+                case 2 -> favorite.config().reasoning();
                 default -> null;
             };
         }
@@ -950,20 +950,19 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
                 newFavorite = switch (columnIndex) {
                     case 0 -> {
                         if (aValue instanceof String alias) {
-                            yield new Service.FavoriteModel(
-                                    alias.trim(), oldFavorite.modelName(), oldFavorite.reasoning());
+                            yield new Service.FavoriteModel(alias.trim(), oldFavorite.config());
                         }
                         yield oldFavorite;
                     }
                     case 1 -> {
                         if (aValue instanceof String modelName) {
-                            yield new Service.FavoriteModel(oldFavorite.alias(), modelName, oldFavorite.reasoning());
+                            yield new Service.FavoriteModel(oldFavorite.alias(), new Service.ModelConfig(modelName, oldFavorite.config().reasoning()));
                         }
                         yield oldFavorite;
                     }
                     case 2 -> {
                         if (aValue instanceof Service.ReasoningLevel reasoning) {
-                            yield new Service.FavoriteModel(oldFavorite.alias(), oldFavorite.modelName(), reasoning);
+                            yield new Service.FavoriteModel(oldFavorite.alias(), new Service.ModelConfig(oldFavorite.config().name(), reasoning));
                         }
                         yield oldFavorite;
                     }

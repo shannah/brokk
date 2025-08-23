@@ -47,7 +47,15 @@ public class Service {
     public static final int LLM_MAX_RESPONSE_TIME = 6 * 60;
 
     // Helper record to store model name and reasoning level for checking
-    public record ModelConfig(String name, Service.ReasoningLevel reasoning) {}
+    public record ModelConfig(String name, ReasoningLevel reasoning, ProcessingTier tier) {
+        public ModelConfig(String name, ReasoningLevel reasoning) {
+            this(name, reasoning, ProcessingTier.DEFAULT);
+        }
+
+        public ModelConfig(String name) {
+            this(name, ReasoningLevel.DEFAULT);
+        }
+    }
 
     public record PriceBand(
             long minTokensInclusive,
@@ -138,7 +146,18 @@ public class Service {
         }
     }
 
-    /** Enum defining the reasoning effort levels for models. */
+    public enum ProcessingTier {
+        DEFAULT,
+        PRIORITY,
+        FLEX;
+
+        @Override
+        public String toString() {
+            // Capitalize first letter for display
+            return name().charAt(0) + name().substring(1).toLowerCase(Locale.ROOT);
+        }
+    }
+
     public enum ReasoningLevel {
         DEFAULT,
         LOW,
@@ -166,7 +185,7 @@ public class Service {
     public record KeyParts(java.util.UUID userId, String token) {}
 
     /** Represents a user-defined favorite model alias. */
-    public record FavoriteModel(String alias, String modelName, ReasoningLevel reasoning) {}
+    public record FavoriteModel(String alias, ModelConfig config) { }
 
     /**
      * Parses a Brokk API key of the form 'brk+<userId>+<proToken>+<freeToken>'. The userId must be a valid UUID. The
@@ -256,12 +275,11 @@ public class Service {
         this.modelInfoMap = Map.copyOf(tempModelInfoMap);
 
         // these should always be available
-        var qm = getModel("gemini-2.0-flash", ReasoningLevel.DEFAULT);
+        var qm = getModel(new ModelConfig("gemini-2.0-flash", ReasoningLevel.DEFAULT));
         quickModel = qm == null ? new UnavailableStreamingModel() : qm;
         // hardcode quickest temperature to 0 so that Quick Context inference is reproducible
         var qqm = getModel(
-                "gemini-2.0-flash-lite",
-                ReasoningLevel.DEFAULT,
+                new ModelConfig("gemini-2.0-flash-lite", ReasoningLevel.DEFAULT),
                 OpenAiChatRequestParameters.builder().temperature(0.0));
         quickestModel = qqm == null ? new UnavailableStreamingModel() : qqm;
 
@@ -654,6 +672,15 @@ public class Service {
         return (Boolean) info.get("supports_tool_choice");
     }
 
+    public boolean supportsProcessingTier(String modelName) {
+        var location = modelLocations.get(modelName);
+        if (location == null) {
+            logger.warn("Location not found for model name {}, assuming no reasoning-disable support.", modelName);
+            return false;
+        }
+        return location.startsWith("openai/");
+    }
+
     /**
      * Returns true if the given model exposes the toggle to completely disable reasoning (independent of the usual
      * LOW/MEDIUM/HIGH levels).
@@ -713,23 +740,19 @@ public class Service {
     }
 
     /**
-     * Retrieves or creates a StreamingChatModel for the given modelName and reasoning level.
-     *
-     * @param modelName The display name of the model (e.g., "gemini-2.5-pro-exp-03-25").
+     * Retrieves or creates a StreamingChatModel for the given configuration.
      */
-    @Nullable
-    public StreamingChatModel getModel(
-            String modelName,
-            ReasoningLevel reasoningLevel,
+    @Nullable public StreamingChatModel getModel(
+            ModelConfig config,
             @Nullable OpenAiChatRequestParameters.Builder parametersOverride) {
-        @Nullable String location = modelLocations.get(modelName);
+        @Nullable String location = modelLocations.get(config.name);
         logger.trace(
                 "Creating new model instance for '{}' at location '{}' with reasoning '{}' via LiteLLM",
-                modelName,
+                config.name,
                 location,
-                reasoningLevel);
+                config.reasoning);
         if (location == null) {
-            logger.error("Location not found for model name: {}", modelName);
+            logger.error("Location not found for model name: {}", config.name);
             return null;
         }
 
@@ -745,6 +768,9 @@ public class Service {
                 .strictJsonSchema(true)
                 .baseUrl(baseUrl)
                 .timeout(Duration.ofSeconds(LLM_MAX_RESPONSE_TIME));
+        if (config.tier != ProcessingTier.DEFAULT) {
+            builder.serviceTier(config.tier.toString().toLowerCase(Locale.ROOT));
+        }
         params = params.maxCompletionTokens(getMaxOutputTokens(location));
 
         if (MainProject.getProxySetting() == MainProject.LlmProxySetting.LOCALHOST) {
@@ -759,9 +785,9 @@ public class Service {
         params = params.modelName(location);
 
         // Apply reasoning effort if not default and supported
-        logger.trace("Applying reasoning effort {} to model {}", reasoningLevel, modelName);
-        if (supportsReasoningEffort(modelName) && reasoningLevel != ReasoningLevel.DEFAULT) {
-            params = params.reasoningEffort(reasoningLevel.name().toLowerCase(Locale.ROOT));
+        logger.trace("Applying reasoning effort {} to model {}", config.reasoning, config.name);
+        if (supportsReasoningEffort(config.name) && config.reasoning != ReasoningLevel.DEFAULT) {
+            params = params.reasoningEffort(config.reasoning.name().toLowerCase(Locale.ROOT));
         }
         if (parametersOverride != null) {
             params = params.overrideWith(parametersOverride.build());
@@ -772,8 +798,13 @@ public class Service {
     }
 
     @Nullable
-    public StreamingChatModel getModel(String modelName, ReasoningLevel reasoningLevel) {
-        return getModel(modelName, reasoningLevel, null);
+    public StreamingChatModel getModel(String modelName) {
+        return getModel(new ModelConfig(modelName, ReasoningLevel.DEFAULT));
+    }
+
+    @Nullable
+    public StreamingChatModel getModel(ModelConfig config) {
+        return getModel(config, null);
     }
 
     public boolean supportsJsonSchema(StreamingChatModel model) {

@@ -173,7 +173,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         codeButton.addActionListener(e -> runCodeCommand()); // Main button action
         codeButton.setMenuSupplier(() -> createModelSelectionMenu((modelName, reasoningLevel) -> {
             var models = chrome.getContextManager().getService();
-            StreamingChatModel selectedModel = models.getModel(modelName, reasoningLevel);
+            StreamingChatModel selectedModel = models.getModel(new Service.ModelConfig(modelName, reasoningLevel));
             if (selectedModel != null) {
                 runCodeCommand(selectedModel);
             } else {
@@ -1680,7 +1680,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Filter favorite models to show only those that are currently available, and sort by alias case-insensitively
         var favoriteModelsToShow = favoriteModels.stream()
-                .filter(fav -> availableModelsMap.containsKey(fav.modelName()))
+                .filter(fav -> availableModelsMap.containsKey(fav.config().name()))
                 .sorted(Comparator.comparing(Service.FavoriteModel::alias, String.CASE_INSENSITIVE_ORDER))
                 .toList();
 
@@ -1697,9 +1697,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             favoriteModelsToShow.forEach(fav -> {
                 var item = new JMenuItem(fav.alias());
                 // Add a tooltip showing model name and reasoning level
-                item.setToolTipText("<html>Model: " + fav.modelName() + "<br>Reasoning: "
-                        + fav.reasoning().toString() + "</html>");
-                item.addActionListener(e -> onModelSelect.accept(fav.modelName(), fav.reasoning()));
+                item.setToolTipText("<html>Model: " + fav.config().name() + "<br>Reasoning: "
+                        + fav.config().reasoning().toString() + "</html>");
+                item.addActionListener(e -> onModelSelect.accept(fav.config().name(), fav.config().reasoning()));
                 popupMenu.add(item);
             });
         }

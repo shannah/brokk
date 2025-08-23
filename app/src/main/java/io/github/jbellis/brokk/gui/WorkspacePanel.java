@@ -1262,7 +1262,7 @@ public class WorkspacePanel extends JPanel {
                 continue;
             }
             try {
-                var modelInstance = models.getModel(config.name(), config.reasoning());
+                var modelInstance = models.getModel(config);
                 // Skip if model is unavailable or a placeholder
                 if (modelInstance == null || modelInstance instanceof Service.UnavailableStreamingModel) {
                     logger.debug("Skipping unavailable model for context warning: {}", config.name());
@@ -2047,7 +2047,7 @@ public class WorkspacePanel extends JPanel {
             }
 
             try {
-                var model = models.getModel(config.name(), config.reasoning());
+                var model = models.getModel(config);
                 if (model instanceof Service.UnavailableStreamingModel) {
                     continue; // Skip unavailable models
                 }

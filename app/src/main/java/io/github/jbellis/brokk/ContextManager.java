@@ -527,12 +527,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     private StreamingChatModel getModelOrDefault(Service.ModelConfig config, String modelTypeName) {
-        StreamingChatModel model = service.getModel(config.name(), config.reasoning());
+        StreamingChatModel model = service.getModel(config);
         if (model != null) {
             return model;
         }
 
-        model = service.getModel(Service.GPT_5_MINI, Service.ReasoningLevel.HIGH);
+        model = service.getModel(new Service.ModelConfig(Service.GPT_5_MINI, Service.ReasoningLevel.HIGH));
         if (model != null) {
             io.systemOutput(String.format(
                     "Configured model '%s' for %s tasks is unavailable. Using fallback '%s'.",

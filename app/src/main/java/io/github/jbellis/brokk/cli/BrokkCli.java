@@ -232,7 +232,7 @@ public final class BrokkCli implements Callable<Integer> {
                 System.err.println("Unknown model specified via --model: " + modelName);
                 return 1;
             }
-            taskModelOverride = service.getModel(fav.modelName(), fav.reasoning());
+            taskModelOverride = service.getModel(fav.config());
             assert taskModelOverride != null : "service.getModel returned null for alias " + modelName;
         }
 
@@ -245,7 +245,7 @@ public final class BrokkCli implements Callable<Integer> {
                 System.err.println("Unknown code model specified via --codemodel: " + codeModelName);
                 return 1;
             }
-            codeModelOverride = service.getModel(fav.modelName(), fav.reasoning());
+            codeModelOverride = service.getModel(fav.config());
             assert codeModelOverride != null : "service.getModel returned null for alias " + codeModelName;
         }
 

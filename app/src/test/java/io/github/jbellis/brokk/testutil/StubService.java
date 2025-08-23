@@ -5,6 +5,7 @@ import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
+import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.Service;
@@ -51,7 +52,7 @@ public final class StubService extends Service {
     }
 
     @Override
-    public StreamingChatModel getModel(String modelName, Service.ReasoningLevel reasoningLevel) {
+    public StreamingChatModel getModel(ModelConfig config, @Nullable OpenAiChatRequestParameters.Builder parametersOverride) {
         return new StreamingChatModel() {
             @Override
             public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {
