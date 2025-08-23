@@ -217,7 +217,8 @@ public class Service {
     private final ObjectMapper objectMapper = new ObjectMapper();
     // Share OkHttpClient across instances for efficiency
     // Model name constants
-    public static final String O3 = "o3";
+    public static final String GPT_5 = "gpt-5";
+
     public static final String GEMINI_2_5_PRO = "gemini-2.5-pro";
     public static final String GPT_5_MINI = "gpt-5-mini";
 

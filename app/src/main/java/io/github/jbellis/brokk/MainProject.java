@@ -75,14 +75,14 @@ public final class MainProject extends AbstractProject {
     private static final Map<String, ModelTypeInfo> MODEL_TYPE_INFOS = Map.of(
             "Architect",
                     new ModelTypeInfo(
-                            "architectConfig", new ModelConfig(Service.GEMINI_2_5_PRO, Service.ReasoningLevel.DEFAULT)),
+                            "architectConfig", new ModelConfig(Service.GEMINI_2_5_PRO)),
             "Code",
                     new ModelTypeInfo(
-                            "codeConfig", new ModelConfig(Service.GEMINI_2_5_PRO, Service.ReasoningLevel.DEFAULT)),
-            "Ask", new ModelTypeInfo("askConfig", new ModelConfig(Service.O3, Service.ReasoningLevel.DEFAULT)),
+                            "codeConfig", new ModelConfig(Service.GEMINI_2_5_PRO)),
+            "Ask", new ModelTypeInfo("askConfig", new ModelConfig(Service.GPT_5)),
             "Search",
                     new ModelTypeInfo(
-                            "searchConfig", new ModelConfig(Service.GEMINI_2_5_PRO, Service.ReasoningLevel.DEFAULT)));
+                            "searchConfig", new ModelConfig(Service.GEMINI_2_5_PRO)));
 
     private static final String RUN_COMMAND_TIMEOUT_SECONDS_KEY = "runCommandTimeoutSeconds";
     private static final long DEFAULT_RUN_COMMAND_TIMEOUT_SECONDS = Environment.DEFAULT_TIMEOUT.toSeconds();
@@ -1093,7 +1093,8 @@ public final class MainProject extends AbstractProject {
     }
 
     public static final List<Service.FavoriteModel> DEFAULT_FAVORITE_MODELS = List.of(
-            new Service.FavoriteModel("o3", new ModelConfig(Service.O3)),
+            new Service.FavoriteModel("GPT-5", new ModelConfig(Service.GPT_5)),
+            new Service.FavoriteModel("GPT-5 mini", new ModelConfig("gpt-5-mini")),
             new Service.FavoriteModel("Gemini Pro 2.5", new ModelConfig(Service.GEMINI_2_5_PRO)),
             new Service.FavoriteModel("Flash 2.5", new ModelConfig("gemini-2.5-flash")),
             new Service.FavoriteModel("Sonnet 4", new ModelConfig("claude-4-sonnet", Service.ReasoningLevel.LOW)));
