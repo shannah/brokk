@@ -210,7 +210,7 @@ public final class LspAnalyzerHelper {
     @NotNull
     public static CompletableFuture<List<Either<SymbolInformation, DocumentSymbol>>> getSymbolsInFile(
             @NotNull LspServer sharedServer, @NotNull Path filePath) {
-        logger.debug("Querying for document symbols in {}", filePath);
+        logger.trace("Querying for document symbols in {}", filePath);
         return sharedServer.query(server -> {
             final var params = new DocumentSymbolParams(
                     new TextDocumentIdentifier(filePath.toUri().toString()));
