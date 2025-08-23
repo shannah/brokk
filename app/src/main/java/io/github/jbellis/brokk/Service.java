@@ -185,7 +185,7 @@ public class Service {
     public record KeyParts(java.util.UUID userId, String token) {}
 
     /** Represents a user-defined favorite model alias. */
-    public record FavoriteModel(String alias, ModelConfig config) { }
+    public record FavoriteModel(String alias, ModelConfig config) {}
 
     /**
      * Parses a Brokk API key of the form 'brk+<userId>+<proToken>+<freeToken>'. The userId must be a valid UUID. The
@@ -740,12 +740,10 @@ public class Service {
         return supports instanceof Boolean boolVal && boolVal;
     }
 
-    /**
-     * Retrieves or creates a StreamingChatModel for the given configuration.
-     */
-    @Nullable public StreamingChatModel getModel(
-            ModelConfig config,
-            @Nullable OpenAiChatRequestParameters.Builder parametersOverride) {
+    /** Retrieves or creates a StreamingChatModel for the given configuration. */
+    @Nullable
+    public StreamingChatModel getModel(
+            ModelConfig config, @Nullable OpenAiChatRequestParameters.Builder parametersOverride) {
         @Nullable String location = modelLocations.get(config.name);
         logger.trace(
                 "Creating new model instance for '{}' at location '{}' with reasoning '{}' via LiteLLM",

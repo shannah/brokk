@@ -52,7 +52,8 @@ public final class StubService extends Service {
     }
 
     @Override
-    public StreamingChatModel getModel(ModelConfig config, @Nullable OpenAiChatRequestParameters.Builder parametersOverride) {
+    public StreamingChatModel getModel(
+            ModelConfig config, @Nullable OpenAiChatRequestParameters.Builder parametersOverride) {
         return new StreamingChatModel() {
             @Override
             public void doChat(ChatRequest request, StreamingChatResponseHandler handler) {

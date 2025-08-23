@@ -73,16 +73,10 @@ public final class MainProject extends AbstractProject {
     private record ModelTypeInfo(String configKey, ModelConfig preferredConfig) {}
 
     private static final Map<String, ModelTypeInfo> MODEL_TYPE_INFOS = Map.of(
-            "Architect",
-                    new ModelTypeInfo(
-                            "architectConfig", new ModelConfig(Service.GEMINI_2_5_PRO)),
-            "Code",
-                    new ModelTypeInfo(
-                            "codeConfig", new ModelConfig(Service.GEMINI_2_5_PRO)),
+            "Architect", new ModelTypeInfo("architectConfig", new ModelConfig(Service.GEMINI_2_5_PRO)),
+            "Code", new ModelTypeInfo("codeConfig", new ModelConfig(Service.GEMINI_2_5_PRO)),
             "Ask", new ModelTypeInfo("askConfig", new ModelConfig(Service.GPT_5)),
-            "Search",
-                    new ModelTypeInfo(
-                            "searchConfig", new ModelConfig(Service.GEMINI_2_5_PRO)));
+            "Search", new ModelTypeInfo("searchConfig", new ModelConfig(Service.GEMINI_2_5_PRO)));
 
     private static final String RUN_COMMAND_TIMEOUT_SECONDS_KEY = "runCommandTimeoutSeconds";
     private static final long DEFAULT_RUN_COMMAND_TIMEOUT_SECONDS = Environment.DEFAULT_TIMEOUT.toSeconds();

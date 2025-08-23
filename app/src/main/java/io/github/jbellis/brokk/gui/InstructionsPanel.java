@@ -23,9 +23,9 @@ import io.github.jbellis.brokk.context.ContextFragment.TaskFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
+import io.github.jbellis.brokk.gui.components.ModelSelector;
 import io.github.jbellis.brokk.gui.components.OverlayPanel;
 import io.github.jbellis.brokk.gui.components.SplitButton;
-import io.github.jbellis.brokk.gui.components.ModelSelector;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectChoices;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
@@ -48,9 +48,7 @@ import java.util.List;
 import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
-import java.util.function.BiConsumer;
 import java.util.function.Consumer;
-import java.util.stream.Stream;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
@@ -101,9 +99,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
     private final JButton architectButton; // Changed from SplitButton
-        private final JButton codeButton;
-        private final SplitButton searchButton;
-        private final JButton runButton;
+    private final JButton codeButton;
+    private final SplitButton searchButton;
+    private final JButton runButton;
     private final JButton stopButton;
     private final ModelSelector modelSelector;
     private final ContextManager contextManager;
@@ -1050,16 +1048,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * @param options The configured options for the agent's tools.
      */
     private void executeArchitectCommand(
-            StreamingChatModel planningModel, StreamingChatModel codeModel, String goal, ArchitectAgent.ArchitectOptions options) {
+            StreamingChatModel planningModel,
+            StreamingChatModel codeModel,
+            String goal,
+            ArchitectAgent.ArchitectOptions options) {
         var contextManager = chrome.getContextManager();
         try {
             var agent = new ArchitectAgent(
-                    contextManager,
-                    planningModel,
-                    codeModel,
-                    contextManager.getToolRegistry(),
-                    goal,
-                    options);
+                    contextManager, planningModel, codeModel, contextManager.getToolRegistry(), goal, options);
             var result = agent.execute();
             chrome.systemOutput("Architect complete!");
             contextManager.addToHistory(result, false);
@@ -1314,9 +1310,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var model = contextManager.getService().getModel(config);
         if (model == null) {
-            chrome.toolError(
-                    "Selected model '" + config.name()
-                            + "' is not available with reasoning level " + config.reasoning());
+            chrome.toolError("Selected model '" + config.name() + "' is not available with reasoning level "
+                    + config.reasoning());
             model = castNonNull(contextManager.getService().getModel(Service.GPT_5_MINI));
         }
         prepareAndRunCodeCommand(model);
@@ -1620,8 +1615,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     /**
-     * Returns the currently selected Code model configuration from the model selector.
-     * Falls back to a reasonable default if none is available.
+     * Returns the currently selected Code model configuration from the model selector. Falls back to a reasonable
+     * default if none is available.
      */
     public Service.ModelConfig getCurrentCodeModelConfig() {
         try {
@@ -1660,8 +1655,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         return (float) (dot / denominator);
     }
-
-
 
     private final class AtTriggerFilter extends DocumentFilter {
         private boolean isPopupOpen = false; // Guard against re-entrant calls

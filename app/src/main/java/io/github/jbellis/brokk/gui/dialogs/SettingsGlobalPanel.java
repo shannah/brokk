@@ -7,20 +7,19 @@ import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
-
-import javax.swing.*;
-import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
-import javax.swing.table.TableColumn;
-import javax.swing.table.TableRowSorter;
 import java.awt.*;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
+import javax.swing.*;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumn;
+import javax.swing.table.TableRowSorter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 public class SettingsGlobalPanel extends JPanel implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(SettingsGlobalPanel.class);
@@ -318,7 +317,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
 
         TableColumn processingColumn = quickModelsTable.getColumnModel().getColumn(3);
         var processingComboBoxEditor = new JComboBox<>(Service.ProcessingTier.values());
-        processingColumn.setCellEditor(new ProcessingTierCellEditor(processingComboBoxEditor, models, quickModelsTable));
+        processingColumn.setCellEditor(
+                new ProcessingTierCellEditor(processingComboBoxEditor, models, quickModelsTable));
         processingColumn.setCellRenderer(new ProcessingTierCellRenderer(models));
         processingColumn.setPreferredWidth(120);
 
@@ -361,7 +361,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         panel.add(buttonPanel, BorderLayout.SOUTH);
         return panel;
     }
-
 
     private void refreshBalanceDisplay() {
         this.balanceField.setText("Loading...");
@@ -588,7 +587,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
                         if (aValue instanceof Service.ReasoningLevel reasoning) {
                             yield new Service.FavoriteModel(
                                     oldFavorite.alias(),
-                                    new Service.ModelConfig(oldFavorite.config().name(), reasoning, oldFavorite.config().tier()));
+                                    new Service.ModelConfig(
+                                            oldFavorite.config().name(),
+                                            reasoning,
+                                            oldFavorite.config().tier()));
                         }
                         yield oldFavorite;
                     }
@@ -596,7 +598,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
                         if (aValue instanceof Service.ProcessingTier tier) {
                             yield new Service.FavoriteModel(
                                     oldFavorite.alias(),
-                                    new Service.ModelConfig(oldFavorite.config().name(), oldFavorite.config().reasoning(), tier));
+                                    new Service.ModelConfig(
+                                            oldFavorite.config().name(),
+                                            oldFavorite.config().reasoning(),
+                                            tier));
                         }
                         yield oldFavorite;
                     }

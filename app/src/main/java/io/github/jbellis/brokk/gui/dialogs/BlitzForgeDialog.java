@@ -1176,7 +1176,8 @@ public class BlitzForgeDialog extends JDialog {
             return;
         }
 
-        var model = service.getModel(new Service.ModelConfig(favModel.config().name(), favModel.config().reasoning()));
+        var model = service.getModel(new Service.ModelConfig(
+                favModel.config().name(), favModel.config().reasoning()));
         if (model == null) {
             tokenWarningLabel.setVisible(false);
             return;

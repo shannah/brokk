@@ -1,5 +1,8 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import static io.github.jbellis.brokk.gui.Constants.H_GAP;
+import static io.github.jbellis.brokk.gui.Constants.V_GAP;
+
 import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.Service;
@@ -7,7 +10,6 @@ import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.Constants;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.components.ModelSelector;
 import io.github.jbellis.brokk.util.Environment;
@@ -32,18 +34,10 @@ import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JRootPane;
 import javax.swing.JScrollPane;
-import javax.swing.JSeparator;
-import javax.swing.JTabbedPane;
 import javax.swing.KeyStroke;
-import javax.swing.SwingConstants;
-import javax.swing.border.Border;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.Nullable;
-
-import static io.github.jbellis.brokk.gui.Constants.H_GAP;
-import static io.github.jbellis.brokk.gui.Constants.V_GAP;
 
 /** A modal dialog to configure the tools available to the Architect agent. */
 public class ArchitectOptionsDialog {
@@ -134,9 +128,7 @@ public class ArchitectOptionsDialog {
             contextCb.setSelected(currentOptions.includeContextAgent());
 
             var validationCb = addCheckboxRow(
-                    workspaceToolsPanel,
-                    "Dynamic Validation",
-                    "Infer test files to include with each Code Agent call");
+                    workspaceToolsPanel, "Dynamic Validation", "Infer test files to include with each Code Agent call");
             validationCb.setSelected(currentOptions.includeValidationAgent());
 
             var analyzerCb = addCheckboxRow(
@@ -279,9 +271,10 @@ public class ArchitectOptionsDialog {
                     }
 
                     if (!nonVision.isEmpty()) {
-                        String msg = "<html>The operation involves images, but these model(s) do not support vision:<br>"
-                                + String.join(", ", nonVision)
-                                + "<br><br>Please select vision-capable models.</html>";
+                        String msg =
+                                "<html>The operation involves images, but these model(s) do not support vision:<br>"
+                                        + String.join(", ", nonVision)
+                                        + "<br><br>Please select vision-capable models.</html>";
                         JOptionPane.showMessageDialog(
                                 dialog, msg, "Model Vision Support Error", JOptionPane.ERROR_MESSAGE);
                         return;

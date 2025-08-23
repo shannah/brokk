@@ -56,20 +56,19 @@ public class ArchitectAgent {
             boolean includeGitCreatePr,
             boolean includeShellCommand) {
         /** Default options (all enabled, except Git tools and shell command). Uses GPT_5_MINI for both models. */
-        public static final ArchitectOptions DEFAULTS =
-                new ArchitectOptions(
-                        new Service.ModelConfig(Service.GPT_5_MINI),
-                        new Service.ModelConfig(Service.GPT_5_MINI),
-                        true,
-                        true,
-                        true,
-                        true,
-                        true,
-                        true,
-                        true,
-                        false,
-                        false,
-                        false);
+        public static final ArchitectOptions DEFAULTS = new ArchitectOptions(
+                new Service.ModelConfig(Service.GPT_5_MINI),
+                new Service.ModelConfig(Service.GPT_5_MINI),
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                true,
+                false,
+                false,
+                false);
 
         // Backward-compatible constructor for existing callers that pass only booleans.
         public ArchitectOptions(
@@ -83,18 +82,19 @@ public class ArchitectAgent {
                 boolean includeGitCommit,
                 boolean includeGitCreatePr,
                 boolean includeShellCommand) {
-            this(new Service.ModelConfig(Service.GPT_5_MINI),
-                 new Service.ModelConfig(Service.GPT_5_MINI),
-                 includeContextAgent,
-                 includeValidationAgent,
-                 includeAnalyzerTools,
-                 includeWorkspaceTools,
-                 includeCodeAgent,
-                 includeSearchAgent,
-                 includeAskHuman,
-                 includeGitCommit,
-                 includeGitCreatePr,
-                 includeShellCommand);
+            this(
+                    new Service.ModelConfig(Service.GPT_5_MINI),
+                    new Service.ModelConfig(Service.GPT_5_MINI),
+                    includeContextAgent,
+                    includeValidationAgent,
+                    includeAnalyzerTools,
+                    includeWorkspaceTools,
+                    includeCodeAgent,
+                    includeSearchAgent,
+                    includeAskHuman,
+                    includeGitCommit,
+                    includeGitCreatePr,
+                    includeShellCommand);
         }
     }
 

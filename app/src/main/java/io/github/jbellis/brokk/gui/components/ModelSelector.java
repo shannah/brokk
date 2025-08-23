@@ -1,25 +1,25 @@
 package io.github.jbellis.brokk.gui.components;
 
-import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.Service;
+import io.github.jbellis.brokk.gui.Chrome;
 import java.awt.Component;
 import java.awt.GridBagConstraints;
 import java.awt.GridBagLayout;
 import java.awt.Insets;
 import java.util.ArrayList;
 import java.util.List;
-import java.util.Objects;
 import java.util.Locale;
+import java.util.Objects;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.function.Consumer;
 import javax.swing.DefaultListCellRenderer;
 import javax.swing.JComboBox;
 import javax.swing.JComponent;
 import javax.swing.JLabel;
+import javax.swing.JList;
 import javax.swing.JOptionPane;
 import javax.swing.JPanel;
-import javax.swing.JList;
 import javax.swing.SwingUtilities;
 import org.jetbrains.annotations.Nullable;
 
@@ -130,8 +130,7 @@ public class ModelSelector {
                     // Try to re-select the last favorite if present
                     for (int i = 0; i < combo.getItemCount(); i++) {
                         Object it = combo.getItemAt(i);
-                        if (it instanceof Service.FavoriteModel fm
-                                && fm.equals(lastSelected)) {
+                        if (it instanceof Service.FavoriteModel fm && fm.equals(lastSelected)) {
                             combo.setSelectedIndex(i);
                             return;
                         }
@@ -174,10 +173,8 @@ public class ModelSelector {
             var processingCombo = new JComboBox<>(Service.ProcessingTier.values());
 
             String initialModel = (String) modelCombo.getSelectedItem();
-            boolean supportsReasoning =
-                    initialModel != null && service.supportsReasoningEffort(initialModel);
-            boolean supportsProcessing =
-                    initialModel != null && service.supportsProcessingTier(initialModel);
+            boolean supportsReasoning = initialModel != null && service.supportsReasoningEffort(initialModel);
+            boolean supportsProcessing = initialModel != null && service.supportsProcessingTier(initialModel);
             reasoningCombo.setEnabled(supportsReasoning);
             processingCombo.setEnabled(supportsProcessing);
 
@@ -209,7 +206,11 @@ public class ModelSelector {
             panel.add(processingCombo, gbc);
 
             int result = JOptionPane.showConfirmDialog(
-                    chrome.getFrame(), panel, "Configure Custom Model", JOptionPane.OK_CANCEL_OPTION, JOptionPane.PLAIN_MESSAGE);
+                    chrome.getFrame(),
+                    panel,
+                    "Configure Custom Model",
+                    JOptionPane.OK_CANCEL_OPTION,
+                    JOptionPane.PLAIN_MESSAGE);
             if (result != JOptionPane.OK_OPTION) {
                 revertSelection(priorSelection);
                 return;
@@ -242,8 +243,8 @@ public class ModelSelector {
             }
 
             var favorites = new ArrayList<>(MainProject.loadFavoriteModels());
-            var newFav =
-                    new Service.FavoriteModel(alias, new Service.ModelConfig(selectedModel, selectedReasoning, selectedTier));
+            var newFav = new Service.FavoriteModel(
+                    alias, new Service.ModelConfig(selectedModel, selectedReasoning, selectedTier));
             favorites.add(newFav);
             MainProject.saveFavoriteModels(favorites);
 
