@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.Service;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -53,7 +54,7 @@ public class ArchitectOptionsDialog {
             var currentOptions = project.getArchitectOptions();
             boolean currentRunInWorktree = project.getArchitectRunInWorktree();
 
-            JDialog dialog = new JDialog(chrome.getFrame(), "Architect Tools", true); // Modal dialog
+            JDialog dialog = new JDialog(chrome.getFrame(), "Architect Options", true); // Modal dialog
             dialog.setDefaultCloseOperation(JDialog.DISPOSE_ON_CLOSE); // Dispose on close
             dialog.setLayout(new BorderLayout(10, 10));
 
@@ -61,6 +62,27 @@ public class ArchitectOptionsDialog {
             JPanel mainPanel = new JPanel();
             mainPanel.setLayout(new BoxLayout(mainPanel, BoxLayout.Y_AXIS));
             mainPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+            // --- Model selectors (Planning and Code) ---
+            var service = contextManager.getService();
+            var planningSelector = new ModelConfigSelector(service, "Planning Model");
+            var codeSelector = new ModelConfigSelector(service, "Code Model");
+
+            // Defaults:
+            // Planning: from project ArchitectModelConfig
+            Service.ModelConfig planningDefault = project.getArchitectModelConfig();
+            planningSelector.setFromConfig(planningDefault);
+
+            // Code: current selection in the Instructions panel
+            Service.ModelConfig codeDefault = chrome.getInstructionsPanel().getCurrentCodeModelConfig();
+            codeSelector.setFromConfig(codeDefault);
+
+            JPanel selectorsRow = new JPanel(new GridLayout(1, 2, 10, 0));
+            selectorsRow.add(planningSelector.getPanel());
+            selectorsRow.add(codeSelector.getPanel());
+            selectorsRow.setAlignmentX(Component.LEFT_ALIGNMENT);
+            selectorsRow.setBorder(BorderFactory.createEmptyBorder(0, 0, 10, 0));
+            mainPanel.add(selectorsRow);
 
             JLabel explanationLabel =
                     new JLabel("Select the sub-agents and tools that the Architect agent will have access to:");
@@ -220,19 +242,62 @@ public class ArchitectOptionsDialog {
 
             // --- Actions ---
             okButton.addActionListener(e -> {
+                // Build selected model configs
+                Service.ModelConfig selectedPlanning = planningSelector.getSelectedConfig();
+                Service.ModelConfig selectedCode = codeSelector.getSelectedConfig();
+
+                // Vision check (if current context contains images)
+                boolean hasImages = contextManager
+                        .topContext()
+                        .allFragments()
+                        .anyMatch(f -> !f.isText() && !f.getType().isOutputFragment());
+
+                if (hasImages) {
+                    var nonVision = new java.util.LinkedHashSet<String>();
+                    var svc = contextManager.getService();
+
+                    var planningModel = svc.getModel(selectedPlanning);
+                    if (planningModel == null || !svc.supportsVision(planningModel)) {
+                        nonVision.add(selectedPlanning.name() + " (Planning)");
+                    }
+                    var codeModel = svc.getModel(selectedCode);
+                    if (codeModel == null || !svc.supportsVision(codeModel)) {
+                        nonVision.add(selectedCode.name() + " (Code)");
+                    }
+                    if (searchCb.isSelected()) {
+                        var searchModel = contextManager.getSearchModel();
+                        if (!svc.supportsVision(searchModel)) {
+                            nonVision.add(svc.nameOf(searchModel) + " (Search)");
+                        }
+                    }
+
+                    if (!nonVision.isEmpty()) {
+                        String msg = "<html>The operation involves images, but these model(s) do not support vision:<br>"
+                                + String.join(", ", nonVision)
+                                + "<br><br>Please select vision-capable models.</html>";
+                        JOptionPane.showMessageDialog(
+                                dialog, msg, "Model Vision Support Error", JOptionPane.ERROR_MESSAGE);
+                        return; // Do not close dialog
+                    }
+                }
+
+                // Persist selected planning model as ArchitectModelConfig
+                project.setArchitectModelConfig(selectedPlanning);
+
                 var selectedOptions = new ArchitectAgent.ArchitectOptions(
+                        selectedPlanning,
+                        selectedCode,
                         contextCb.isSelected(),
                         validationCb.isSelected(),
-                        isCpg
-                                && codeIntelConfigured
-                                && analyzerCb.isSelected(), // Force false if not CPG or CI not configured
+                        isCpg && codeIntelConfigured && analyzerCb.isSelected(), // Force false if not CPG or CI not configured
                         workspaceCb.isSelected(),
                         codeCb.isSelected(),
                         searchCb.isSelected(),
                         askHumanCb.isSelected(),
-                        commitCb.isSelected(), // Persist Git commit option
+                        commitCb.isSelected(),
                         prCb.isSelected(),
                         shellCb.isSelected());
+
                 boolean runInWorktreeSelected = worktreeCb.isSelected();
 
                 // Persist to project settings if a project is available
@@ -273,6 +338,98 @@ public class ArchitectOptionsDialog {
 
         // Return the result captured from the EDT lambda
         return resultHolder.get();
+    }
+
+    private static final class ModelConfigSelector {
+        private final Service service;
+        private final JPanel panel;
+        private final JComboBox<String> modelCombo;
+        private final JComboBox<Service.ReasoningLevel> reasoningCombo;
+        private final JComboBox<Service.ProcessingTier> processingCombo;
+
+        ModelConfigSelector(Service service, String title) {
+            this.service = service;
+
+            var modelNames = service.getAvailableModels().keySet().stream().sorted().toArray(String[]::new);
+            this.modelCombo = new JComboBox<>(modelNames);
+            this.reasoningCombo = new JComboBox<>(Service.ReasoningLevel.values());
+            this.processingCombo = new JComboBox<>(Service.ProcessingTier.values());
+
+            // Enable/disable combos based on selected model support
+            this.modelCombo.addActionListener(e -> updateEnablement());
+
+            var inner = new JPanel(new GridBagLayout());
+            var gbc = new GridBagConstraints();
+            gbc.insets = new Insets(2, 5, 2, 5);
+            gbc.anchor = GridBagConstraints.WEST;
+
+            int y = 0;
+            gbc.gridx = 0; gbc.gridy = y; inner.add(new JLabel("Model:"), gbc);
+            gbc.gridx = 1; inner.add(modelCombo, gbc); y++;
+
+            gbc.gridx = 0; gbc.gridy = y; inner.add(new JLabel("Reasoning:"), gbc);
+            gbc.gridx = 1; inner.add(reasoningCombo, gbc); y++;
+
+            gbc.gridx = 0; gbc.gridy = y; inner.add(new JLabel("Processing Tier:"), gbc);
+            gbc.gridx = 1; inner.add(processingCombo, gbc); y++;
+
+            this.panel = new JPanel(new BorderLayout());
+            this.panel.setBorder(BorderFactory.createTitledBorder(title));
+            this.panel.add(inner, BorderLayout.CENTER);
+
+            updateEnablement();
+        }
+
+        JPanel getPanel() {
+            return panel;
+        }
+
+        void setFromConfig(Service.ModelConfig cfg) {
+            // Model
+            this.modelCombo.setSelectedItem(cfg.name());
+            // Reasoning
+            this.reasoningCombo.setSelectedItem(cfg.reasoning());
+            // Processing
+            this.processingCombo.setSelectedItem(cfg.tier());
+
+            updateEnablement();
+        }
+
+        Service.ModelConfig getSelectedConfig() {
+            String model = (String) modelCombo.getSelectedItem();
+            Service.ReasoningLevel rl = (Service.ReasoningLevel) reasoningCombo.getSelectedItem();
+            Service.ProcessingTier pt = (Service.ProcessingTier) processingCombo.getSelectedItem();
+
+            if (model == null) {
+                model = Service.GPT_5_MINI; // safe default
+            }
+            if (!reasoningCombo.isEnabled()) {
+                rl = Service.ReasoningLevel.DEFAULT;
+            }
+            if (!processingCombo.isEnabled()) {
+                pt = Service.ProcessingTier.DEFAULT;
+            }
+            if (rl == null) rl = Service.ReasoningLevel.DEFAULT;
+            if (pt == null) pt = Service.ProcessingTier.DEFAULT;
+
+            return new Service.ModelConfig(model, rl, pt);
+        }
+
+        private void updateEnablement() {
+            String sel = (String) modelCombo.getSelectedItem();
+            boolean supportsReasoning = sel != null && service.supportsReasoningEffort(sel);
+            boolean supportsProcessing = sel != null && service.supportsProcessingTier(sel);
+
+            reasoningCombo.setEnabled(supportsReasoning);
+            processingCombo.setEnabled(supportsProcessing);
+
+            if (!supportsReasoning) {
+                reasoningCombo.setSelectedItem(Service.ReasoningLevel.DEFAULT);
+            }
+            if (!supportsProcessing) {
+                processingCombo.setSelectedItem(Service.ProcessingTier.DEFAULT);
+            }
+        }
     }
 
     private record GitState(

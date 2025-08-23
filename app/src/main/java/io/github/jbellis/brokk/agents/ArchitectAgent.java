@@ -41,8 +41,10 @@ import org.jetbrains.annotations.Nullable;
 public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
 
-    /** Configuration options for the ArchitectAgent, determining which tools it can use. */
+    /** Configuration options for the ArchitectAgent, including selected models and enabled tools. */
     public record ArchitectOptions(
+            Service.ModelConfig planningModel,
+            Service.ModelConfig codeModel,
             boolean includeContextAgent,
             boolean includeValidationAgent,
             boolean includeAnalyzerTools,
@@ -53,9 +55,47 @@ public class ArchitectAgent {
             boolean includeGitCommit,
             boolean includeGitCreatePr,
             boolean includeShellCommand) {
-        /** Default options (all enabled, except Git tools and shell command). */
+        /** Default options (all enabled, except Git tools and shell command). Uses GPT_5_MINI for both models. */
         public static final ArchitectOptions DEFAULTS =
-                new ArchitectOptions(true, true, true, true, true, true, true, false, false, false);
+                new ArchitectOptions(
+                        new Service.ModelConfig(Service.GPT_5_MINI),
+                        new Service.ModelConfig(Service.GPT_5_MINI),
+                        true,
+                        true,
+                        true,
+                        true,
+                        true,
+                        true,
+                        true,
+                        false,
+                        false,
+                        false);
+
+        // Backward-compatible constructor for existing callers that pass only booleans.
+        public ArchitectOptions(
+                boolean includeContextAgent,
+                boolean includeValidationAgent,
+                boolean includeAnalyzerTools,
+                boolean includeWorkspaceTools,
+                boolean includeCodeAgent,
+                boolean includeSearchAgent,
+                boolean includeAskHuman,
+                boolean includeGitCommit,
+                boolean includeGitCreatePr,
+                boolean includeShellCommand) {
+            this(new Service.ModelConfig(Service.GPT_5_MINI),
+                 new Service.ModelConfig(Service.GPT_5_MINI),
+                 includeContextAgent,
+                 includeValidationAgent,
+                 includeAnalyzerTools,
+                 includeWorkspaceTools,
+                 includeCodeAgent,
+                 includeSearchAgent,
+                 includeAskHuman,
+                 includeGitCommit,
+                 includeGitCreatePr,
+                 includeShellCommand);
+        }
     }
 
     private final IConsoleIO io;
@@ -477,10 +517,10 @@ public class ArchitectAgent {
             // Determine active models and their minimum input token limit
             var models = new ArrayList<StreamingChatModel>();
             models.add(this.model);
-            if (options.includeCodeAgent) {
+            if (options.includeCodeAgent()) {
                 models.add(contextManager.getCodeModel());
             }
-            if (options.includeSearchAgent) {
+            if (options.includeSearchAgent()) {
                 models.add(contextManager.getSearchModel());
             }
             int minInputTokenLimit = models.stream()

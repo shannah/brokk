@@ -25,6 +25,7 @@ import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
 import io.github.jbellis.brokk.gui.components.OverlayPanel;
 import io.github.jbellis.brokk.gui.components.SplitButton;
+import io.github.jbellis.brokk.gui.components.ModelSelector;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectChoices;
 import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
@@ -100,11 +101,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
     private final JButton architectButton; // Changed from SplitButton
-    private final SplitButton codeButton;
-    private final SplitButton searchButton;
-    private final JButton runButton;
+        private final JButton codeButton;
+        private final SplitButton searchButton;
+        private final JButton runButton;
     private final JButton stopButton;
-    private final JButton configureModelsButton;
+    private final ModelSelector modelSelector;
     private final ContextManager contextManager;
     private JTable referenceFileTable;
     private JLabel failureReasonLabel;
@@ -167,20 +168,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         architectButton.addActionListener(e -> runArchitectCommand()); // Main button action
         // architectButton.setMenuSupplier(this::createArchitectMenu); // Removed menu supplier
 
-        codeButton = new SplitButton("Code");
+        codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
         codeButton.setToolTipText("Tell the LLM to write code using the current context (click ▼ for model options)");
         codeButton.addActionListener(e -> runCodeCommand()); // Main button action
-        codeButton.setMenuSupplier(() -> createModelSelectionMenu((modelName, reasoningLevel) -> {
-            var models = chrome.getContextManager().getService();
-            StreamingChatModel selectedModel = models.getModel(new Service.ModelConfig(modelName, reasoningLevel));
-            if (selectedModel != null) {
-                runCodeCommand(selectedModel);
-            } else {
-                chrome.toolError(
-                        "Selected model '" + modelName + "' is not available with reasoning level " + reasoningLevel);
-            }
-        }));
 
         searchButton = new SplitButton("Search");
         searchButton.setMnemonic(KeyEvent.VK_S);
@@ -198,10 +189,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         stopButton.setEnabled(false); // Start disabled, enabled when an action runs
         stopButton.addActionListener(e -> chrome.getContextManager().interruptUserActionThread());
 
-        configureModelsButton = new JButton("Configure Models...");
-        configureModelsButton.setToolTipText("Open settings to configure AI models");
-        configureModelsButton.addActionListener(
-                e -> SettingsDialog.showSettingsDialog(chrome, SettingsGlobalPanel.MODELS_TAB_TITLE));
+        modelSelector = new ModelSelector(chrome);
 
         // Top Bar (History, Configure Models, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
@@ -429,7 +417,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         leftPanel.add(historyButton);
         leftPanel.add(Box.createHorizontalStrut(H_GAP));
 
-        leftPanel.add(configureModelsButton); // Add the new button here
+        leftPanel.add(modelSelector.getComponent());
 
         topBarPanel.add(leftPanel, BorderLayout.WEST);
         return topBarPanel;
@@ -1060,13 +1048,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * @param options The configured options for the agent's tools.
      */
     private void executeArchitectCommand(
-            StreamingChatModel model, String goal, ArchitectAgent.ArchitectOptions options) {
+            StreamingChatModel planningModel, StreamingChatModel codeModel, String goal, ArchitectAgent.ArchitectOptions options) {
         var contextManager = chrome.getContextManager();
         try {
             var agent = new ArchitectAgent(
                     contextManager,
-                    model,
-                    contextManager.getCodeModel(),
+                    planningModel,
+                    codeModel,
                     contextManager.getToolRegistry(),
                     goal,
                     options);
@@ -1159,26 +1147,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         if (goal.isBlank()) {
             chrome.toolError("Please provide an initial goal or instruction for the Architect");
             return;
-        }
-
-        var contextManager = chrome.getContextManager();
-        var models = contextManager.getService();
-        var architectModel = contextManager.getArchitectModel();
-        var codeModel = contextManager.getCodeModel(); // For architect's sub-agents
-        var searchModel = contextManager.getSearchModel(); // For architect's sub-agents
-
-        // Check vision capabilities only if running in current project
-        if (contextHasImages()) {
-            var nonVisionModels = Stream.of(
-                            architectModel, codeModel, searchModel) // Check all models Architect might use
-                    .filter(m -> !models.supportsVision(m))
-                    .map(models::nameOf)
-                    .distinct() // Avoid duplicate model names if they are the same
-                    .toList();
-            if (!nonVisionModels.isEmpty()) {
-                showVisionSupportErrorDialog(String.join(", ", nonVisionModels));
-                return; // Abort if any required model lacks vision and context has images
-            }
         }
 
         chrome.getProject().addToInstructionsHistory(goal, 20);
@@ -1310,12 +1278,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * @param options The pre-configured ArchitectOptions.
      */
     public void runArchitectCommand(String goal, ArchitectAgent.ArchitectOptions options) {
-        var contextManager = chrome.getContextManager();
-        var architectModel = contextManager.getArchitectModel();
-
         submitAction(ACTION_ARCHITECT, goal, () -> {
+            var service = chrome.getContextManager().getService();
+            var planningModel = service.getModel(options.planningModel());
+            if (planningModel == null) {
+                planningModel = service.quickModel();
+            }
+            var codeModel = service.getModel(options.codeModel());
+            if (codeModel == null) {
+                codeModel = service.quickModel();
+            }
             // Proceed with execution using the selected options
-            executeArchitectCommand(architectModel, goal, options);
+            executeArchitectCommand(planningModel, codeModel, goal, options);
         });
     }
 
@@ -1326,12 +1300,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // Public entry point for default Code model
     public void runCodeCommand() {
         var contextManager = chrome.getContextManager();
-        prepareAndRunCodeCommand(contextManager.getCodeModel());
-    }
 
-    // Public entry point for selected Code model from SplitButton
-    public void runCodeCommand(StreamingChatModel modelToUse) {
-        prepareAndRunCodeCommand(modelToUse);
+        Service.ModelConfig config;
+        try {
+            config = modelSelector.getModel();
+        } catch (IllegalStateException e) {
+            chrome.toolError("Please finish configuring your custom model or select a favorite first.");
+            return;
+        }
+
+        var model = contextManager.getService().getModel(config);
+        if (model == null) {
+            chrome.toolError(
+                    "Selected model '" + config.name()
+                            + "' is not available with reasoning level " + config.reasoning());
+            model = castNonNull(contextManager.getService().getModel(Service.GPT_5_MINI));
+        }
+        prepareAndRunCodeCommand(model);
     }
 
     // Core method to prepare and submit the Code action
@@ -1631,6 +1616,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return this.micButton;
     }
 
+    /**
+     * Returns the currently selected Code model configuration from the model selector.
+     * Falls back to a reasonable default if none is available.
+     */
+    public Service.ModelConfig getCurrentCodeModelConfig() {
+        try {
+            return modelSelector.getModel();
+        } catch (IllegalStateException e) {
+            // Fallback to a basic default; Reasoning & Tier defaulted inside ModelConfig
+            return new Service.ModelConfig(Service.GPT_5_MINI);
+        }
+    }
+
     /** Returns cosine similarity of two equal-length vectors. */
     private static float cosine(float[] a, float[] b) {
         if (a.length != b.length) {
@@ -1660,54 +1658,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return (float) (dot / denominator);
     }
 
-    /**
-     * Creates a JPopupMenu displaying favorite models that are currently available. When a favorite model is selected,
-     * the provided consumer is called with the model name and its associated reasoning level from the favorite model
-     * configuration.
-     *
-     * @param onModelSelect The consumer to call when a favorite model is selected. Receives the model name and the
-     *     reasoning level configured for that favorite.
-     * @return A JPopupMenu containing available favorite models or configuration options.
-     */
-    private JPopupMenu createModelSelectionMenu(BiConsumer<String, Service.ReasoningLevel> onModelSelect) {
-        var popupMenu = new JPopupMenu();
 
-        var modelsInstance = this.contextManager.getService();
-        var availableModelsMap = modelsInstance.getAvailableModels(); // Get all available models
-
-        // Cast the result of loadFavoriteModels and ensure it's handled correctly
-        var favoriteModels = MainProject.loadFavoriteModels();
-
-        // Filter favorite models to show only those that are currently available, and sort by alias case-insensitively
-        var favoriteModelsToShow = favoriteModels.stream()
-                .filter(fav -> availableModelsMap.containsKey(fav.config().name()))
-                .sorted(Comparator.comparing(Service.FavoriteModel::alias, String.CASE_INSENSITIVE_ORDER))
-                .toList();
-
-        if (favoriteModelsToShow.isEmpty()) {
-            var item = new JMenuItem("(No favorite models available)"); // Updated message
-            item.setEnabled(false); // Keep it disabled as it's just info
-            popupMenu.add(item);
-            popupMenu.addSeparator();
-            var configureItem = new JMenuItem("Configure Favorites...");
-            configureItem.addActionListener(
-                    e -> SettingsDialog.showSettingsDialog(chrome, SettingsGlobalPanel.MODELS_TAB_TITLE));
-            popupMenu.add(configureItem);
-        } else {
-            favoriteModelsToShow.forEach(fav -> {
-                var item = new JMenuItem(fav.alias());
-                // Add a tooltip showing model name and reasoning level
-                item.setToolTipText("<html>Model: " + fav.config().name() + "<br>Reasoning: "
-                        + fav.config().reasoning().toString() + "</html>");
-                item.addActionListener(e -> onModelSelect.accept(fav.config().name(), fav.config().reasoning()));
-                popupMenu.add(item);
-            });
-        }
-
-        // Apply theme to the popup menu itself and its items
-        chrome.themeManager.registerPopupMenu(popupMenu);
-        return popupMenu;
-    }
 
     private final class AtTriggerFilter extends DocumentFilter {
         private boolean isPopupOpen = false; // Guard against re-entrant calls

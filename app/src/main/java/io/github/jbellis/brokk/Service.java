@@ -678,7 +678,7 @@ public class Service {
             logger.warn("Location not found for model name {}, assuming no reasoning-disable support.", modelName);
             return false;
         }
-        return location.startsWith("openai/");
+        return location.startsWith("openai/"); // FIXME
     }
 
     /**
