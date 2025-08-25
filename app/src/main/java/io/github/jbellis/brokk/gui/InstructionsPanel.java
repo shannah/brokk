@@ -168,12 +168,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         codeButton = new JButton("Code");
         codeButton.setMnemonic(KeyEvent.VK_C);
-        codeButton.setToolTipText("Tell the LLM to write code using the current context (click ▼ for model options)");
+        codeButton.setToolTipText("Tell the LLM to write code using the current context and selected model");
         codeButton.addActionListener(e -> runCodeCommand()); // Main button action
 
         searchButton = new SplitButton("Search");
         searchButton.setMnemonic(KeyEvent.VK_S);
-        searchButton.setToolTipText("Explore the codebase beyond the current context (click ▼ for options)");
+        searchButton.setToolTipText("Explore the codebase beyond the current context using the selected model");
         searchButton.addActionListener(e -> runSearchCommand()); // Main action unchanged
         searchButton.setMenuSupplier(this::createSearchMenu);
 
