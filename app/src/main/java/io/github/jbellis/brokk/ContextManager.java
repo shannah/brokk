@@ -415,23 +415,24 @@ public class ContextManager implements IContextManager, AutoCloseable {
         try (var stream = Files.list(historyBaseDir)) {
             stream.filter(Files::isDirectory) // Process only directories
                     .forEach(entry -> {
+                        Instant lastModifiedTime;
                         try {
-                            var lastModifiedTime =
-                                    Files.getLastModifiedTime(entry).toInstant();
-                            if (lastModifiedTime.isBefore(cutoff)) {
-                                logger.trace(
-                                        "Attempting to delete old history directory (modified {}): {}",
-                                        lastModifiedTime,
-                                        entry);
-                                if (FileUtil.deleteRecursively(entry)) {
-                                    deletedCount.incrementAndGet();
-                                } else {
-                                    logger.error("Failed to fully delete old history directory: {}", entry);
-                                }
-                            }
+                            lastModifiedTime = Files.getLastModifiedTime(entry).toInstant();
                         } catch (IOException e) {
                             // Log error getting last modified time for a specific entry, but continue with others
                             logger.error("Error checking last modified time for history entry: {}", entry, e);
+                            return;
+                        }
+                        if (lastModifiedTime.isBefore(cutoff)) {
+                            logger.trace(
+                                    "Attempting to delete old history directory (modified {}): {}",
+                                    lastModifiedTime,
+                                    entry);
+                            if (FileUtil.deleteRecursively(entry)) {
+                                deletedCount.incrementAndGet();
+                            } else {
+                                logger.error("Failed to fully delete old history directory: {}", entry);
+                            }
                         }
                     });
         } catch (IOException e) {
