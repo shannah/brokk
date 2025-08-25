@@ -124,6 +124,7 @@ public class Environment {
                 var absPath = root.toAbsolutePath().toString();
                 shellCommand = new String[] {
                     "systemd-run",
+                    "--quiet",
                     "--user",
                     "--wait",
                     "--collect",
@@ -157,7 +158,7 @@ public class Environment {
                     isWindows() ? new String[] {"cmd.exe", "/c", command} : new String[] {"/bin/sh", "-c", command};
         }
 
-        logger.debug(String.join(" ", shellCommand));
+        logger.trace(String.join(" ", shellCommand));
         ProcessBuilder pb = createProcessBuilder(root, shellCommand);
         Process process;
         try {
