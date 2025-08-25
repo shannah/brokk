@@ -425,24 +425,29 @@ public class Environment {
             return false;
         }
         if (isMacOs()) {
-            return new File("/usr/bin/sandbox-exec").canExecute();
+            if (new File("/usr/bin/sandbox-exec").canExecute()) {
+                return true;
+            }
+            return existsOnPath("sandbox-exec");
         }
         if (isLinux()) {
             // Check common locations and PATH for systemd-run
-            if (new File("/usr/bin/systemd-run").canExecute()
-                    || new File("/bin/systemd-run").canExecute()
-                    || new File("/usr/local/bin/systemd-run").canExecute()) {
+            if (new File("/usr/bin/systemd-run").canExecute()) {
                 return true;
             }
-            var path = System.getenv("PATH");
-            if (path != null) {
-                for (var dir : Splitter.on(File.pathSeparatorChar).split(path)) {
-                    if (new File(dir, "systemd-run").canExecute()) {
-                        return true;
-                    }
+            return existsOnPath("systemd-run");
+        }
+        return false;
+    }
+
+    private static boolean existsOnPath(String executable) {
+        var path = System.getenv("PATH");
+        if (path != null) {
+            for (var dir : Splitter.on(File.pathSeparatorChar).split(path)) {
+                if (new File(dir, executable).canExecute()) {
+                    return true;
                 }
             }
-            return false;
         }
         return false;
     }
