@@ -1013,11 +1013,18 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public void sourceCodeForCodeUnit(CodeUnit codeUnit) {
         String sourceCode = null;
         try {
-            if (codeUnit.isFunction()) {
-                sourceCode = getAnalyzer().getMethodSource(codeUnit.fqName()).orElse(null);
-            } else if (codeUnit.isClass()) {
-                sourceCode = getAnalyzer().getClassSource(codeUnit.fqName());
-            }
+            sourceCode = getAnalyzer()
+                    .as(SourceCodeProvider.class)
+                    .flatMap(provider -> {
+                        if (codeUnit.isFunction()) {
+                            return provider.getMethodSource(codeUnit.fqName());
+                        } else if (codeUnit.isClass()) {
+                            return provider.getClassSource(codeUnit.fqName());
+                        } else {
+                            return Optional.empty();
+                        }
+                    })
+                    .orElse(null);
         } catch (InterruptedException e) {
             logger.error("Interrupted while trying to get analyzer while attempting to obtain source code");
         }
