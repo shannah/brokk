@@ -118,38 +118,8 @@ public class Environment {
 
                 shellCommand =
                         new String[] {"sandbox-exec", "-f", policyFile.toString(), "--", "/bin/sh", "-c", command};
-            } else if (isLinux()) {
-                // sandbox goals: read-only outside of the project, no network access
-                // (locking it down to ONLY the project for reads is not possible without writing C code)
-                var absPath = root.toAbsolutePath().toString();
-                shellCommand = new String[] {
-                    "systemd-run",
-                    "--user",
-                    "--wait",
-                    "--collect",
-                    "--pipe",
-                    "-p",
-                    "NoNewPrivileges=true",
-                    "-p",
-                    "RestrictSUIDSGID=true", // prevents “planting” suid/sgid bits on files
-                    "-p",
-                    "RestrictAddressFamilies=AF_UNIX AF_NETLINK", // PrivateNetwork doesn't work for `user` units
-                    "-p",
-                    "ProtectSystem=strict",
-                    "-p",
-                    "PrivateTmp=true",
-                    "-p",
-                    "ProtectHome=read-only",
-                    "-p",
-                    "ReadWritePaths=" + absPath,
-                    "-p",
-                    "WorkingDirectory=" + absPath,
-                    "--setenv=TERM=dumb",
-                    "/bin/sh",
-                    "-c",
-                    command
-                };
             } else {
+                // TODO Linux
                 throw new UnsupportedOperationException("sandboxing is not supported on this OS");
             }
         } else {
@@ -429,17 +399,20 @@ public class Environment {
         }
         if (isLinux()) {
             // Check common locations and PATH for systemd-run
-            if (new File("/usr/bin/systemd-run").canExecute()
-                    || new File("/bin/systemd-run").canExecute()
-                    || new File("/usr/local/bin/systemd-run").canExecute()) {
+            if (new File("/usr/bin/systemd-run").canExecute()) {
                 return true;
             }
-            var path = System.getenv("PATH");
-            if (path != null) {
-                for (var dir : Splitter.on(File.pathSeparatorChar).split(path)) {
-                    if (new File(dir, "systemd-run").canExecute()) {
-                        return true;
-                    }
+            return existsOnPath("systemd-run");
+        }
+        return false;
+    }
+
+    private static boolean existsOnPath(String executable) {
+        var path = System.getenv("PATH");
+        if (path != null) {
+            for (var dir : Splitter.on(File.pathSeparatorChar).split(path)) {
+                if (new File(dir, executable).canExecute()) {
+                    return true;
                 }
             }
             return false;
