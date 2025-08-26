@@ -87,6 +87,40 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     @Nullable
     private Component lastRelevantFocusOwner = null;
 
+    // Debouncing for tab toggle to prevent duplicate events
+    private long lastTabToggleTime = 0;
+    private static final long TAB_TOGGLE_DEBOUNCE_MS = 150;
+
+    /**
+     * Handles tab toggle behavior - minimizes panel if tab is already selected, otherwise selects the tab and restores
+     * panel if it was minimized.
+     */
+    private void handleTabToggle(int tabIndex) {
+        long currentTime = System.currentTimeMillis();
+        if (currentTime - lastTabToggleTime < TAB_TOGGLE_DEBOUNCE_MS) {
+            return; // Ignore rapid successive clicks
+        }
+        lastTabToggleTime = currentTime;
+
+        if (leftTabbedPanel.getSelectedIndex() == tabIndex) {
+            // Tab already selected, minimize the panel but keep tabs visible
+            leftTabbedPanel.setSelectedIndex(-1);
+            bottomSplitPane.setDividerSize(0);
+            bottomSplitPane.setDividerLocation(40);
+        } else {
+            leftTabbedPanel.setSelectedIndex(tabIndex);
+            // Restore panel if it was minimized
+            if (bottomSplitPane.getDividerLocation() < 50) {
+                bottomSplitPane.setDividerSize(originalBottomDividerSize);
+                int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
+                bottomSplitPane.setDividerLocation(preferred);
+            }
+        }
+    }
+
+    // Store original divider size for hiding/showing divider
+    private int originalBottomDividerSize;
+
     // Swing components:
     final JFrame frame;
     private JLabel backgroundStatusLabel;
@@ -214,13 +248,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         leftTabbedPanel.setTabComponentAt(projectTabIdx, projectTabLabel);
         projectTabLabel.addMouseListener(new MouseAdapter() {
             @Override
-            public void mouseClicked(MouseEvent e) {
-                leftTabbedPanel.setSelectedIndex(projectTabIdx);
-            }
-
-            @Override
             public void mousePressed(MouseEvent e) {
-                leftTabbedPanel.setSelectedIndex(projectTabIdx);
+                handleTabToggle(projectTabIdx);
             }
         });
 
@@ -237,13 +266,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             leftTabbedPanel.setTabComponentAt(gitTabIdx, gitTabLabel);
             gitTabLabel.addMouseListener(new MouseAdapter() {
                 @Override
-                public void mouseClicked(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(gitTabIdx);
-                }
-
-                @Override
                 public void mousePressed(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(gitTabIdx);
+                    handleTabToggle(gitTabIdx);
                 }
             });
             gitPanel.updateRepo();
@@ -262,13 +286,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             leftTabbedPanel.setTabComponentAt(prIdx, prLabel);
             prLabel.addMouseListener(new MouseAdapter() {
                 @Override
-                public void mouseClicked(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(prIdx);
-                }
-
-                @Override
                 public void mousePressed(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(prIdx);
+                    handleTabToggle(prIdx);
                 }
             });
         }
@@ -284,13 +303,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             leftTabbedPanel.setTabComponentAt(issIdx, issLabel);
             issLabel.addMouseListener(new MouseAdapter() {
                 @Override
-                public void mouseClicked(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(issIdx);
-                }
-
-                @Override
                 public void mousePressed(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(issIdx);
+                    handleTabToggle(issIdx);
                 }
             });
         }
@@ -332,6 +346,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         bottomSplitPane.setResizeWeight(0.0);
         int initialDividerLocation = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
         bottomSplitPane.setDividerLocation(initialDividerLocation);
+
+        // Store original divider size
+        originalBottomDividerSize = bottomSplitPane.getDividerSize();
 
         bottomPanel.add(bottomSplitPane, BorderLayout.CENTER);
 
@@ -681,11 +698,6 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             var label = createSquareTabLabel(icon, "Issues");
             leftTabbedPanel.setTabComponentAt(tabIdx, label);
             label.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mouseClicked(MouseEvent e) {
-                    leftTabbedPanel.setSelectedIndex(tabIdx);
-                }
-
                 @Override
                 public void mousePressed(MouseEvent e) {
                     leftTabbedPanel.setSelectedIndex(tabIdx);
@@ -1355,10 +1367,16 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             int bottomHorizPos = project.getHorizontalSplitPosition();
             if (bottomHorizPos > 0) {
                 bottomSplitPane.setDividerLocation(bottomHorizPos);
+                // Check if restored position indicates minimized state
+                if (bottomHorizPos < 50) {
+                    bottomSplitPane.setDividerSize(0);
+                    leftTabbedPanel.setSelectedIndex(-1);
+                }
             } else {
                 int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
                 bottomSplitPane.setDividerLocation(preferred);
             }
+
             bottomSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
                 if (bottomSplitPane.isShowing()) {
                     var newPos = bottomSplitPane.getDividerLocation();
