@@ -1,0 +1,27 @@
+name: ci-debug
+
+on:
+  workflow_dispatch:
+
+jobs:
+  repro-and-shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      # Optional: quick probes before you SSH in
+      - name: Probes
+        run: |
+          set -euxo pipefail
+          uname -a
+          sysctl kernel.unprivileged_userns_clone || true
+          sysctl user.max_user_namespaces || true
+          command -v systemd-run || true
+          systemctl --version || true
+          echo "USER=$USER XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-} DBUS_SESSION_BUS_ADDRESS=${DBUS_SESSION_BUS_ADDRESS:-}"
+
+      # Open an interactive SSH/web terminal to this runner
+      - name: Debug via tmate
+        uses: mxschmitt/action-tmate@v3
+        with:
+          limit-access-to-actor: true
