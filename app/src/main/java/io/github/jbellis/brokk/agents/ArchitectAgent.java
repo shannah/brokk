@@ -616,7 +616,7 @@ public class ArchitectAgent {
             }
 
             // Ask the LLM for the next step
-            var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
+            var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, true);
 
             if (result.error() != null) {
                 logger.debug(
