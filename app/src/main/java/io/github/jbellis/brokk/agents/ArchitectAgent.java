@@ -121,8 +121,8 @@ public class ArchitectAgent {
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
      *
      * @param codeModel
-     * @param goal      The initial user instruction or goal for the agent.
-     * @param options   Configuration for which tools the agent can use.
+     * @param goal The initial user instruction or goal for the agent.
+     * @param options Configuration for which tools the agent can use.
      */
     public ArchitectAgent(
             ContextManager contextManager,

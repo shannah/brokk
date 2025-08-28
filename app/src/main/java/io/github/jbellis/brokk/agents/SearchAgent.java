@@ -77,11 +77,7 @@ public class SearchAgent {
     // State toggles
     private boolean beastMode;
 
-    public SearchAgent(
-            String goal,
-            ContextManager contextManager,
-            StreamingChatModel model,
-            int ordinal) {
+    public SearchAgent(String goal, ContextManager contextManager, StreamingChatModel model, int ordinal) {
         this.goal = goal;
         this.cm = contextManager;
         this.model = model;

@@ -1085,8 +1085,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             ArchitectAgent.ArchitectOptions options) {
         var contextManager = chrome.getContextManager();
         try {
-            var agent = new ArchitectAgent(
-                    contextManager, planningModel, codeModel, goal, options);
+            var agent = new ArchitectAgent(contextManager, planningModel, codeModel, goal, options);
             var result = agent.execute();
             chrome.systemOutput("Architect complete!");
             contextManager.addToHistory(result, false);
