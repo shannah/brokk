@@ -1665,9 +1665,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         submitBackgroundTask("Generating style guide", () -> {
             try {
                 io.systemOutput("Generating project style guide...");
-                var analyzer = getAnalyzerUninterrupted();
                 // Use a reasonable limit for style guide generation context
-                var topClasses = AnalyzerUtil.combinedRankingFor(analyzer, project.getRoot(), Map.of()).stream()
+                var topClasses = AnalyzerUtil.combinedRankingFor(project, Map.of()).stream()
                         .limit(10)
                         .toList();
 
@@ -1681,10 +1680,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 var codeForLLM = new StringBuilder();
                 var tokens = 0;
                 int MAX_STYLE_TOKENS = 30000; // Limit context size for style guide
-                for (var fqcnUnit : topClasses) {
-                    var fileOption = analyzer.getFileFor(fqcnUnit.fqName()); // Use fqName() here
-                    if (fileOption.isEmpty()) continue;
-                    var file = fileOption.get();
+                for (var file : topClasses) {
                     String chunk; // Declare chunk once outside the try-catch
                     // Use project root for relative path display if possible
                     var relativePath =
