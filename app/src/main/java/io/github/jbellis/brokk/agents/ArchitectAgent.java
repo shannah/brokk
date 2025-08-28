@@ -121,22 +121,21 @@ public class ArchitectAgent {
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
      *
      * @param codeModel
-     * @param goal The initial user instruction or goal for the agent.
-     * @param options Configuration for which tools the agent can use.
+     * @param goal      The initial user instruction or goal for the agent.
+     * @param options   Configuration for which tools the agent can use.
      */
     public ArchitectAgent(
             ContextManager contextManager,
             StreamingChatModel model,
             StreamingChatModel codeModel,
-            ToolRegistry toolRegistry,
             String goal,
             ArchitectOptions options) {
-        this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
-        this.model = Objects.requireNonNull(model, "model cannot be null");
+        this.contextManager = contextManager;
+        this.model = model;
         this.codeModel = codeModel;
-        this.toolRegistry = Objects.requireNonNull(toolRegistry, "toolRegistry cannot be null");
-        this.goal = Objects.requireNonNull(goal, "goal cannot be null");
-        this.options = Objects.requireNonNull(options, "options cannot be null");
+        this.toolRegistry = contextManager.getToolRegistry();
+        this.goal = goal;
+        this.options = options;
         this.io = contextManager.getIo();
     }
 
@@ -430,7 +429,7 @@ public class ArchitectAgent {
         // Instantiate and run SearchAgent
         var cursor = messageCursor();
         io.llmOutput("Search Agent engaged: " + query, ChatMessageType.CUSTOM);
-        var searchAgent = new SearchAgent(query, contextManager, model, toolRegistry, searchAgentId.getAndIncrement());
+        var searchAgent = new SearchAgent(query, contextManager, model, searchAgentId.getAndIncrement());
         var result = searchAgent.execute();
 
         var newMessages = messagesSince(cursor);

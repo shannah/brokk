@@ -81,12 +81,11 @@ public class SearchAgent {
             String goal,
             ContextManager contextManager,
             StreamingChatModel model,
-            ToolRegistry toolRegistry,
             int ordinal) {
         this.goal = goal;
         this.cm = contextManager;
         this.model = model;
-        this.toolRegistry = toolRegistry;
+        this.toolRegistry = contextManager.getToolRegistry();
 
         this.io = contextManager.getIo();
         this.llm = contextManager.getLlm(model, "Search: " + goal);

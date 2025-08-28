@@ -332,7 +332,6 @@ public final class BrokkCli implements Callable<Integer> {
                         cm,
                         architectModel,
                         codeModel,
-                        cm.getToolRegistry(),
                         architectPrompt,
                         ArchitectAgent.ArchitectOptions.DEFAULTS);
                 result = agent.execute();
@@ -348,7 +347,7 @@ public final class BrokkCli implements Callable<Integer> {
                 result = InstructionsPanel.executeAskCommand(cm, askModel, askPrompt);
             } else { // searchPrompt != null
                 var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
-                var agent = new SearchAgent(requireNonNull(searchPrompt), cm, searchModel, cm.getToolRegistry(), 0);
+                var agent = new SearchAgent(requireNonNull(searchPrompt), cm, searchModel, 0);
                 result = agent.execute();
             }
         } catch (Throwable th) {
