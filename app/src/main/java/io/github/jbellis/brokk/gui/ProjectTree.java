@@ -505,7 +505,6 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                 TreePath treePath = new TreePath(targetNode.getPath());
                 setSelectionPath(treePath);
                 scrollPathToVisible(treePath);
-                requestFocusInWindow(); // Ensure tree has focus to see selection
             } else {
                 logger.warn("Could not find or expand to file in tree: " + targetFile.getRelPath());
             }
