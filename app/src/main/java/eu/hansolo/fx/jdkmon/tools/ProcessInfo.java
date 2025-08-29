@@ -18,16 +18,21 @@ package eu.hansolo.fx.jdkmon.tools;
 
 import java.util.Objects;
 
-
 public record ProcessInfo(long pid, String cmd, String cmdLine) {
-    @Override public boolean equals(final Object o) {
-        if (this == o) { return true; }
-        if (o == null || getClass() != o.getClass()) { return false; }
+    @Override
+    public boolean equals(final Object o) {
+        if (this == o) {
+            return true;
+        }
+        if (o == null || getClass() != o.getClass()) {
+            return false;
+        }
         ProcessInfo that = (ProcessInfo) o;
         return Objects.equals(cmd, that.cmd);
     }
-    @Override public int hashCode() {
+
+    @Override
+    public int hashCode() {
         return Objects.hash(cmd);
     }
 }
-

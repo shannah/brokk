@@ -21,5 +21,8 @@ public record JEP(int id, String description, String url, boolean draft) impleme
         return description;
     }
 
-    @Override public String toString() { return String.join(" ", "JEP", Integer.toString(id), description); }
+    @Override
+    public String toString() {
+        return String.join(" ", "JEP", Integer.toString(id), description);
+    }
 }

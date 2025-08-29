@@ -58,7 +58,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
     private JTextField balanceField = new JTextField();
     private BrowserLabel signupLabel = new BrowserLabel("", ""); // Initialized with dummy values
 
-
     @Nullable
     private JTextField gitHubTokenField; // Null if GitHub tab not shown
 
@@ -230,7 +229,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             servicePanel.add(restartLabel, gbc);
             gbc.insets = new Insets(2, 5, 2, 5);
         }
-
 
         gbc.gridy = row;
         gbc.weighty = 1.0;
@@ -754,7 +752,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         if (gitHubTokenField != null) { // Only if panel was created
             gitHubTokenField.setText(MainProject.getGitHubToken());
         }
-
     }
 
     public boolean applySettings() {
@@ -843,7 +840,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
                 logger.debug("Applied GitHub Token");
             }
         }
-
 
         return true;
     }
@@ -1090,7 +1086,4 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             return comboBox.isEnabled() ? super.getCellEditorValue() : Service.ReasoningLevel.DEFAULT;
         }
     }
-
-
-
 }

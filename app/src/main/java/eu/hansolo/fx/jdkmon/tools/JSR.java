@@ -21,5 +21,8 @@ public record JSR(int id, String description, String url) implements Searchable 
         return description;
     }
 
-    @Override public String toString() { return String.join(" ", "JSR", Integer.toString(id), description); }
+    @Override
+    public String toString() {
+        return String.join(" ", "JSR", Integer.toString(id), description);
+    }
 }

@@ -18,25 +18,28 @@ package eu.hansolo.fx.jdkmon.tools;
 
 import eu.hansolo.jdktools.Architecture;
 import eu.hansolo.jdktools.OperatingSystem;
-import javafx.scene.paint.Color;
-
 import java.io.BufferedReader;
 import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.io.StringWriter;
-import java.util.Arrays;
-import java.util.List;
 import java.util.Locale;
-import java.util.Map;
 import java.util.stream.Collectors;
-
 
 public class Detector {
 
-    private static final String[]              DETECT_ALPINE_CMDS     = { "/bin/sh", "-c", "cat /etc/os-release | grep 'NAME=' | grep -ic 'Alpine'" };
-    public  static final String                SDKMAN_FOLDER          = new StringBuilder(System.getProperty("user.home")).append(File.separator).append(".sdkman").append(File.separator).append("candidates").append(File.separator).append("java").toString();
+    private static final String[] DETECT_ALPINE_CMDS = {
+        "/bin/sh", "-c", "cat /etc/os-release | grep 'NAME=' | grep -ic 'Alpine'"
+    };
+    public static final String SDKMAN_FOLDER = new StringBuilder(System.getProperty("user.home"))
+            .append(File.separator)
+            .append(".sdkman")
+            .append(File.separator)
+            .append("candidates")
+            .append(File.separator)
+            .append("java")
+            .toString();
 
     public static final OperatingSystem getOperatingSystem() {
         String os = System.getProperty("os.name").toLowerCase();
@@ -47,9 +50,13 @@ public class Detector {
         } else if (os.indexOf("nix") >= 0 || os.indexOf("nux") >= 0) {
             try {
                 final ProcessBuilder processBuilder = new ProcessBuilder(DETECT_ALPINE_CMDS);
-                final Process        process        = processBuilder.start();
-                final String         result         = new BufferedReader(new InputStreamReader(process.getInputStream())).lines().collect(Collectors.joining("\n"));
-                return null == result ? OperatingSystem.LINUX : result.equals("1") ? OperatingSystem.ALPINE_LINUX : OperatingSystem.LINUX;
+                final Process process = processBuilder.start();
+                final String result = new BufferedReader(new InputStreamReader(process.getInputStream()))
+                        .lines()
+                        .collect(Collectors.joining("\n"));
+                return null == result
+                        ? OperatingSystem.LINUX
+                        : result.equals("1") ? OperatingSystem.ALPINE_LINUX : OperatingSystem.LINUX;
             } catch (IOException e) {
                 e.printStackTrace();
                 return OperatingSystem.LINUX;
@@ -74,12 +81,13 @@ public class Detector {
         return Architecture.NOT_FOUND;
     }
 
-    public static final boolean isSDKMANInstalled() { return new File(SDKMAN_FOLDER).exists(); }
-
+    public static final boolean isSDKMANInstalled() {
+        return new File(SDKMAN_FOLDER).exists();
+    }
 
     // ******************** Internal Classes **********************************
     static class StreamReader extends Thread {
-        private InputStream  is;
+        private InputStream is;
         private StringWriter sw;
 
         StreamReader(InputStream is) {
@@ -90,11 +98,14 @@ public class Detector {
         public void run() {
             try {
                 int c;
-                while ((c = is.read()) != -1)
-                    sw.write(c);
-            } catch (IOException e) { ; }
+                while ((c = is.read()) != -1) sw.write(c);
+            } catch (IOException e) {
+                ;
+            }
         }
 
-        String getResult() { return sw.toString(); }
+        String getResult() {
+            return sw.toString();
+        }
     }
 }

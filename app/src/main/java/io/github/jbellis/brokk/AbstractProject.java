@@ -3,8 +3,8 @@ package io.github.jbellis.brokk;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.agents.BuildAgent;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.git.LocalFileRepo;
@@ -404,7 +404,8 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
     private Language computeMostCommonLanguage() {
         try {
             var counts = getAllFiles().stream()
-                    .map(pf -> com.google.common.io.Files.getFileExtension(pf.absPath().toString()))
+                    .map(pf -> com.google.common.io.Files.getFileExtension(
+                            pf.absPath().toString()))
                     .filter(ext -> !ext.isEmpty())
                     .map(Language::fromExtension)
                     .filter(lang -> lang != Language.NONE)

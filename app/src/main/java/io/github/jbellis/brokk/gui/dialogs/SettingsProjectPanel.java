@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import eu.hansolo.fx.jdkmon.tools.Distro;
+import eu.hansolo.fx.jdkmon.tools.Finder;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.IssueProvider;
 import io.github.jbellis.brokk.MainProject;
@@ -36,8 +38,6 @@ import javax.swing.UIManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
-import eu.hansolo.fx.jdkmon.tools.Distro;
-import eu.hansolo.fx.jdkmon.tools.Finder;
 
 public class SettingsProjectPanel extends JPanel implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(SettingsProjectPanel.class);
@@ -784,7 +784,6 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         gbc.fill = GridBagConstraints.HORIZONTAL;
         buildPanel.add(buildTimeoutSpinner, gbc);
 
-
         // Removed Build Instructions Area and its ScrollPane
 
         gbc.gridx = 0;
@@ -1075,8 +1074,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         dialog.setSize(300, 400);
         dialog.setLocationRelativeTo(parentDialog);
 
-        var languageCheckBoxMapLocal =
-                new LinkedHashMap<Language, JCheckBox>();
+        var languageCheckBoxMapLocal = new LinkedHashMap<Language, JCheckBox>();
         var languagesInProject = new HashSet<io.github.jbellis.brokk.analyzer.Language>();
         project.getRoot();
         Set<io.github.jbellis.brokk.analyzer.ProjectFile> filesToScan =
@@ -1409,8 +1407,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         jdkComboBox.setEnabled(useCustomJdk);
 
         // Perform discovery asynchronously to avoid blocking the UI
-        CompletableFuture
-                .supplyAsync(this::discoverInstalledJdks, ForkJoinPool.commonPool())
+        CompletableFuture.supplyAsync(this::discoverInstalledJdks, ForkJoinPool.commonPool())
                 .whenComplete((List<JdkItem> items, @Nullable Throwable ex) -> {
                     if (ex != null) {
                         logger.warn("JDK discovery failed: {}", ex.getMessage(), ex);
@@ -1431,7 +1428,10 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
                                     break;
                                 }
                             }
-                            if (!matched && desired != null && !desired.isBlank() && !BuildAgent.JAVA_HOME_SENTINEL.equals(desired)) {
+                            if (!matched
+                                    && desired != null
+                                    && !desired.isBlank()
+                                    && !BuildAgent.JAVA_HOME_SENTINEL.equals(desired)) {
                                 var custom = new JdkItem("Custom JDK: " + desired, desired);
                                 jdkComboBox.addItem(custom);
                                 jdkComboBox.setSelectedItem(custom);
@@ -1440,7 +1440,9 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
                         } else {
                             jdkComboBox.setEnabled(false);
                         }
-                        logger.trace("JDK discovery completed; combo box populated with {} items", jdkComboBox.getItemCount());
+                        logger.trace(
+                                "JDK discovery completed; combo box populated with {} items",
+                                jdkComboBox.getItemCount());
                     });
                 });
     }
@@ -1468,7 +1470,8 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         Set<io.github.jbellis.brokk.analyzer.ProjectFile> filesToScan =
                 project.hasGit() ? project.getRepo().getTrackedFiles() : project.getAllFiles();
         for (var pf : filesToScan) {
-            String extension = com.google.common.io.Files.getFileExtension(pf.absPath().toString());
+            String extension =
+                    com.google.common.io.Files.getFileExtension(pf.absPath().toString());
             if (!extension.isEmpty()) {
                 var lang = io.github.jbellis.brokk.analyzer.Language.fromExtension(extension);
                 if (lang != io.github.jbellis.brokk.analyzer.Language.NONE) {

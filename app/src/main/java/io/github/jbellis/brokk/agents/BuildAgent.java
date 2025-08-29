@@ -11,6 +11,8 @@ import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import eu.hansolo.fx.jdkmon.tools.Distro;
+import eu.hansolo.fx.jdkmon.tools.Finder;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;
@@ -18,8 +20,8 @@ import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
@@ -35,8 +37,6 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.Comparator;
 import java.util.Locale;
-import eu.hansolo.fx.jdkmon.tools.Distro;
-import eu.hansolo.fx.jdkmon.tools.Finder;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
 import java.util.stream.Collectors;
@@ -331,10 +331,10 @@ public class BuildAgent {
         return "Abort signal received and processed.";
     }
 
-    /** Detect a JDK to use for this project.
-     *  - If JAVA_HOME is set and points to a JDK (has bin/javac), return the sentinel so it stays dynamic.
-     *  - Otherwise, choose the most suitable JDK using Finder (by latest version/release date) and return its path.
-     *  - If nothing is found, fall back to the sentinel.
+    /**
+     * Detect a JDK to use for this project. - If JAVA_HOME is set and points to a JDK (has bin/javac), return the
+     * sentinel so it stays dynamic. - Otherwise, choose the most suitable JDK using Finder (by latest version/release
+     * date) and return its path. - If nothing is found, fall back to the sentinel.
      */
     public static @Nullable String detectJdk() {
         var env = System.getenv("JAVA_HOME");
@@ -354,10 +354,9 @@ public class BuildAgent {
             var finder = new Finder();
             var distros = finder.getDistributions();
             if (distros != null && !distros.isEmpty()) {
-                Comparator<Distro> distroComparator =
-                        Comparator.comparing(Distro::getVersionNumber)
-                                  .thenComparing(d -> d.getReleaseDate().orElse(null),
-                                                 Comparator.nullsLast(Comparator.naturalOrder()));
+                Comparator<Distro> distroComparator = Comparator.comparing(Distro::getVersionNumber)
+                        .thenComparing(
+                                d -> d.getReleaseDate().orElse(null), Comparator.nullsLast(Comparator.naturalOrder()));
                 var best = distros.stream().max(distroComparator).orElse(null);
                 if (best != null) {
                     var p = best.getPath();

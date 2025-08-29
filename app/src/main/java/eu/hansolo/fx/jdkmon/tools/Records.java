@@ -20,9 +20,7 @@ import eu.hansolo.jdktools.Architecture;
 import eu.hansolo.jdktools.OperatingMode;
 import eu.hansolo.jdktools.OperatingSystem;
 import eu.hansolo.jdktools.versioning.VersionNumber;
-
 import java.time.LocalDate;
-
 
 public class Records {
 

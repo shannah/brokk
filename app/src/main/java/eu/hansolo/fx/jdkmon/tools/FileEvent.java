@@ -19,7 +19,6 @@ package eu.hansolo.fx.jdkmon.tools;
 import java.io.File;
 import java.util.EventObject;
 
-
 public class FileEvent extends EventObject {
 
     public FileEvent(File file) {

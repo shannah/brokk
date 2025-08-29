@@ -15,9 +15,9 @@
  */
 
 /**
- * All kinds of helper classes like different operating system related
- * list cells, classes for detecting the operating system and for finding
- * installed JDK distributions etc.
+ * All kinds of helper classes like different operating system related list cells, classes for detecting the operating
+ * system and for finding installed JDK distributions etc.
+ *
  * @author hansolo
  */
 package eu.hansolo.fx.jdkmon.tools;

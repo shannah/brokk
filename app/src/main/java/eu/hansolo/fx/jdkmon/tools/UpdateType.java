@@ -17,5 +17,6 @@
 package eu.hansolo.fx.jdkmon.tools;
 
 public enum UpdateType {
-    UPDATE, RELEASE
+    UPDATE,
+    RELEASE
 }

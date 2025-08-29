@@ -22,5 +22,8 @@ public record Project(String description, String url) implements Searchable {
         return description;
     }
 
-    @Override public String toString() { return String.join(" ", "Project", description); }
+    @Override
+    public String toString() {
+        return String.join(" ", "Project", description);
+    }
 }
