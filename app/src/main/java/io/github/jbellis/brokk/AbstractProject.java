@@ -60,6 +60,11 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
     }
 
     @Override
+    public Path getMasterRootPathForConfig() {
+        return masterRootPathForConfig;
+    }
+
+    @Override
     public final Path getRoot() {
         return root;
     }

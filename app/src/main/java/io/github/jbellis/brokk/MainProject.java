@@ -278,11 +278,6 @@ public final class MainProject extends AbstractProject {
         return this;
     }
 
-    @Override
-    public Path getMasterRootPathForConfig() {
-        return this.masterRootPathForConfig;
-    }
-
     private static synchronized Properties loadGlobalProperties() {
         if (globalPropertiesCache != null) {
             return (Properties) globalPropertiesCache.clone();
