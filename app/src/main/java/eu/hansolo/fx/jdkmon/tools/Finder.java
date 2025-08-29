@@ -54,6 +54,7 @@ import java.nio.file.SimpleFileVisitor;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
@@ -118,10 +119,27 @@ public class Finder {
     }
 
 
-    public Set<Distro> getDistributions(final List<String> searchPaths) {
-        Set<Distro> distros = new HashSet<>();
+    public Set<Distro> getDistributions() {
+        // Define the default search path based on the operating system
+        final String defaultSearchPath;
+        switch (operatingSystem) {
+            case MACOS -> defaultSearchPath = Finder.MACOS_JAVA_INSTALL_PATH;
+            case WINDOWS -> defaultSearchPath = Finder.WINDOWS_JAVA_INSTALL_PATH;
+            case LINUX, ALPINE_LINUX, LINUX_MUSL -> defaultSearchPath = Finder.LINUX_JAVA_INSTALL_PATH;
+            default -> defaultSearchPath = "";
+        }
 
-        if (null == searchPaths || searchPaths.isEmpty()) { return distros; }
+        // Initialize searchPaths with the default path
+        var searchPaths = new ArrayList<>(Collections.singletonList(defaultSearchPath));
+
+        // If on Linux or Mac, add the SDKMAN directory if it exists
+        if ((operatingSystem == OperatingSystem.LINUX || operatingSystem == OperatingSystem.MACOS) && Detector.isSDKMANInstalled()) {
+            if (!searchPaths.contains(Detector.SDKMAN_FOLDER)) {
+                searchPaths.add(Detector.SDKMAN_FOLDER);
+            }
+        }
+
+        Set<Distro> distros = new HashSet<>();
 
         if (service.isShutdown()) {
             service = Executors.newSingleThreadExecutor();

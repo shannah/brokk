@@ -71,6 +71,11 @@ public final class TestProject implements IProject {
     }
 
     @Override
+    public Language getBuildLanguage() {
+        return language;
+    }
+
+    @Override
     public Path getRoot() {
         return root;
     }
