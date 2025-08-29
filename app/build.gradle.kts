@@ -68,6 +68,7 @@ dependencies {
     implementation(libs.jackson.databind)
     implementation(libs.jspecify)
     implementation(libs.picocli)
+    implementation(libs.bundles.jdkmon)
 
     // Markdown and templating
     implementation(libs.bundles.markdown)
@@ -161,7 +162,7 @@ tasks.named<JavaCompile>("compileJava") {
         error("NullAway")
 
         // Exclude dev/ directory from all ErrorProne checks
-        excludedPaths = ".*/src/main/java/dev/.*"
+        excludedPaths = ".*/src/main/java/(dev/|eu/).*"
 
         // Core NullAway options
         option("NullAway:AnnotatedPackages", "io.github.jbellis.brokk")
