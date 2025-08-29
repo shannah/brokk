@@ -1000,6 +1000,15 @@ public class Service {
         return sttModel;
     }
 
+    /**
+     * Convenience helper to check whether a real STT model is available.
+     *
+     * @return true if speech-to-text is available for use, false if using UnavailableSTT stub.
+     */
+    public boolean hasSttModel() {
+        return !(sttModel instanceof UnavailableSTT);
+    }
+
     /** Interface for speech-to-text operations. Can remain static as it's just an interface definition. */
     public interface SpeechToTextModel {
         /** Transcribes audio, with optional context symbols. */
