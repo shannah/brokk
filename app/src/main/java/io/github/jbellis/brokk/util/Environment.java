@@ -127,7 +127,7 @@ public class Environment {
                     isWindows() ? new String[] {"cmd.exe", "/c", command} : new String[] {"/bin/sh", "-c", command};
         }
 
-        logger.debug(String.join(" ", shellCommand));
+        logger.trace(String.join(" ", shellCommand));
         ProcessBuilder pb = createProcessBuilder(root, shellCommand);
         Process process;
         try {
@@ -395,14 +395,14 @@ public class Environment {
             return false;
         }
         if (isMacOs()) {
-            return new File("/usr/bin/sandbox-exec").canExecute();
-        }
-        if (isLinux()) {
-            // Check common locations and PATH for systemd-run
-            if (new File("/usr/bin/systemd-run").canExecute()) {
+            if (new File("/usr/bin/sandbox-exec").canExecute()) {
                 return true;
             }
-            return existsOnPath("systemd-run");
+            return existsOnPath("sandbox-exec");
+        }
+        if (isLinux()) {
+            // TODO
+            return false;
         }
         return false;
     }
@@ -415,7 +415,6 @@ public class Environment {
                     return true;
                 }
             }
-            return false;
         }
         return false;
     }
