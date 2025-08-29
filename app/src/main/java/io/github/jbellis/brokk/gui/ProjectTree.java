@@ -9,6 +9,8 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.ContextHistory;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
+import java.awt.datatransfer.Transferable;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -119,6 +121,61 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
 
         // Setup keyboard bindings for context menu
         setupContextMenuKeyBindings();
+
+        // Enable drag support: export selected files (or files under selected directories) as a file list
+        setDragEnabled(true);
+        setTransferHandler(new TransferHandler() {
+            @Override
+            public int getSourceActions(JComponent c) {
+                return COPY;
+            }
+
+            @Override
+            protected @Nullable Transferable createTransferable(JComponent c) {
+                // Gather files for export: if directories are selected, include all files under them
+                List<ProjectFile> selection = getSelectedProjectFiles();
+                if (selection.isEmpty()) {
+                    // If right-clicked on a directory and then dragged without selecting files explicitly, try to infer
+                    TreePath lead = getLeadSelectionPath();
+                    if (lead != null) {
+                        DefaultMutableTreeNode node = (DefaultMutableTreeNode) lead.getLastPathComponent();
+                        if (node.getUserObject() instanceof ProjectTreeNode treeNode
+                                && treeNode.getFile().isDirectory()) {
+                            selection = collectProjectFilesUnderDirectory(treeNode.getFile());
+                        }
+                    }
+                }
+
+                if (selection.isEmpty()) {
+                    return null;
+                }
+
+                final java.util.List<java.io.File> files =
+                        selection.stream().map(pf -> pf.absPath().toFile()).collect(Collectors.toList());
+
+                return new Transferable() {
+                    private final DataFlavor[] flavors = new DataFlavor[] {DataFlavor.javaFileListFlavor};
+
+                    @Override
+                    public DataFlavor[] getTransferDataFlavors() {
+                        return flavors.clone();
+                    }
+
+                    @Override
+                    public boolean isDataFlavorSupported(DataFlavor flavor) {
+                        return DataFlavor.javaFileListFlavor.equals(flavor);
+                    }
+
+                    @Override
+                    public Object getTransferData(DataFlavor flavor) {
+                        if (!isDataFlavorSupported(flavor)) {
+                            throw new UnsupportedOperationException("Unsupported flavor: " + flavor);
+                        }
+                        return files;
+                    }
+                };
+            }
+        });
     }
 
     private void handleDoubleClick(MouseEvent e) {
@@ -157,24 +214,47 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                     }
                 }
             }
+
+            List<ProjectFile> targetFiles = List.of();
+            boolean bulk = false;
+
             if (path != null) {
                 // If right-clicking on an item not in current selection, change selection to that item.
                 // Otherwise, keep current selection.
                 if (!isPathSelected(path)) {
                     setSelectionPath(path);
                 }
-                // Ensure the node corresponds to a file before showing context menu.
+
                 DefaultMutableTreeNode node = (DefaultMutableTreeNode) path.getLastPathComponent();
-                if (node.getUserObject() instanceof ProjectTreeNode treeNode
-                        && treeNode.getFile().isFile()) {
-                    prepareAndShowContextMenu(e.getX(), e.getY());
+                if (node.getUserObject() instanceof ProjectTreeNode treeNode) {
+                    File f = treeNode.getFile();
+                    if (f.isDirectory()) {
+                        targetFiles = collectProjectFilesUnderDirectory(f);
+                        bulk = true; // Directory context: show "All" actions
+                    } else if (f.isFile()) {
+                        var selectedFiles = getSelectedProjectFiles();
+                        if (!selectedFiles.isEmpty()) {
+                            targetFiles = selectedFiles;
+                            bulk = selectedFiles.size() > 1;
+                        }
+                    }
                 } else {
-                    // If right-clicked on a directory or empty space with files selected, still show for selected files
                     var selectedFiles = getSelectedProjectFiles();
                     if (!selectedFiles.isEmpty()) {
-                        prepareAndShowContextMenu(e.getX(), e.getY());
+                        targetFiles = selectedFiles;
+                        bulk = selectedFiles.size() > 1;
                     }
                 }
+            } else {
+                var selectedFiles = getSelectedProjectFiles();
+                if (!selectedFiles.isEmpty()) {
+                    targetFiles = selectedFiles;
+                    bulk = selectedFiles.size() > 1;
+                }
+            }
+
+            if (!targetFiles.isEmpty()) {
+                prepareAndShowContextMenu(e.getX(), e.getY(), targetFiles, bulk);
             }
         }
     }
@@ -191,7 +271,11 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                 if (selectionPaths != null && selectionPaths.length > 0) {
                     Rectangle bounds = getPathBounds(selectionPaths[0]);
                     if (bounds != null) {
-                        prepareAndShowContextMenu(bounds.x, bounds.y + bounds.height);
+                        var selectedFiles = getSelectedProjectFiles();
+                        if (!selectedFiles.isEmpty()) {
+                            prepareAndShowContextMenu(
+                                    bounds.x, bounds.y + bounds.height, selectedFiles, selectedFiles.size() > 1);
+                        }
                     }
                 }
             }
@@ -206,56 +290,62 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         return currentContextMenu;
     }
 
-    private void populateContextMenu(JPopupMenu contextMenu) {
+    private void populateContextMenu(JPopupMenu contextMenu, List<ProjectFile> targetFiles, boolean bulk) {
         contextMenu.removeAll();
-        var selectedFiles = getSelectedProjectFiles();
 
-        if (selectedFiles.isEmpty()) {
+        if (targetFiles.isEmpty()) {
             return;
         }
 
-        // Add "Show History" item
-        if (selectedFiles.size() == 1) {
-            JMenuItem historyItem = getHistoryMenuItem(selectedFiles);
+        // Add "Show History" item only for a single file and non-bulk usage
+        if (!bulk && targetFiles.size() == 1) {
+            JMenuItem historyItem = getHistoryMenuItem(targetFiles);
             contextMenu.add(historyItem);
             contextMenu.addSeparator();
         }
 
-        boolean allFilesTracked = project.getRepo().getTrackedFiles().containsAll(selectedFiles);
+        boolean allFilesTracked = project.getRepo().getTrackedFiles().containsAll(targetFiles);
 
-        JMenuItem editItem = new JMenuItem(selectedFiles.size() == 1 ? "Edit" : "Edit All");
+        String editLabel = bulk ? "Edit All" : "Edit";
+        String readLabel = bulk ? "Read All" : "Read";
+        String summarizeLabel = bulk ? "Summarize All" : "Summarize";
+
+        JMenuItem editItem = new JMenuItem(editLabel);
         editItem.addActionListener(ev -> {
             contextManager.submitContextTask("Edit files", () -> {
-                contextManager.editFiles(selectedFiles);
+                contextManager.editFiles(targetFiles);
             });
         });
         editItem.setEnabled(allFilesTracked);
         contextMenu.add(editItem);
 
-        JMenuItem readItem = new JMenuItem(selectedFiles.size() == 1 ? "Read" : "Read All");
+        JMenuItem readItem = new JMenuItem(readLabel);
         readItem.addActionListener(ev -> {
             contextManager.submitContextTask("Read files", () -> {
-                contextManager.addReadOnlyFiles(selectedFiles);
+                contextManager.addReadOnlyFiles(targetFiles);
             });
         });
         contextMenu.add(readItem);
 
-        JMenuItem summarizeItem = new JMenuItem(selectedFiles.size() == 1 ? "Summarize" : "Summarize All");
-        summarizeItem.addActionListener(ev -> {
-            if (!contextManager.getAnalyzerWrapper().isReady()) {
-                contextManager
-                        .getIo()
-                        .systemNotify(
-                                AnalyzerWrapper.ANALYZER_BUSY_MESSAGE,
-                                AnalyzerWrapper.ANALYZER_BUSY_TITLE,
-                                JOptionPane.INFORMATION_MESSAGE);
-                return;
-            }
-            contextManager.submitContextTask("Summarize files", () -> {
-                contextManager.addSummaries(new HashSet<>(selectedFiles), Collections.emptySet());
+        boolean canSummarize = anySummarizable(targetFiles);
+        if (canSummarize) {
+            JMenuItem summarizeItem = new JMenuItem(summarizeLabel);
+            summarizeItem.addActionListener(ev -> {
+                if (!contextManager.getAnalyzerWrapper().isReady()) {
+                    contextManager
+                            .getIo()
+                            .systemNotify(
+                                    AnalyzerWrapper.ANALYZER_BUSY_MESSAGE,
+                                    AnalyzerWrapper.ANALYZER_BUSY_TITLE,
+                                    JOptionPane.INFORMATION_MESSAGE);
+                    return;
+                }
+                contextManager.submitContextTask("Summarize files", () -> {
+                    contextManager.addSummaries(new HashSet<>(targetFiles), Collections.emptySet());
+                });
             });
-        });
-        contextMenu.add(summarizeItem);
+            contextMenu.add(summarizeItem);
+        }
 
         contextMenu.addSeparator();
 
@@ -340,7 +430,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         contextMenu.addSeparator();
         // Add "Run Tests in Shell" item
         JMenuItem runTestsItem = new JMenuItem("Run Tests");
-        boolean hasTestFiles = selectedFiles.stream().allMatch(ContextManager::isTestFile);
+        boolean hasTestFiles = targetFiles.stream().allMatch(ContextManager::isTestFile);
         runTestsItem.setEnabled(hasTestFiles);
         if (!hasTestFiles) {
             runTestsItem.setToolTipText("Non-test files in selection");
@@ -348,9 +438,8 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
 
         runTestsItem.addActionListener(ev -> {
             contextManager.submitContextTask("Run selected tests", () -> {
-                var testProjectFiles = selectedFiles.stream()
-                        .filter(ContextManager::isTestFile)
-                        .collect(Collectors.toSet());
+                var testProjectFiles =
+                        targetFiles.stream().filter(ContextManager::isTestFile).collect(Collectors.toSet());
 
                 if (!testProjectFiles.isEmpty()) {
                     RunTestsService.runTests(chrome, contextManager, testProjectFiles);
@@ -381,9 +470,9 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         return historyItem;
     }
 
-    private void prepareAndShowContextMenu(int x, int y) {
+    private void prepareAndShowContextMenu(int x, int y, List<ProjectFile> targetFiles, boolean bulk) {
         JPopupMenu contextMenu = getOrCreateContextMenu();
-        populateContextMenu(contextMenu);
+        populateContextMenu(contextMenu, targetFiles, bulk);
         if (contextMenu.getComponentCount() > 0) {
             contextMenu.show(ProjectTree.this, x, y);
             // Swing's JPopupMenu typically handles focusing its first enabled item.
@@ -590,7 +679,6 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                 TreePath treePath = new TreePath(targetNode.getPath());
                 setSelectionPath(treePath);
                 scrollPathToVisible(treePath);
-                requestFocusInWindow(); // Ensure tree has focus to see selection
             } else {
                 logger.warn("Could not find or expand to file in tree: " + targetFile.getRelPath());
             }
@@ -684,6 +772,24 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         return List.copyOf(selectedFilesList); // Return immutable list
     }
 
+    private List<ProjectFile> collectProjectFilesUnderDirectory(File directory) {
+        assert directory.isDirectory();
+        var result = new ArrayList<ProjectFile>();
+        try (var walk = Files.walk(directory.toPath())) {
+            walk.filter(Files::isRegularFile).forEach(p -> {
+                try {
+                    var rel = project.getRoot().relativize(p);
+                    result.add(new ProjectFile(project.getRoot(), rel));
+                } catch (Exception ex) {
+                    logger.warn("Skipping non-project path while collecting files under {}: {}", directory, p, ex);
+                }
+            });
+        } catch (Exception e) {
+            logger.error("Error collecting files under directory {}", directory, e);
+        }
+        return List.copyOf(result);
+    }
+
     private @Nullable ProjectFile getProjectFileFromNode(DefaultMutableTreeNode node) {
         if (!(node.getUserObject() instanceof ProjectTreeNode treeNode)) {
             return null;
@@ -700,6 +806,13 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                     e);
             return null;
         }
+    }
+
+    private boolean anySummarizable(List<ProjectFile> files) {
+        var exts = project.getAnalyzerLanguages().stream()
+                .flatMap(lang -> lang.getExtensions().stream())
+                .collect(Collectors.toSet());
+        return files.stream().anyMatch(pf -> exts.contains(pf.extension()));
     }
 
     /** Node wrapper for file information and loading state */
