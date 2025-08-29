@@ -16,18 +16,9 @@
 
 package eu.hansolo.fx.jdkmon.tools;
 
-import com.google.gson.Gson;
-import com.google.gson.JsonArray;
-import com.google.gson.JsonElement;
-import com.google.gson.JsonObject;
-import eu.hansolo.cvescanner.Constants.CVE;
-import eu.hansolo.fx.jdkmon.Main;
-import eu.hansolo.fx.jdkmon.tools.Detector.MacosAccentColor;
-import eu.hansolo.fx.jdkmon.tools.Records.JDKMonUpdate;
 import eu.hansolo.fx.jdkmon.tools.Records.JDKUpdate;
 import eu.hansolo.jdktools.OperatingSystem;
 import eu.hansolo.jdktools.TermOfSupport;
-import eu.hansolo.jdktools.scopes.BuildScope;
 import eu.hansolo.jdktools.util.OutputFormat;
 import eu.hansolo.jdktools.versioning.VersionNumber;
 import javafx.application.Application;
@@ -40,7 +31,6 @@ import org.apache.commons.compress.archivers.tar.TarArchiveInputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipArchiveInputStream;
 import org.apache.commons.compress.compressors.gzip.GzipCompressorInputStream;
-import org.apache.commons.compress.utils.IOUtils;
 
 import java.io.BufferedInputStream;
 import java.io.BufferedReader;
@@ -251,26 +241,6 @@ public class Helper {
 
     public static final String colorToCss(final Color color) { return color.toString().replace("0x", "#"); }
 
-    public static JDKMonUpdate checkForJDKMonUpdate() {
-        HttpResponse<String> response = io.foojay.api.discoclient.util.Helper.get(Constants.RELEASES_URI, "JDKMon");
-        if (null == response || null == response.body() || response.body().isEmpty()) {
-            return new JDKMonUpdate(Main.VERSION, false);
-        } else {
-            final Gson       gson       = new Gson();
-            final JsonObject jsonObject = gson.fromJson(response.body(), JsonObject.class);
-            if (jsonObject.has("tag_name")) {
-                final VersionNumber latestVersion     = VersionNumber.fromText(jsonObject.get("tag_name").getAsString());
-                if (latestVersion.compareTo(Main.VERSION) > 0) {
-                    return new JDKMonUpdate(latestVersion, true);
-                } else {
-                    return new JDKMonUpdate(Main.VERSION, false);
-                }
-            } else {
-                return new JDKMonUpdate(Main.VERSION, false);
-            }
-        }
-    }
-
     public static final boolean isUriValid(final String uri) {
         final HttpClient httpClient = HttpClient.newBuilder()
                                                 .connectTimeout(Duration.ofSeconds(10))
@@ -296,41 +266,13 @@ public class Helper {
         }
     }
 
-    public static final List<CVE> getCVEsForVersion(final List<CVE> cves, final VersionNumber versionNumber) {
-        return cves.stream().filter(cve -> cve.affectedVersions().contains(versionNumber)).collect(Collectors.toList());
-    }
-
-    public static final Color getColorForCVE(final CVE cve, final boolean darkMode) {
-        switch(cve.cvss()) {
-            case CVSSV2 -> {
-                switch(cve.severity()) {
-                    case LOW             : return darkMode ? MacosAccentColor.GREEN.colorDark  : MacosAccentColor.GREEN.colorAqua;
-                    case MEDIUM          : return darkMode ? MacosAccentColor.YELLOW.colorDark : MacosAccentColor.YELLOW.colorAqua;
-                    case HIGH            : return darkMode ? MacosAccentColor.RED.colorDark    : MacosAccentColor.RED.colorAqua;
-                    case NONE, NOT_FOUND :
-                    default              : return darkMode ? MacosAccentColor.BLUE.colorDark   : MacosAccentColor.BLUE.colorAqua;
-                }
-            }
-            case CVSSV30, CVSSV31, CVSSV40 -> {
-                switch (cve.severity()) {
-                    case LOW             : return darkMode ? MacosAccentColor.GREEN.colorDark  : MacosAccentColor.GREEN.colorAqua;
-                    case MEDIUM          : return darkMode ? MacosAccentColor.YELLOW.colorDark : MacosAccentColor.YELLOW.colorAqua;
-                    case HIGH            : return darkMode ? MacosAccentColor.ORANGE.colorDark : MacosAccentColor.ORANGE.colorAqua;
-                    case CRITICAL        : return darkMode ? MacosAccentColor.RED.colorDark    : MacosAccentColor.RED.colorAqua;
-                    case NONE, NOT_FOUND :
-                    default              : return darkMode ? MacosAccentColor.BLUE.colorDark   : MacosAccentColor.BLUE.colorAqua;
-                }
-            }
-            default -> { return darkMode ? MacosAccentColor.BLUE.colorDark   : MacosAccentColor.BLUE.colorAqua; }
-        }
-    }
-
     public static final void untar(final String compressedFilename, final String targetFolder) {
         if (!compressedFilename.toLowerCase().endsWith("tar.gz")) { System.out.println("File must be zip format"); return; }
         if (!new File(compressedFilename).exists() || new File(compressedFilename).isDirectory()) { System.out.println("Given file either doesn't exist or is folder"); return; }
         try (GzipCompressorInputStream archive = new GzipCompressorInputStream(new BufferedInputStream(new FileInputStream(compressedFilename)))) {
-            OutputStream out = Files.newOutputStream(Paths.get("un-gzipped.tar"));
-            IOUtils.copy(archive, out);
+            try (OutputStream out = Files.newOutputStream(Paths.get("un-gzipped.tar"))) {
+                archive.transferTo(out);
+            }
         } catch (IOException e) {
             e.printStackTrace();
         }
@@ -340,7 +282,7 @@ public class Helper {
          */
         try (TarArchiveInputStream archive = new TarArchiveInputStream(new BufferedInputStream(new FileInputStream("un-gzipped.tar")))) {
             TarArchiveEntry entry;
-            while ((entry = archive.getNextTarEntry()) != null) {
+            while ((entry = (TarArchiveEntry) archive.getNextEntry()) != null) {
                 String name = entry.getName();
                 if (name.startsWith("./")) {
                     name = name.substring(2);
@@ -351,7 +293,9 @@ public class Helper {
                 } else {
                     final int                      mode        = entry.getMode();
                     final Set<PosixFilePermission> permissions = parsePerms(mode);
-                    IOUtils.copy(archive, new FileOutputStream(file));
+                    try (var fos = new FileOutputStream(file)) {
+                        archive.transferTo(fos);
+                    }
                     try {
                         Files.setPosixFilePermissions(file.toPath(), permissions);
                         file.setExecutable(true);
@@ -376,7 +320,7 @@ public class Helper {
         // Create zip file stream.
         try (ZipArchiveInputStream archive = new ZipArchiveInputStream(new BufferedInputStream(new FileInputStream(compressedFilename)))) {
             ZipArchiveEntry entry;
-            while ((entry = archive.getNextZipEntry()) != null) {
+            while ((entry = (ZipArchiveEntry) archive.getNextEntry()) != null) {
                 String name = entry.getName();
                 if (name.startsWith("./")) {
                     name = name.substring(2);
@@ -385,7 +329,9 @@ public class Helper {
                 if (entry.isDirectory()) {
                     Files.createDirectories(file.toPath());
                 } else {
-                    IOUtils.copy(archive, new FileOutputStream(file));
+                    try (var fos = new FileOutputStream(file)) {
+                        archive.transferTo(fos);
+                    }
                     file.setExecutable(true);
                 }
             }
@@ -416,37 +362,6 @@ public class Helper {
         String sperms = new String(ss);
         //System.out.printf("%d -> %s\n", perms, sperms);
         return PosixFilePermissions.fromString(sperms);
-    }
-
-    public static final Map<Integer, List<VersionNumber>> getAvailableVersions() {
-        final Map<Integer, List<VersionNumber>> availableVersions = new HashMap<>();
-        final HttpResponse<String> response = get (Constants.MAJOR_VERSIONS_URI);
-        if (null == response) { return availableVersions; }
-        final String bodyText = response.body();
-        if (null == bodyText || bodyText.isEmpty()) { return availableVersions; }
-        final Gson        gson    = new Gson();
-        final JsonElement element = gson.fromJson(response.body(), JsonElement.class);
-        if (element instanceof JsonObject) {
-            final List<MinimizedPkg> pkgs       = new ArrayList<>();
-            final JsonObject         jsonObject = element.getAsJsonObject();
-            final JsonArray          jsonArray  = jsonObject.getAsJsonArray("result");
-            for (int i = 0; i < jsonArray.size(); i++) {
-                try {
-                    final JsonObject json = jsonArray.get(i).getAsJsonObject();
-                    final int majorVersion = json.get("major_version").getAsInt();
-                    final JsonArray versionArray = json.getAsJsonArray("versions");
-                    if (versionArray.isEmpty()) { continue; }
-                    availableVersions.put(majorVersion, new ArrayList<>());
-                    for (int j = 0 ; j < versionArray.size() ; j++) {
-                        VersionNumber versionNumber = VersionNumber.fromText(versionArray.get(j).getAsString());
-                        availableVersions.get(majorVersion).add(versionNumber);
-                    }
-                } catch (Exception e) {
-                    //System.out.println(e);
-                }
-            }
-        }
-        return availableVersions;
     }
 
     public static final Optional<JDKUpdate> getNextRelease() {
@@ -608,87 +523,5 @@ public class Helper {
         results.addAll(jsrsFound);
         results.addAll(projectsFound);
         return results;
-    }
-
-    public static final void updateJVMWithReleaseAndEndOfLifeDate(final Distro distro) {
-        if (BuildScope.BUILD_OF_OPEN_JDK == distro.getBuildScope()) {
-            final HttpResponse<String> response = get(Constants.JAVA_RELEASES_URL + distro.getVersionNumber().toString(OutputFormat.REDUCED_COMPRESSED, true, false));
-            if (null == response) { return; }
-            final String bodyText = response.body();
-            if (null == bodyText || bodyText.isEmpty()) { return; }
-            final Gson        gson    = new Gson();
-            final JsonElement element = gson.fromJson(response.body(), JsonElement.class);
-            if (element instanceof JsonObject) {
-                final JsonObject jsonObj       = element.getAsJsonObject();
-                final JsonObject jdkDetailsObj = jsonObj.has("jdkDetails") ? jsonObj.getAsJsonObject("jdkDetails") : null;
-                if (null != jdkDetailsObj) {
-                    LocalDateTime endOfLifeDate = jdkDetailsObj.has("endOfSupportLifeDate") ? LocalDateTime.parse(jdkDetailsObj.get("endOfSupportLifeDate").getAsString(), DateTimeFormatter.ISO_DATE_TIME) : null;
-                    if (null != endOfLifeDate) {
-                        distro.setEndOfLifeDate(endOfLifeDate);
-                        System.out.println("End of Life date of " + distro.getName() + " " + distro.getVersionNumber().toString(OutputFormat.REDUCED_COMPRESSED, true, true) + " is " + Constants.DATE_FORMATTER.format(endOfLifeDate));
-                    } else {
-                        System.out.println("Error parsing end of life date");
-                    }
-                } else {
-                    System.out.println("Cannot find jdkDetails");
-                }
-                LocalDateTime releaseDate = jsonObj.has("releaseDate") ? LocalDateTime.parse(jsonObj.get("releaseDate").getAsString(), DateTimeFormatter.ISO_DATE_TIME) : null;
-                if (null != releaseDate) {
-                    distro.setReleaseDate(releaseDate);
-                    System.out.println("Release date of " + distro.getName() + " " + distro.getVersionNumber().toString(OutputFormat.REDUCED_COMPRESSED, true, true) + " is " + Constants.DATE_FORMATTER.format(releaseDate));
-                } else {
-                    System.out.println("Error parsing release date");
-                }
-            }
-        }
-    }
-
-
-    // ******************** REST calls ****************************************
-    public static HttpClient createHttpClient() {
-        return HttpClient.newBuilder()
-                         .connectTimeout(Duration.ofSeconds(20))
-                         .followRedirects(Redirect.NORMAL)
-                         .version(java.net.http.HttpClient.Version.HTTP_2)
-                         .build();
-    }
-
-    public static final HttpResponse<String> get(final String uri) { return get(uri, ""); }
-    public static final HttpResponse<String> get(final String uri, final String userAgent) {
-        if (null == httpClient) { httpClient = createHttpClient(); }
-        final String userAgentText = (null == userAgent || userAgent.isEmpty()) ? "DiscoClient V2" : "DiscoClient V2 (" + userAgent + ")";
-        HttpRequest request = HttpRequest.newBuilder()
-                                         .GET()
-                                         .uri(URI.create(uri))
-                                         .setHeader("Accept", "application/json")
-                                         .setHeader("User-Agent", userAgentText)
-                                         .timeout(Duration.ofSeconds(60))
-                                         .build();
-        try {
-            HttpResponse<String> response = httpClient.send(request, BodyHandlers.ofString());
-            if (response.statusCode() == 200) {
-                return response;
-            } else {
-                // Problem with url request
-                return response;
-            }
-        } catch (CompletionException | InterruptedException | IOException e) {
-            return null;
-        }
-    }
-
-    public static final CompletableFuture<HttpResponse<String>> getAsync(final String uri) { return getAsync(uri, ""); }
-    public static final CompletableFuture<HttpResponse<String>> getAsync(final String uri, final String userAgent) {
-        if (null == httpClient) { httpClient = createHttpClient(); }
-
-        final String userAgentText = (null == userAgent || userAgent.isEmpty()) ? "DiscoClient" : "DiscoClient (" + userAgent + ")";
-        final HttpRequest request = HttpRequest.newBuilder()
-                                               .GET()
-                                               .uri(URI.create(uri))
-                                               .setHeader("Accept", "application/json")
-                                               .setHeader("User-Agent", userAgentText)
-                                               .timeout(Duration.ofSeconds(60))
-                                               .build();
-        return httpClient.sendAsync(request, BodyHandlers.ofString());
     }
 }

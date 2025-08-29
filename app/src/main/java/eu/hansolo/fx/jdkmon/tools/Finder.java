@@ -16,7 +16,6 @@
 
 package eu.hansolo.fx.jdkmon.tools;
 
-import eu.hansolo.fx.jdkmon.Main.SemverUri;
 import eu.hansolo.fx.jdkmon.tools.Records.JdkInfo;
 import eu.hansolo.fx.jdkmon.tools.Records.SysInfo;
 import eu.hansolo.jdktools.Architecture;
@@ -84,6 +83,8 @@ import java.util.stream.Stream;
 
 
 public class Finder {
+    public record SemverUri(Semver semver, String uri) {}
+
     public static final  String          MACOS_JAVA_INSTALL_PATH   = "/System/Volumes/Data/Library/Java/JavaVirtualMachines/";
     public static final  String          WINDOWS_JAVA_INSTALL_PATH = "C:\\Program Files\\Java\\";
     public static final  String          LINUX_JAVA_INSTALL_PATH   = "/usr/lib/jvm";
@@ -108,16 +109,9 @@ public class Finder {
     private              String          javaHome                  = "";
     private              String          javafxPropertiesFile      = "javafx.properties";
     private              boolean         isAlpine                  = false;
-    private              DiscoClient     discoclient;
-    private final        List<ProcessInfo> usedDistros;
 
 
     public Finder() {
-        this(new DiscoClient("JDKMon"));
-    }
-    public Finder(final DiscoClient discoclient) {
-        this.discoclient = discoclient;
-        this.usedDistros = getUsedDistros();
         getJavaHome();
         if (this.javaHome.isEmpty()) { this.javaHome = System.getProperties().get("java.home").toString(); }
         checkIfAlpineLinux();
@@ -145,61 +139,9 @@ public class Finder {
         try {
             service.awaitTermination(5000, TimeUnit.MILLISECONDS);
         } catch (InterruptedException e) {
-            e.printStackTrace();
+            // ignore
         }
         return distros;
-    }
-
-    public Map<Distro, List<Pkg>> getAvailableUpdates(final List<Distro> distributions) {
-        Map<Distro, List<Pkg>> distrosToUpdate = new ConcurrentHashMap<>();
-        //List<CompletableFuture<Void>> updateFutures   = Collections.synchronizedList(new ArrayList<>());
-        //distributions.forEach(distribution -> updateFutures.add(discoclient.updateAvailableForAsync(DiscoClient.getDistributionFromText(distribution.getApiString()), Semver.fromText(distribution.getVersion()).getSemver1(), Architecture.fromText(distribution.getArchitecture()), distribution.getFxBundled(), null).thenAccept(pkgs -> distrosToUpdate.put(distribution, pkgs))));
-        //CompletableFuture.allOf(updateFutures.toArray(new CompletableFuture[updateFutures.size()])).join();
-
-        // Show unknown builds of OpenJDK
-        final boolean showUnknownBuildsOfOpenJDK = PropertyManager.INSTANCE.getBoolean(PropertyManager.PROPERTY_SHOW_UNKNOWN_BUILDS, false);
-        distributions.stream()
-                     .filter(Objects::nonNull)
-                     .filter(distro ->  showUnknownBuildsOfOpenJDK ? distro.getName() != null : !distro.getName().equals(Constants.UNKNOWN_BUILD_OF_OPENJDK))
-                     .forEach(distribution -> {
-            List<Pkg> availableUpdates = discoclient.updateAvailableFor(DiscoClient.getDistributionFromText(distribution.getApiString()), Semver.fromText(distribution.getVersion()).getSemver1(), operatingSystem, Architecture.fromText(distribution.getArchitecture()), distribution.getFxBundled(), null, distribution.getFeature().getApiString());
-
-            if (null != availableUpdates) {
-                distrosToUpdate.put(distribution, availableUpdates);
-            }
-
-            if (OperatingSystem.ALPINE_LINUX == operatingSystem) {
-                availableUpdates = availableUpdates.stream().filter(pkg -> pkg.getLibCType() == LibCType.MUSL).collect(Collectors.toList());
-            } else if (OperatingSystem.LINUX == operatingSystem) {
-                availableUpdates = availableUpdates.stream().filter(pkg -> pkg.getLibCType() != LibCType.MUSL).collect(Collectors.toList());
-            }
-
-            if (Architecture.NOT_FOUND != architecture && !architecture.getSynonyms().isEmpty()) {
-                availableUpdates = availableUpdates.stream().filter(pkg -> architecture.getSynonyms().contains(pkg.getArchitecture()) | pkg.getArchitecture() == architecture).collect(Collectors.toList());
-            }
-
-            distrosToUpdate.put(distribution, availableUpdates);
-        });
-
-        // Check if there are newer versions from other distributions
-        distrosToUpdate.entrySet()
-                       .stream()
-                       .filter(entry -> !entry.getKey().getApiString().startsWith("graal"))
-                       .filter(entry -> !entry.getKey().getApiString().equals("mandrel"))
-                       .filter(entry -> !entry.getKey().getApiString().equals("liberica_native"))
-                       .forEach(entry -> {
-                            if (entry.getValue().isEmpty()) {
-                                Distro distro = entry.getKey();
-                                entry.setValue(discoclient.updateAvailableFor(null, Semver.fromText(distro.getVersion()).getSemver1(), Architecture.fromText(distro.getArchitecture()), distro.getFxBundled()));
-                            }
-                       });
-
-        LinkedHashMap<Distro, List < Pkg >> sorted = new LinkedHashMap<>();
-        distrosToUpdate.entrySet()
-                       .stream()
-                       .sorted(Map.Entry.comparingByKey(Comparator.comparing(Distro::getName)))
-                       .forEachOrdered(entry -> sorted.put(entry.getKey(), entry.getValue()));
-        return sorted;
     }
 
     public OperatingSystem getOperatingSystem() { return operatingSystem; }
@@ -581,26 +523,6 @@ public class Finder {
                     }
                 }
 
-                if (lines.length > 2) {
-                    String line3 = lines[2].toLowerCase();
-                    if (!PropertyManager.INSTANCE.hasKey(PropertyManager.PROPERTY_FEATURES)) {
-                        PropertyManager.INSTANCE.setString(PropertyManager.PROPERTY_FEATURES, "loom,panama,metropolis,valhalla,lanai,kona_fiber,crac");
-                        PropertyManager.INSTANCE.storeProperties();
-                    }
-
-                    String[] features = PropertyManager.INSTANCE.getString(PropertyManager.PROPERTY_FEATURES).split(",");
-                    for (String feat : features) {
-                        feat = feat.trim().toLowerCase();
-                        if (line3.contains(feat)) {
-                            feature = Feature.fromText(feat);
-                            if (feature == Feature.CRAC) {
-                                supportsCRaC = Boolean.TRUE;
-                            }
-                            break;
-                        }
-                    }
-                }
-
                 if (name.equalsIgnoreCase("Mandrel")) {
                     buildScope = BuildScope.BUILD_OF_GRAALVM;
                     if (releaseProperties.containsKey("JAVA_VERSION")) {
@@ -693,18 +615,9 @@ public class Finder {
                 if (architecture.isEmpty()) { architecture = this.architecture.name().toLowerCase(); }
 
                 // @ToDo: Assuming an unknown build of OpenJDK is a build of Oracle OpenJDK
-                final boolean showUnknownBuildsOfOpenJDK = PropertyManager.INSTANCE.getBoolean(PropertyManager.PROPERTY_SHOW_UNKNOWN_BUILDS, false);
+                final boolean showUnknownBuildsOfOpenJDK = false;
                 if (showUnknownBuildsOfOpenJDK && name.equals(Constants.UNKNOWN_BUILD_OF_OPENJDK) && apiString.isEmpty()) {
                     apiString = "oracle_open_jdk";
-                }
-
-                // Check if found distro is in use
-                for (ProcessInfo processInfo : usedDistros) {
-                    if (java.contains(processInfo.cmd())) {
-                        inUse.set(true);
-                        usedBy.add(processInfo.cmdLine());
-                        break;
-                    }
                 }
 
                 Distro distributionFound = new Distro(name, apiString, version.toString(OutputFormat.REDUCED_COMPRESSED, true, true), Integer.toString(jdkVersion.getMajorVersion().getAsInt()), operatingSystem, architecture, fxBundled, parentPath, feature, buildScope, handledBySdkman, parentPath.substring(0, parentPath.lastIndexOf(File.separator)));
@@ -870,18 +783,6 @@ public class Finder {
             e.printStackTrace();
         }
         return availableOpenJfxVersions;
-    }
-
-    public List<ProcessInfo> getUsedDistros() {
-        final long              currentPid  = ProcessHandle.current().pid();
-        final List<ProcessInfo> usedDistros = ProcessHandle.allProcesses()
-                                                           .filter(process -> process.pid() != currentPid)
-                                                           .filter(process -> process.info().command().isPresent())
-                                                           .filter(process -> process.info().command().get().endsWith(this.javaFile))
-                                                           .filter(process -> !Files.isSymbolicLink(Path.of(process.info().command().get())))
-                                                           .map(process -> new ProcessInfo(process.pid(), process.info().command().get(), process.info().commandLine().isPresent() ? process.info().commandLine().get() : "unknown"))
-                                                           .collect(Collectors.toList());
-        return usedDistros;
     }
 
     private class Streamer implements Runnable {

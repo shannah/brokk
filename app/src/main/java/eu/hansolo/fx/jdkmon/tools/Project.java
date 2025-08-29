@@ -17,6 +17,7 @@
 package eu.hansolo.fx.jdkmon.tools;
 
 public record Project(String description, String url) implements Searchable {
+    @Override
     public String dscr() {
         return description;
     }
