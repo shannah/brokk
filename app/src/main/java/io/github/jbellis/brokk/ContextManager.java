@@ -281,6 +281,56 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 io.enableActionButtons();
             }
         });
+
+        migrateToSessionsV3IfNeeded();
+    }
+
+    private void migrateToSessionsV3IfNeeded() {
+        if (project instanceof MainProject mainProject && !mainProject.isMigrationsToSessionsV3Complete()) {
+            submitBackgroundTask("Migrate sessions to V3", () -> {
+                var sessionsWithUnreadableHistory = new HashSet<UUID>();
+                var sessionManager = project.getSessionManager();
+
+                sessionManager.listSessions().stream().map(SessionInfo::id).forEach(session -> {
+                    // loading history triggers migration if needed
+                    if (sessionManager.loadHistory(session, this) == null) {
+                        sessionsWithUnreadableHistory.add(session);
+                    }
+                });
+
+                // Avoid moving the currently active session to prevent disrupting the UI/session state
+                boolean skippedActive = sessionsWithUnreadableHistory.remove(currentSessionId);
+
+                int moved = 0;
+                for (var sessionId : sessionsWithUnreadableHistory) {
+                    try {
+                        sessionManager.moveSessionToUnreadable(sessionId);
+                        moved++;
+                    } catch (Exception e) {
+                        logger.warn(
+                                "Failed to move session {} with unreadable history to 'unreadable' folder",
+                                sessionId,
+                                e);
+                    }
+                }
+
+                mainProject.setMigrationsToSessionsV3Complete(true);
+
+                logger.info(
+                        "Migrated sessions to V3; moved {} sessions with unreadable history to 'unreadable': {}",
+                        moved,
+                        sessionsWithUnreadableHistory.stream().sorted().toList());
+                if (skippedActive) {
+                    logger.info(
+                            "Skipped moving currently active session {} due to unreadable history; user may move or delete it manually.",
+                            currentSessionId);
+                }
+                if (moved > 0 && io instanceof Chrome chrome) {
+                    SwingUtilities.invokeLater(
+                            () -> chrome.getHistoryOutputPanel().updateSessionComboBox());
+                }
+            });
+        }
     }
 
     /**
