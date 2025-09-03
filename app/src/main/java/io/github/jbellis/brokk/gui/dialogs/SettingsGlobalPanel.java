@@ -297,8 +297,11 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         var sorter = new TableRowSorter<>(quickModelsTableModel);
         // Sort the Reasoning column using enum ordinal to preserve natural order
         sorter.setComparator(2, Comparator.comparingInt(Service.ReasoningLevel::ordinal));
-        // Sort the Processing Tier column similarly
-        sorter.setComparator(3, Comparator.comparingInt(Service.ProcessingTier::ordinal));
+        var showServiceTiers = Boolean.getBoolean("brokk.servicetiers");
+        if (showServiceTiers) {
+            // Sort the Processing Tier column similarly when tiers are enabled
+            sorter.setComparator(3, Comparator.comparingInt(Service.ProcessingTier::ordinal));
+        }
         quickModelsTable.setRowSorter(sorter);
 
         TableColumn aliasColumn = quickModelsTable.getColumnModel().getColumn(0);
@@ -315,12 +318,17 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         reasoningColumn.setCellRenderer(new ReasoningCellRenderer(models));
         reasoningColumn.setPreferredWidth(100);
 
-        TableColumn processingColumn = quickModelsTable.getColumnModel().getColumn(3);
-        var processingComboBoxEditor = new JComboBox<>(Service.ProcessingTier.values());
-        processingColumn.setCellEditor(
-                new ProcessingTierCellEditor(processingComboBoxEditor, models, quickModelsTable));
-        processingColumn.setCellRenderer(new ProcessingTierCellRenderer(models));
-        processingColumn.setPreferredWidth(120);
+        if (showServiceTiers) {
+            TableColumn processingColumn = quickModelsTable.getColumnModel().getColumn(3);
+            var processingComboBoxEditor = new JComboBox<>(Service.ProcessingTier.values());
+            processingColumn.setCellEditor(
+                    new ProcessingTierCellEditor(processingComboBoxEditor, models, quickModelsTable));
+            processingColumn.setCellRenderer(new ProcessingTierCellRenderer(models));
+            processingColumn.setPreferredWidth(120);
+        } else {
+            // Remove the Processing Tier column from the view when service tiers are disabled
+            quickModelsTable.removeColumn(quickModelsTable.getColumnModel().getColumn(3));
+        }
 
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
         var addButton = new JButton("Add");

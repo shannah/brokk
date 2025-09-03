@@ -25,7 +25,8 @@ application {
     applicationDefaultJvmArgs = listOf(
         "-ea",  // Enable assertions
         "--add-modules=jdk.incubator.vector",  // Vector API support
-        "-Dbrokk.devmode=true"  // Development mode flag
+        "-Dbrokk.devmode=true",  // Development mode flag
+        "-Dbrokk.servicetiers=true",  // Development mode flag
     )
 }
 
