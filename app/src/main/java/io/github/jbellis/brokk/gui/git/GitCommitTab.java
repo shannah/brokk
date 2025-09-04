@@ -1,4 +1,4 @@
-package io.github.jbellis.brokk.gui;
+package io.github.jbellis.brokk.gui.git;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.TaskResult;
@@ -9,7 +9,11 @@ import io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel;
 import io.github.jbellis.brokk.difftool.ui.BufferSource;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitWorkflowService;
+import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.CommitDialog;
+import io.github.jbellis.brokk.gui.Constants;
 import io.github.jbellis.brokk.gui.components.ResponsiveButtonPanel;
+import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.widgets.FileStatusTable;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
@@ -35,7 +39,6 @@ public class GitCommitTab extends JPanel {
 
     private final Chrome chrome;
     private final ContextManager contextManager;
-    private final GitPanel gitPanel; // Reference to parent GitPanel
     private final GitWorkflowService workflowService;
 
     // Commit tab UI
@@ -51,11 +54,10 @@ public class GitCommitTab extends JPanel {
     // Thread-safe cached count for badge updates
     private volatile int cachedModifiedFileCount = 0;
 
-    public GitCommitTab(Chrome chrome, ContextManager contextManager, GitPanel gitPanel) {
+    public GitCommitTab(Chrome chrome, ContextManager contextManager) {
         super(new BorderLayout());
         this.chrome = chrome;
         this.contextManager = contextManager;
-        this.gitPanel = gitPanel; // Store reference to parent
         this.workflowService = new GitWorkflowService(contextManager);
         buildCommitTabUI();
     }
@@ -164,13 +166,13 @@ public class GitCommitTab extends JPanel {
         viewHistoryItem.addActionListener(e -> {
             // int row = uncommittedFilesTable.getSelectedRow(); // Using rightClickedFile instead
             if (rightClickedFile != null) {
-                gitPanel.addFileHistoryTab(rightClickedFile);
+                chrome.addFileHistoryTab(rightClickedFile);
             } else { // Fallback to selection if rightClickedFile is somehow null
                 int row = uncommittedFilesTable.getSelectedRow();
                 if (row >= 0) {
                     var projectFile =
                             (ProjectFile) uncommittedFilesTable.getModel().getValueAt(row, 2);
-                    gitPanel.addFileHistoryTab(projectFile);
+                    chrome.addFileHistoryTab(projectFile);
                 }
             }
             rightClickedFile = null; // Clear after use
@@ -225,8 +227,8 @@ public class GitCommitTab extends JPanel {
                                 + GitUiUtil.shortenCommitId(commitResult.commitId())
                                 + ": " + commitResult.firstLine());
                         updateCommitPanel(); // Refresh file list
-                        gitPanel.updateLogTab();
-                        gitPanel.selectCurrentBranchInLogTab();
+                        chrome.updateLogTab();
+                        chrome.selectCurrentBranchInLogTab();
                     });
             dialog.setVisible(true);
         });
@@ -268,9 +270,13 @@ public class GitCommitTab extends JPanel {
         contentPanel.add(fileStatusPane);
         contentPanel.add(Box.createVerticalStrut(Constants.V_GAP));
         contentPanel.add(buttonPanel);
-        contentPanel.add(
-                Box.createVerticalStrut(Constants.V_GAP)); // bottom spacing to avoid clipping when buttons wrap
-        add(contentPanel, BorderLayout.NORTH);
+
+        JPanel titledPanel = new JPanel(new BorderLayout());
+        titledPanel.setBorder(BorderFactory.createTitledBorder("Changes"));
+        titledPanel.add(contentPanel, BorderLayout.NORTH);
+
+        add(titledPanel, BorderLayout.CENTER);
+
         // Ensure initial sizing is only as large as the table contents
         shrinkTableToContents();
 
@@ -573,7 +579,7 @@ public class GitCommitTab extends JPanel {
 
         contextManager.submitUserTask("show-uncomitted-files", () -> {
             try {
-                var builder = new BrokkDiffPanel.Builder(chrome.themeManager, contextManager);
+                var builder = new BrokkDiffPanel.Builder(chrome.getTheme(), contextManager);
 
                 for (var file : orderedFiles) {
                     var rightSource = new BufferSource.FileSource(file.absPath().toFile(), file.getFileName());
@@ -718,7 +724,7 @@ public class GitCommitTab extends JPanel {
                     String successMessage = "Rolled back " + fileList + " to HEAD state. Use Ctrl+Z to undo.";
                     chrome.systemOutput(successMessage);
                     updateCommitPanel();
-                    gitPanel.updateLogTab();
+                    chrome.updateLogTab();
                 });
             } catch (Exception ex) {
                 logger.error("Error rolling back files:", ex);
@@ -748,16 +754,16 @@ public class GitCommitTab extends JPanel {
                 chrome.systemOutput("Stashed " + fileList + ": " + stashDescription);
             }
             updateCommitPanel(); // Refresh file list
-            gitPanel.updateLogTab(); // Refresh log
+            chrome.updateLogTab(); // Refresh log
         });
     }
 
-    void disableButtons() {
+    public void disableButtons() {
         stashButton.setEnabled(false);
         commitButton.setEnabled(false);
     }
 
-    void enableButtons() {
+    public void enableButtons() {
         stashButton.setEnabled(true);
         commitButton.setEnabled(true);
     }

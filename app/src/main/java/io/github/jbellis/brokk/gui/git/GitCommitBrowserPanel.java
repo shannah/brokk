@@ -1,6 +1,4 @@
-package io.github.jbellis.brokk.gui;
-
-import static java.util.Objects.requireNonNull;
+package io.github.jbellis.brokk.gui.git;
 
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.GitHubAuth;
@@ -11,7 +9,11 @@ import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitWorkflowService;
 import io.github.jbellis.brokk.git.ICommitInfo;
+import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.TableUtils;
 import io.github.jbellis.brokk.gui.dialogs.CreatePullRequestDialog;
+import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
 import java.awt.*;
 import java.awt.event.ActionListener;
@@ -331,7 +333,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             public Component getTableCellRendererComponent(
                     JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
                 Component c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
-                boolean isDark = chrome.themeManager.isDarkTheme();
+                boolean isDark = chrome.getTheme().isDarkTheme();
                 boolean unpushed = (boolean) table.getModel().getValueAt(row, COL_UNPUSHED);
 
                 if (!isSelected) {
@@ -706,10 +708,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 SwingUtil.runOnEdt(() -> {
                     chrome.systemOutput("Cherry-picked " + finalApplied + " commit(s) into '" + branchLabel + "'.");
                     refreshCurrentViewAfterGitOp();
-                    var gitPanel = chrome.getGitPanel();
-                    if (gitPanel != null) {
-                        gitPanel.updateCommitPanel();
-                    }
+                    chrome.updateCommitPanel();
                 });
             });
         });
@@ -888,10 +887,8 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
         viewDiffItem.addActionListener(e -> handleSingleFileSingleCommitAction(
                 (cid, fp) -> GitUiUtil.showFileHistoryDiff(contextManager, chrome, cid, contextManager.toFile(fp))));
 
-        viewHistoryItem.addActionListener(e -> {
-            var gitPanel = requireNonNull(chrome.getGitPanel());
-            getSelectedFilePathsFromTree().forEach(fp -> gitPanel.addFileHistoryTab(contextManager.toFile(fp)));
-        });
+        viewHistoryItem.addActionListener(
+                e -> getSelectedFilePathsFromTree().forEach(fp -> chrome.addFileHistoryTab(contextManager.toFile(fp))));
         editFileItem.addActionListener(
                 e -> getSelectedFilePathsFromTree().forEach(fp -> GitUiUtil.editFile(contextManager, fp)));
         rollbackFilesItem.addActionListener(e -> {
@@ -1345,10 +1342,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 SwingUtil.runOnEdt(() -> {
                     chrome.systemOutput(msg);
                     refreshCurrentViewAfterGitOp();
-                    var gitPanel = chrome.getGitPanel(); // Optional, may be null
-                    if (gitPanel != null) {
-                        gitPanel.updateCommitPanel(); // For uncommitted changes
-                    }
+                    chrome.updateCommitPanel(); // For uncommitted changes
                 });
             } catch (GitAPIException ex) {
                 logger.error("Error pulling {}: {}", branchName, ex.getMessage());
@@ -1595,7 +1589,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
     }
 
     private void registerMenu(JPopupMenu menu) {
-        chrome.themeManager.registerPopupMenu(menu);
+        chrome.getTheme().registerPopupMenu(menu);
     }
 
     @Override
