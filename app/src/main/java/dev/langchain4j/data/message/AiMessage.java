@@ -140,8 +140,8 @@ public class AiMessage implements ChatMessage {
 
     @Override
     public String toString() {
-        return "AiMessage {" + " reasoningContent = " + quoted(reasoningContent) + " text = " + quoted(text) + " toolExecutionRequests = "
-                + toolExecutionRequests + " }";
+        return "AiMessage {" + " reasoningContent = " + quoted(reasoningContent) + " text = " + quoted(text)
+                + " toolExecutionRequests = " + toolExecutionRequests + " }";
     }
 
     public static Builder builder() {
