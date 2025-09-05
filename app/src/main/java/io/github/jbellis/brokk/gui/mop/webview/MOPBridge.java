@@ -109,7 +109,7 @@ public final class MOPBridge {
         if (text.isEmpty()) {
             return;
         }
-        // Epoch is assigned later, just queue the content
+
         eventQueue.add(new BrokkEvent.Chunk(text, isNew, msgType, -1, streaming, reasoning));
         scheduleSend();
     }
