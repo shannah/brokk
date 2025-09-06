@@ -1001,22 +1001,6 @@ public class CodeAgent {
                     changedFiles,
                     newOriginalContents);
         }
-
-        /** Returns a new WorkspaceState after a successful full-file replacement fallback. */
-        EditState afterFallbackSuccess(
-                List<EditBlock.SearchReplaceBlock> newPendingBlocks,
-                Set<ProjectFile> updatedChangedFiles,
-                Map<ProjectFile, String> newOriginalContents) {
-            return new EditState(
-                    newPendingBlocks,
-                    consecutiveParseFailures,
-                    0,
-                    consecutiveBuildFailures,
-                    1,
-                    lastBuildError,
-                    updatedChangedFiles,
-                    newOriginalContents);
-        }
     }
 
     private static class Metrics {
