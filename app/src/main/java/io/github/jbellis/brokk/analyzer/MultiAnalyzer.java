@@ -210,6 +210,11 @@ public class MultiAnalyzer
         throw new UnsupportedOperationException();
     }
 
+    @Override
+    public Optional<String> extractClassName(String reference) {
+        return findFirst(analyzer -> analyzer.extractClassName(reference));
+    }
+
     /** @return a copy of the delegates of this analyzer. */
     public Map<Language, IAnalyzer> getDelegates() {
         return Collections.unmodifiableMap(delegates);

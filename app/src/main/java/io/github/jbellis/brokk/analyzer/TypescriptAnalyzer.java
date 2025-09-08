@@ -743,6 +743,11 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
+    public Optional<String> extractClassName(String reference) {
+        return ClassNameExtractor.extractForJsTs(reference);
+    }
+
+    @Override
     protected TSLanguage createTSLanguage() {
         return new TreeSitterTypescript();
     }

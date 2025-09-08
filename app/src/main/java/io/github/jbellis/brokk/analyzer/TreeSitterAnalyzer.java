@@ -2149,11 +2149,22 @@ public abstract class TreeSitterAnalyzer
         Set<ProjectFile> currentFiles = project.getAllFiles().stream()
                 .filter(pf -> {
                     Path abs = pf.absPath().toAbsolutePath().normalize();
-                    if (normalizedExcludedPaths.stream().anyMatch(abs::startsWith)) return false;
+                    if (normalizedExcludedPaths.stream().anyMatch(abs::startsWith)) {
+                        log.debug("DEBUG: File excluded by path: {}", pf.absPath());
+                        return false;
+                    }
                     String p = abs.toString();
-                    return language.getExtensions().stream().anyMatch(p::endsWith);
+                    boolean matches = language.getExtensions().stream().anyMatch(p::endsWith);
+                    if (!matches) {
+                        log.debug("DEBUG: File excluded by extension (language={}): {}", language.name(), pf.absPath());
+                    } else {
+                        log.info("DEBUG: File INCLUDED for analysis (language={}): {}", language.name(), pf.absPath());
+                    }
+                    return matches;
                 })
                 .collect(Collectors.toSet());
+
+        log.info("DEBUG: {} analyzer found {} files to analyze", language.name(), currentFiles.size());
 
         Set<ProjectFile> changed = new HashSet<>();
 
