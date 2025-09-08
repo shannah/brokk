@@ -188,8 +188,9 @@ public class CodeAgent {
             // Only do this if the turn had more than a single user/AI pair; for simple one-shot turns,
             // keep the original messages for clarity.
             if (loopContext.editState().blocksAppliedWithoutBuild() > 0) {
-                int msgsThisTurn = loopContext.conversationState().taskMessages().size()
-                        - loopContext.conversationState().turnStartIndex();
+                int msgsThisTurn =
+                        loopContext.conversationState().taskMessages().size()
+                                - loopContext.conversationState().turnStartIndex();
                 if (msgsThisTurn > 2) {
                     var srb = loopContext.editState().toSearchReplaceBlocks();
                     var summaryText = "Here are the SEARCH/REPLACE blocks:\n\n"
@@ -1073,8 +1074,8 @@ public class CodeAgent {
          * contents captured at the start of the turn. For files that were created in this turn (no original content),
          * generate a "new file" block (empty before / full after).
          *
-         * <p>Note: We use full-file replacements for simplicity and robustness. This ensures correctness for the history
-         * compaction without depending on the diff library package structure at compile time.
+         * <p>Note: We use full-file replacements for simplicity and robustness. This ensures correctness for the
+         * history compaction without depending on the diff library package structure at compile time.
          */
         @VisibleForTesting
         List<EditBlock.SearchReplaceBlock> toSearchReplaceBlocks() {

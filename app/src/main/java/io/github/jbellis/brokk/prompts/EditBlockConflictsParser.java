@@ -336,6 +336,12 @@ public class EditBlockConflictsParser extends EditBlockParser {
             ======= %s
             %s
             >>>>>>> REPLACE %s
-            """.formatted(block.rawFileName(), block.beforeText(), block.rawFileName(), block.afterText(), block.rawFileName());
+            """
+                .formatted(
+                        block.rawFileName(),
+                        block.beforeText(),
+                        block.rawFileName(),
+                        block.afterText(),
+                        block.rawFileName());
     }
 }
