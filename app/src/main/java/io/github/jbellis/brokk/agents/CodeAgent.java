@@ -187,7 +187,10 @@ public class CodeAgent {
             // After a successful apply, replace the raw parse/apply turn with a clean, synthetic summary
             if (loopContext.editState().blocksAppliedWithoutBuild() > 0) {
                 var srb = generateSearchReplaceBlocksFromTurn(loopContext.editState());
-                var summaryText = renderBlocksAsSingleMessage(srb, parser);
+                var summaryText = "Here are the SEARCH/REPLACE blocks:\n\n" +
+                        srb.stream()
+                                .map(parser::repr)
+                                .collect(Collectors.joining("\n"));
                 loopContext = new LoopContext(
                         loopContext.conversationState().replaceCurrentTurnMessages(summaryText),
                         loopContext.editState,
@@ -1260,22 +1263,6 @@ public class CodeAgent {
     private static String ensureTerminated(String s) {
         if (s.isEmpty()) return s;
         return s.endsWith("\n") ? s : s + "\n";
-    }
-
-    /**
-     * Render a list of SEARCH/REPLACE blocks into a single text suitable for an AiMessage:
-     *
-     * <p>Here are the SEARCH/REPLACE blocks: ```...block 1... ``` ```...block 2... ```
-     */
-    @VisibleForTesting
-    String renderBlocksAsSingleMessage(List<EditBlock.SearchReplaceBlock> blocks, EditBlockParser parser) {
-        var sb = new StringBuilder();
-        sb.append("Here are the SEARCH/REPLACE blocks:\n\n");
-        for (int i = 0; i < blocks.size(); i++) {
-            if (i > 0) sb.append("\n");
-            sb.append(parser.repr(blocks.get(i)));
-        }
-        return sb.toString();
     }
 
     private static class Metrics {
