@@ -494,6 +494,7 @@ public class GitRepo implements Closeable, IGitRepo {
     /** Produces a combined diff of staged + unstaged changes, restricted to the given files. */
     @Override
     public synchronized String diffFiles(List<ProjectFile> files) throws GitAPIException {
+
         var filters = files.stream()
                 .map(file -> PathFilter.create(toRepoRelativePath(file)))
                 .collect(Collectors.toCollection(ArrayList::new));
@@ -505,6 +506,7 @@ public class GitRepo implements Closeable, IGitRepo {
     @Override
     public synchronized String diff() throws GitAPIException {
         var status = git.status().call();
+
         var trackedPaths = new HashSet<String>();
         trackedPaths.addAll(status.getModified());
         trackedPaths.addAll(status.getChanged());
