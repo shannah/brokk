@@ -14,10 +14,12 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 import javax.swing.*;
+import javax.swing.KeyStroke;
 import javax.swing.table.AbstractTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.TableColumn;
 import javax.swing.table.TableRowSorter;
+import io.github.jbellis.brokk.MainProject;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -25,6 +27,7 @@ import org.jetbrains.annotations.Nullable;
 public class SettingsGlobalPanel extends JPanel implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(SettingsGlobalPanel.class);
     public static final String MODELS_TAB_TITLE = "Favorite Models"; // Used for targeting this tab
+    public static final String SHORTCUTS_TAB_TITLE = "Keyboard Shortcuts"; // Targeting title
 
     private final Chrome chrome;
     private final SettingsDialog parentDialog; // To access project for data retention refresh
@@ -58,6 +61,7 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
     private JComboBox<String> uiScaleCombo; // Hidden on macOS
 
     private JTabbedPane globalSubTabbedPane = new JTabbedPane(JTabbedPane.TOP);
+    private JPanel shortcutsPanel;
 
     public SettingsGlobalPanel(Chrome chrome, SettingsDialog parentDialog) {
         this.chrome = chrome;
@@ -81,6 +85,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         // Quick Models Tab
         var quickModelsPanel = createQuickModelsPanel();
         globalSubTabbedPane.addTab(MODELS_TAB_TITLE, null, quickModelsPanel, "Define model aliases (shortcuts)");
+
+        // Keyboard Shortcuts Tab
+        shortcutsPanel = createShortcutsPanel();
+        globalSubTabbedPane.addTab(SHORTCUTS_TAB_TITLE, null, shortcutsPanel, "Customize keyboard shortcuts");
 
         // GitHub Tab (conditionally added)
         var project = chrome.getProject();
@@ -513,6 +521,9 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         if (gitHubTokenField != null) { // Only if panel was created
             gitHubTokenField.setText(MainProject.getGitHubToken());
         }
+
+        // Shortcuts Tab
+        refreshShortcutsPanel();
     }
 
     public boolean applySettings() {
@@ -615,6 +626,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
                 logger.debug("Applied GitHub Token");
             }
         }
+
+        // Shortcuts Tab has no staged edits; changes are persisted immediately on edit
 
         return true;
     }
@@ -967,5 +980,168 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         public Object getCellEditorValue() {
             return comboBox.isEnabled() ? super.getCellEditorValue() : Service.ProcessingTier.DEFAULT;
         }
+    }
+
+    // --- Shortcuts Tab (minimal read/edit UI) ---
+    private JPanel createShortcutsPanel() {
+        var panel = new JPanel(new BorderLayout(5, 5));
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+
+        var tableModel = new javax.swing.table.DefaultTableModel(new Object[] {"Action", "Shortcut", ""}, 0) {
+            @Override
+            public boolean isCellEditable(int row, int column) {
+                return column == 2; // Only Edit button column
+            }
+        };
+        var table = new JTable(tableModel);
+        table.setRowHeight(table.getRowHeight() + 4);
+
+        var editRenderer = new javax.swing.table.TableCellRenderer() {
+            private final JButton button = new JButton("Edit");
+            @Override
+            public Component getTableCellRendererComponent(JTable t, Object value, boolean isSelected, boolean hasFocus, int row, int col) {
+                return button;
+            }
+        };
+        var editEditor = new DefaultCellEditor(new JCheckBox()) {
+            private final JButton button = new JButton("Edit");
+            {
+                button.addActionListener(e -> {
+                    int row = table.getEditingRow();
+                    if (row < 0) return;
+                    String id = (String) table.getValueAt(row, 0);
+                    KeyStroke current = resolveShortcut(id, defaultFor(id));
+                    KeyStroke captured = captureKeyStroke(panel, current);
+                    MainProject.setShortcut(id, captured);
+                    table.setValueAt(formatKeyStroke(captured), row, 1);
+                    fireEditingStopped();
+                });
+            }
+            @Override
+            public Component getTableCellEditorComponent(JTable t, Object value, boolean isSelected, int row, int col) {
+                return button;
+            }
+        };
+
+        table.getColumnModel().getColumn(2).setCellRenderer(editRenderer);
+        table.getColumnModel().getColumn(2).setCellEditor(editEditor);
+
+        var restoreButton = new JButton("Restore Defaults");
+        restoreButton.addActionListener(e -> {
+            for (int i = 0; i < tableModel.getRowCount(); i++) {
+                String id = (String) tableModel.getValueAt(i, 0);
+                KeyStroke def = defaultFor(id);
+                MainProject.setShortcut(id, def);
+                tableModel.setValueAt(formatKeyStroke(def), i, 1);
+            }
+        });
+
+        panel.add(new JScrollPane(table), BorderLayout.CENTER);
+        var south = new JPanel(new FlowLayout(FlowLayout.LEFT));
+        south.add(restoreButton);
+        panel.add(south, BorderLayout.SOUTH);
+
+        // Populate initially
+        Runnable populate = () -> {
+            tableModel.setRowCount(0);
+            Object[][] rows = new Object[][] {
+                    {"instructions.submit", formatKeyStroke(resolveShortcut("instructions.submit", defaultSubmit())) , "Edit"},
+                    {"instructions.toggleMode", formatKeyStroke(resolveShortcut("instructions.toggleMode", defaultToggleMode())) , "Edit"},
+                    {"instructions.togglePlanOrSearch", formatKeyStroke(resolveShortcut("instructions.togglePlanOrSearch", defaultTogglePlanOrSearch())) , "Edit"},
+                    {"instructions.openPlanOptions", formatKeyStroke(resolveShortcut("instructions.openPlanOptions", defaultOpenPlanOptions())) , "Edit"}
+            };
+            for (Object[] r : rows) tableModel.addRow(r);
+        };
+        populate.run();
+
+        // Keep a handle to refresh from loadSettings
+        panel.putClientProperty("populateShortcutsTable", populate);
+        return panel;
+    }
+
+    private void refreshShortcutsPanel() {
+        Object r = shortcutsPanel.getClientProperty("populateShortcutsTable");
+        if (r instanceof Runnable run) run.run();
+    }
+
+    private static KeyStroke resolveShortcut(String id, KeyStroke def) {
+        return MainProject.getShortcut(id, def);
+    }
+
+    private static String formatKeyStroke(KeyStroke ks) {
+        return java.awt.event.InputEvent.getModifiersExText(ks.getModifiers())
+                + (ks.getModifiers() == 0 ? "" : "+")
+                + java.awt.event.KeyEvent.getKeyText(ks.getKeyCode());
+    }
+
+    private static KeyStroke captureKeyStroke(Component parent, KeyStroke current) {
+        final KeyStroke[] captured = {current};
+        java.awt.Frame owner = javax.swing.JOptionPane.getFrameForComponent(parent);
+        JDialog dlg = new JDialog(owner, "Press new shortcut", true);
+        dlg.setLayout(new BorderLayout());
+        var label = new JLabel("Press a key combination with at least one modifier (Ctrl/Alt/Shift). Esc to cancel.", SwingConstants.CENTER);
+        label.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        dlg.add(label, BorderLayout.CENTER);
+        dlg.setSize(420, 120);
+        dlg.setLocationRelativeTo(parent);
+
+        java.awt.KeyEventDispatcher dispatcher = e -> {
+            if (e.getID() != java.awt.event.KeyEvent.KEY_PRESSED) return false;
+            if (e.getKeyCode() == java.awt.event.KeyEvent.VK_ESCAPE) {
+                captured[0] = current;
+                dlg.dispose();
+                return true;
+            }
+            // Ignore pure modifier keys
+            if (e.getKeyCode() == java.awt.event.KeyEvent.VK_SHIFT
+                    || e.getKeyCode() == java.awt.event.KeyEvent.VK_CONTROL
+                    || e.getKeyCode() == java.awt.event.KeyEvent.VK_ALT
+                    || e.getKeyCode() == java.awt.event.KeyEvent.VK_META) {
+                return true; // consume but keep dialog open
+            }
+            int mods = e.getModifiersEx();
+            int requiredMask = java.awt.event.InputEvent.SHIFT_DOWN_MASK
+                    | java.awt.event.InputEvent.CTRL_DOWN_MASK
+                    | java.awt.event.InputEvent.ALT_DOWN_MASK
+                    | java.awt.event.InputEvent.META_DOWN_MASK;
+            // Require at least one modifier; if none, keep dialog open
+            if ((mods & requiredMask) == 0) {
+                return true;
+            }
+            captured[0] = KeyStroke.getKeyStroke(e.getKeyCode(), mods);
+            dlg.dispose();
+            return true;
+        };
+
+        java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().addKeyEventDispatcher(dispatcher);
+        try {
+            dlg.setVisible(true);
+        } finally {
+            java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager().removeKeyEventDispatcher(dispatcher);
+        }
+        return captured[0];
+    }
+
+    private static KeyStroke defaultSubmit() {
+        return KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_ENTER, java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+    private static KeyStroke defaultToggleMode() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(java.awt.event.KeyEvent.VK_M);
+    }
+    private static KeyStroke defaultTogglePlanOrSearch() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(java.awt.event.KeyEvent.VK_SEMICOLON);
+    }
+    private static KeyStroke defaultOpenPlanOptions() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(java.awt.event.KeyEvent.VK_COMMA);
+    }
+
+    private static KeyStroke defaultFor(String id) {
+        return switch (id) {
+            case "instructions.submit" -> defaultSubmit();
+            case "instructions.toggleMode" -> defaultToggleMode();
+            case "instructions.togglePlanOrSearch" -> defaultTogglePlanOrSearch();
+            case "instructions.openPlanOptions" -> defaultOpenPlanOptions();
+            default -> defaultSubmit();
+        };
     }
 }

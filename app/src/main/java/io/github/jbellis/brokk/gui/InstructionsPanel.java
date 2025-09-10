@@ -79,7 +79,7 @@ import org.jetbrains.annotations.Nullable;
  * action buttons. It also includes the system messages and command result areas. All initialization and action code
  * related to these components has been moved here.
  */
-public class InstructionsPanel extends JPanel implements IContextManager.ContextListener {
+public class InstructionsPanel extends JPanel implements IContextManager.ContextListener, SettingsChangeListener {
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
 
     public static final String ACTION_ARCHITECT = "Architect";
@@ -175,8 +175,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Initialize Action Selection UI
         modeSwitch = new JCheckBox();
-        KeyStroke toggleKs =
+        KeyStroke defaultToggleKs =
                 io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M);
+        KeyStroke toggleKs = MainProject.getShortcut("instructions.toggleMode", defaultToggleKs);
         String tooltipText =
                 """
                 <html>
@@ -210,8 +211,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         codeCheckBox = new JCheckBox("Plan First");
         // Register a global platform-aware shortcut (Cmd/Ctrl+S) to toggle "Search First".
-        KeyStroke toggleSearchKs =
+        KeyStroke defaultToggleSearchKs =
                 io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON);
+        KeyStroke toggleSearchKs = MainProject.getShortcut("instructions.togglePlanOrSearch", defaultToggleSearchKs);
 
         codeCheckBox.setToolTipText("<html><b>Plan First:</b><br><ul>"
                 + "<li><b>checked:</b> Plan usage of multiple agents. Useful for large refactorings; will add files to the Workspace.</li>"
@@ -225,6 +227,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 + "<li><b>checked:</b> Performs an &quot;agentic&quot; search across your entire project (even files not in the Workspace) to find relevant code</li>"
                 + "<li><b>unchecked:</b> Answers using only the Workspace (faster for follow-ups)</li>"
                 + "</ul> (" + formatKeyStroke(toggleSearchKs) + ")</html>");
+
+        // Register toggle mode shortcut
+        io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
+                chrome.getFrame().getRootPane(),
+                toggleKs,
+                "ToggleMode",
+                () -> SwingUtilities.invokeLater(() -> modeSwitch.doClick()));
 
         io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
                 chrome.getFrame().getRootPane(),
@@ -266,8 +275,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             {
                 // Visual and input configuration
-                KeyStroke planOptionsKs =
+                KeyStroke defaultPlanOptionsKs =
                         io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA);
+                KeyStroke planOptionsKs = MainProject.getShortcut("instructions.openPlanOptions", defaultPlanOptionsKs);
                 setToolTipText("Configure options for the Architect agent (Plan First) ("
                         + formatKeyStroke(planOptionsKs) + ")");
                 setCursor(Cursor.getPredefinedCursor(Cursor.HAND_CURSOR));
@@ -480,8 +490,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 }
             }
         };
-        KeyStroke submitKs = KeyStroke.getKeyStroke(
+        KeyStroke defaultSubmitKs = KeyStroke.getKeyStroke(
                 KeyEvent.VK_ENTER, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        KeyStroke submitKs = MainProject.getShortcut("instructions.submit", defaultSubmitKs);
         actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
         actionButton.setOpaque(false);
         actionButton.setContentAreaFilled(false);
@@ -581,6 +592,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Add this panel as a listener to context changes
         this.contextManager.addContextListener(this);
+        
+        // Register for settings changes to update shortcuts
+        MainProject.addSettingsChangeListener(this);
 
         // --- Autocomplete Setup ---
         instructionCompletionProvider = new InstructionsCompletionProvider();
@@ -2700,5 +2714,102 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             if (idx < 0) return order.get(order.size() - 1);
             return wrap(order, idx - 1);
         }
+    }
+
+    @Override
+    public void shortcutsChanged() {
+        SwingUtilities.invokeLater(this::updateShortcuts);
+    }
+
+    private void updateShortcuts() {
+        // Re-register all shortcuts with updated values from settings
+        JRootPane rootPane = chrome.getFrame().getRootPane();
+        if (rootPane == null) return;
+
+        // Clear existing shortcuts by removing them from input/action maps
+        var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
+        var actionMap = rootPane.getActionMap();
+        
+        // Remove our specific shortcuts
+        inputMap.remove(MainProject.getShortcut("instructions.toggleMode", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M)));
+        inputMap.remove(MainProject.getShortcut("instructions.togglePlanOrSearch", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON)));
+        inputMap.remove(MainProject.getShortcut("instructions.openPlanOptions", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA)));
+        
+        actionMap.remove("ToggleMode");
+        actionMap.remove("ToggleSearchFirst");
+        actionMap.remove("PlanOptions");
+
+        // Re-register shortcuts with new values
+        KeyStroke toggleKs = MainProject.getShortcut("instructions.toggleMode", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
+        KeyStroke toggleSearchKs = MainProject.getShortcut("instructions.togglePlanOrSearch", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON));
+        KeyStroke planOptionsKs = MainProject.getShortcut("instructions.openPlanOptions", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA));
+
+        // Toggle mode shortcut
+        io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
+                rootPane, toggleKs, "ToggleMode", () -> SwingUtilities.invokeLater(() -> modeSwitch.doClick()));
+
+        // Toggle plan/search shortcut  
+        io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
+                rootPane, toggleSearchKs, "ToggleSearchFirst", () -> SwingUtilities.invokeLater(() -> {
+                    if (modeSwitch.isSelected()) {
+                        searchProjectCheckBox.doClick();
+                    } else {
+                        codeCheckBox.doClick();
+                    }
+                }));
+
+        // Plan options shortcut
+        io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
+                rootPane, planOptionsKs, "PlanOptions", () -> {
+                    ArchitectOptionsDialog.showDialogAndWait(chrome);
+                    javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
+                });
+
+        // Update tooltips to reflect new shortcuts
+        updateTooltips();
+    }
+
+    private void updateTooltips() {
+        KeyStroke toggleKs = MainProject.getShortcut("instructions.toggleMode", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
+        KeyStroke toggleSearchKs = MainProject.getShortcut("instructions.togglePlanOrSearch", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON));
+        KeyStroke planOptionsKs = MainProject.getShortcut("instructions.openPlanOptions", 
+            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA));
+        KeyStroke submitKs = MainProject.getShortcut("instructions.submit", 
+            KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+
+        String modeTooltipText = """
+                <html>
+                <b>Code Mode:</b> For generating or modifying code based on your instructions.<br>
+                <b>Answer Mode:</b> For answering questions about your project or general programming topics.<br>
+                <br>
+                Click to toggle between Code and Answer modes (%s).
+                </html>
+                """.formatted(formatKeyStroke(toggleKs));
+        modeSwitch.setToolTipText(modeTooltipText);
+        codeModeLabel.setToolTipText(modeTooltipText);
+        answerModeLabel.setToolTipText(modeTooltipText);
+
+        codeCheckBox.setToolTipText("<html><b>Plan First:</b><br><ul>"
+                + "<li><b>checked:</b> Plan usage of multiple agents. Useful for large refactorings; will add files to the Workspace.</li>"
+                + "<li><b>unchecked:</b> Assumes necessary files are already in Workspace. Useful for small, well-defined code changes.</li>"
+                + "</ul>  (" + formatKeyStroke(toggleSearchKs) + ")</html>");
+
+        searchProjectCheckBox.setToolTipText("<html><b>Search First:</b><br><ul>"
+                + "<li><b>checked:</b> Performs an &quot;agentic&quot; search across your entire project (even files not in the Workspace) to find relevant code</li>"
+                + "<li><b>unchecked:</b> Answers using only the Workspace (faster for follow-ups)</li>"
+                + "</ul> (" + formatKeyStroke(toggleSearchKs) + ")</html>");
+
+        planOptionsLink.setToolTipText("Configure options for the Architect agent (Plan First) ("
+                + formatKeyStroke(planOptionsKs) + ")");
+
+        actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
     }
 }
