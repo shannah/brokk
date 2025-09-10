@@ -942,7 +942,7 @@ public class CodeAgent {
         return sanitized;
     }
 
-    /** next FSM state  */
+    /** next FSM state */
     sealed interface Step permits Step.Continue, Step.Retry, Step.Fatal {
         ConversationState cs();
 
