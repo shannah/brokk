@@ -109,8 +109,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JButton actionButton;
     private @Nullable volatile Future<?> currentActionFuture;
     private final ModelSelector modelSelector;
+    private @Nullable Component modelSelectorComponent;
     private String storedAction;
     private final ContextManager contextManager;
+    private @Nullable JComboBox<Object> historyDropdown;
     private JTable referenceFileTable;
     private JLabel failureReasonLabel;
     private JPanel suggestionContentPanel;
@@ -195,7 +197,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         modeSwitch.setIcon(switchIcon);
         modeSwitch.setSelectedIcon(switchIcon);
         modeSwitch.setFocusPainted(false);
-        modeSwitch.setFocusable(false);
+        modeSwitch.setFocusable(true);
         modeSwitch.setBorderPainted(false);
         modeSwitch.setBorder(BorderFactory.createEmptyBorder());
         modeSwitch.setContentAreaFilled(false);
@@ -590,6 +592,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Buttons start disabled and will be enabled by ContextManager when session loading completes
         disableButtons();
+
+        // Enable predictable TAB navigation across main controls
+        setFocusCycleRoot(true);
+        setFocusTraversalPolicy(new InstructionsFocusTraversalPolicy());
     }
 
     public UndoManager getCommandInputUndoManager() {
@@ -703,6 +709,35 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
         });
 
+        // Enable custom TAB navigation from the input field
+        area.setFocusTraversalKeysEnabled(false);
+        var tabKey = KeyStroke.getKeyStroke(KeyEvent.VK_TAB, 0);
+        var shiftTabKey = KeyStroke.getKeyStroke(KeyEvent.VK_TAB, java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+        area.getInputMap().put(tabKey, "focusNextFromInput");
+        area.getInputMap().put(shiftTabKey, "focusPrevFromInput");
+        area.getActionMap().put("focusNextFromInput", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Container root = InstructionsPanel.this;
+                FocusTraversalPolicy ftp = root.getFocusTraversalPolicy();
+                if (ftp != null) {
+                    Component next = ftp.getComponentAfter(root, instructionsArea);
+                    if (next != null) next.requestFocusInWindow();
+                }
+            }
+        });
+        area.getActionMap().put("focusPrevFromInput", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                Container root = InstructionsPanel.this;
+                FocusTraversalPolicy ftp = root.getFocusTraversalPolicy();
+                if (ftp != null) {
+                    Component prev = ftp.getComponentBefore(root, instructionsArea);
+                    if (prev != null) prev.requestFocusInWindow();
+                }
+            }
+        });
+
         return area;
     }
 
@@ -712,6 +747,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
         var modelComp = modelSelector.getComponent();
+        this.modelSelectorComponent = modelComp;
 
         // Lock control heights to the larger of mic and model selector so one growing won't shrink the other
         var micPref = micButton.getPreferredSize();
@@ -733,8 +769,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         leftPanel.add(modelComp);
         topBarPanel.add(leftPanel, BorderLayout.WEST);
 
-        var historyDropdown = createHistoryDropdown();
-        topBarPanel.add(historyDropdown, BorderLayout.CENTER);
+        this.historyDropdown = createHistoryDropdown();
+        topBarPanel.add(this.historyDropdown, BorderLayout.CENTER);
 
         return topBarPanel;
     }
@@ -2564,6 +2600,105 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             completionCache.put(text, completions);
 
             return completions;
+        }
+    }
+
+    /**
+     * Focus traversal so TAB cycles through: input, mic, model selector, history dropdown, mode toggle,
+     * plan/search checkbox, optional plan options, and the Send/Stop button.
+     */
+    private final class InstructionsFocusTraversalPolicy extends FocusTraversalPolicy {
+        private List<Component> currentOrder() {
+            List<Component> order = new ArrayList<>();
+
+            if (instructionsArea.isEnabled()) {
+                order.add(instructionsArea);
+            }
+
+            order.add(micButton);
+
+            @Nullable Component modelComp = firstFocusable(modelSelectorComponent);
+            if (modelComp != null) order.add(modelComp);
+
+            if (historyDropdown != null) order.add(historyDropdown);
+
+            order.add(modeSwitch);
+
+            if (!modeSwitch.isSelected()) { // Code mode
+                order.add(codeCheckBox);
+                if (planOptionsLink.isVisible()) order.add(planOptionsLink);
+            } else { // Answer mode
+                order.add(searchProjectCheckBox);
+            }
+
+            order.add(actionButton);
+
+            order.removeIf(c -> !isEffectivelyFocusable(c));
+            return order;
+        }
+
+        private boolean isEffectivelyFocusable(Component c) {
+            return c.isShowing() && c.isEnabled() && c.isFocusable();
+        }
+
+        private @Nullable Component firstFocusable(@Nullable Component c) {
+            if (c == null) return null;
+            if (isEffectivelyFocusable(c)) return c;
+            if (c instanceof Container container) {
+                for (Component child : container.getComponents()) {
+                    Component found = firstFocusable(child);
+                    if (found != null) return found;
+                }
+            }
+            return null;
+        }
+
+        private Component wrap(List<Component> order, int idx) {
+            int n = order.size();
+            if (n == 0) return InstructionsPanel.this;
+            int wrapped = ((idx % n) + n) % n;
+            return order.get(wrapped);
+        }
+
+        @Override
+        public Component getDefaultComponent(Container aContainer) {
+            List<Component> order = currentOrder();
+            if (!order.isEmpty()) return order.get(0);
+            return instructionsArea;
+        }
+
+        @Override
+        public Component getFirstComponent(Container aContainer) {
+            return getDefaultComponent(aContainer);
+        }
+
+        @Override
+        public Component getLastComponent(Container aContainer) {
+            List<Component> order = currentOrder();
+            if (!order.isEmpty()) return order.get(order.size() - 1);
+            return instructionsArea;
+        }
+
+        @Override
+        public Component getComponentAfter(Container aContainer, Component aComponent) {
+            // Special-case: From input, jump to Send/Stop first as requested
+            if (aComponent == instructionsArea && isEffectivelyFocusable(actionButton)) {
+                return actionButton;
+            }
+            List<Component> order = currentOrder();
+            if (order.isEmpty()) return instructionsArea;
+            int idx = order.indexOf(aComponent);
+            if (idx < 0) return order.get(0);
+            return wrap(order, idx + 1);
+        }
+
+        @Override
+        public Component getComponentBefore(Container aContainer, Component aComponent) {
+            List<Component> order = currentOrder();
+            if (order.isEmpty()) return instructionsArea;
+            int idx = order.indexOf(aComponent);
+            if (idx < 0) return order.get(order.size() - 1);
+            return wrap(order, idx - 1);
         }
     }
 }
