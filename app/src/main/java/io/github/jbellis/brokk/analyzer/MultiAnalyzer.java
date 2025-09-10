@@ -106,6 +106,12 @@ public class MultiAnalyzer
     }
 
     @Override
+    public Optional<String> getSourceForCodeUnit(CodeUnit codeUnit) {
+        return findFirst(
+                analyzer -> analyzer.as(SourceCodeProvider.class).flatMap(scp -> scp.getSourceForCodeUnit(codeUnit)));
+    }
+
+    @Override
     public Map<CodeUnit, String> getSkeletons(ProjectFile file) {
         var lang = Language.fromExtension(Files.getFileExtension(file.absPath().toString()));
         var delegate = delegates.get(lang);

@@ -634,24 +634,40 @@ public abstract class TreeSitterAnalyzer
 
     @Override
     public Optional<String> getClassSource(String fqName) {
-        var cu = getDefinition(fqName)
-                .filter(CodeUnit::isClass)
-                .orElseThrow(() -> new SymbolNotFoundException("Class not found: " + fqName));
 
+        var definition = getDefinition(fqName);
+
+        if (definition.isPresent()) {
+            var cu = definition.get();
+
+            // For TypeScript type aliases, we don't filter by isClass() since they're field-type CodeUnits
+            if (!cu.isClass() && !(this instanceof TypescriptAnalyzer && cu.isField())) {
+                throw new SymbolNotFoundException("Symbol is not a class or TypeScript type alias: " + fqName);
+            }
+        } else {
+            throw new SymbolNotFoundException("Class not found: " + fqName);
+        }
+
+        var cu = definition.get();
         var ranges = sourceRanges.get(cu);
+
         if (ranges == null || ranges.isEmpty()) {
             throw new SymbolNotFoundException("Source range not found for class: " + fqName);
         }
 
         // For classes, expect one primary definition range.
         var range = ranges.getFirst();
+
         String src;
         try {
             src = cu.source().read();
         } catch (IOException e) {
             return Optional.empty();
         }
-        return Optional.of(ASTTraversalUtils.safeSubstringFromByteOffsets(src, range.startByte(), range.endByte()));
+
+        var extractedSource = ASTTraversalUtils.safeSubstringFromByteOffsets(src, range.startByte(), range.endByte());
+
+        return Optional.of(extractedSource);
     }
 
     @Override
@@ -702,6 +718,17 @@ public abstract class TreeSitterAnalyzer
                     }
                     return Optional.of(String.join("\n\n", individualMethodSources));
                 });
+    }
+
+    @Override
+    public Optional<String> getSourceForCodeUnit(CodeUnit codeUnit) {
+        if (codeUnit.isFunction()) {
+            return getMethodSource(codeUnit.fqName());
+        } else if (codeUnit.isClass()) {
+            return getClassSource(codeUnit.fqName());
+        } else {
+            return Optional.empty(); // Fields and other types not supported by default
+        }
     }
 
     /* ---------- abstract hooks ---------- */

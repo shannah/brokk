@@ -614,16 +614,24 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
 
     @SuppressWarnings("RedundantNullCheck")
     public boolean isTypeAlias(CodeUnit cu) {
+
         // Check if this field-type CodeUnit represents a type alias
         // We can identify this by checking if there are signatures that contain "type " and " = "
         List<String> sigList = withSignatures(signatures -> signatures.get(cu));
+
         if (sigList != null) {
-            for (String sig : sigList) {
-                if ((sig.contains("type ") || sig.contains("export type ")) && sig.contains(" = ")) {
+            for (int i = 0; i < sigList.size(); i++) {
+                String sig = sigList.get(i);
+
+                boolean hasType = sig.contains("type ") || sig.contains("export type ");
+                boolean hasEquals = sig.contains(" = ");
+
+                if (hasType && hasEquals) {
                     return true;
                 }
             }
         }
+
         return false;
     }
 
@@ -740,6 +748,20 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
         }
 
         return result;
+    }
+
+    @Override
+    public Optional<String> getSourceForCodeUnit(CodeUnit codeUnit) {
+        if (codeUnit.isFunction()) {
+            return getMethodSource(codeUnit.fqName());
+        } else if (codeUnit.isClass()) {
+            return getClassSource(codeUnit.fqName());
+        } else if (codeUnit.isField() && isTypeAlias(codeUnit)) {
+            // TypeScript type aliases are field-type CodeUnits but should use class source
+            return getClassSource(codeUnit.fqName());
+        } else {
+            return Optional.empty();
+        }
     }
 
     @Override

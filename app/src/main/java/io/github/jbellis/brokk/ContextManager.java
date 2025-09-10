@@ -1101,15 +1101,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         try {
             sourceCode = getAnalyzer()
                     .as(SourceCodeProvider.class)
-                    .flatMap(provider -> {
-                        if (codeUnit.isFunction()) {
-                            return provider.getMethodSource(codeUnit.fqName());
-                        } else if (codeUnit.isClass()) {
-                            return provider.getClassSource(codeUnit.fqName());
-                        } else {
-                            return Optional.empty();
-                        }
-                    })
+                    .flatMap(provider -> provider.getSourceForCodeUnit(codeUnit))
                     .orElse(null);
         } catch (InterruptedException e) {
             logger.error("Interrupted while trying to get analyzer while attempting to obtain source code");
@@ -1123,6 +1115,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     codeUnit.source().getSyntaxStyle());
             pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(fragment));
             io.systemOutput("Added source code for " + codeUnit.shortName());
+        } else {
+            // Notify user of failed source capture
+            SwingUtilities.invokeLater(() -> {
+                io.systemNotify(
+                        "Could not capture source code for: " + codeUnit.shortName()
+                                + "\n\nThis may be due to unsupported symbol type or missing source ranges.",
+                        "Capture Source Failed",
+                        JOptionPane.WARNING_MESSAGE);
+            });
         }
     }
 

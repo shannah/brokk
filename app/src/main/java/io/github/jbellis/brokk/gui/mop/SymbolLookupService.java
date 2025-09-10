@@ -147,16 +147,13 @@ public class SymbolLookupService {
 
             // Fallback: Try partial matching via class name extraction
             var extractedClassName = analyzer.extractClassName(trimmed);
-            logger.info("DEBUG: extractClassName('{}') returned: {}", trimmed, extractedClassName.orElse("empty"));
             if (extractedClassName.isPresent()) {
                 var rawClassName = extractedClassName.get();
 
                 var candidates = ClassNameExtractor.normalizeVariants(rawClassName);
-                logger.info("DEBUG: normalizeVariants('{}') returned: {}", rawClassName, candidates);
                 for (var candidate : candidates) {
                     // Try exact FQN match for candidate
                     var classDefinition = analyzer.getDefinition(candidate);
-                    logger.info("DEBUG: getDefinition('{}') returned: {}", candidate, classDefinition.isPresent() ? classDefinition.get().fqName() : "empty");
                     if (classDefinition.isPresent() && classDefinition.get().isClass()) {
                         return SymbolLookupResult.partialMatch(
                                 classDefinition.get().fqName(), trimmed, rawClassName);
@@ -164,14 +161,8 @@ public class SymbolLookupService {
 
                     // Try pattern search for candidate
                     var classSearchResults = analyzer.searchDefinitions(candidate);
-                    logger.info("DEBUG: searchDefinitions('{}') returned: {} results", candidate, classSearchResults.size());
                     if (!classSearchResults.isEmpty()) {
-                        // Debug: log details of found results
-                        for (var result : classSearchResults) {
-                            logger.info("DEBUG: Found result - fqName: {}, isClass: {}, isField: {}", result.fqName(), result.isClass(), result.isField());
-                        }
                         var classMatches = findAllClassMatches(candidate, classSearchResults);
-                        logger.info("DEBUG: findAllClassMatches('{}') returned: {} class matches", candidate, classMatches.size());
                         if (!classMatches.isEmpty()) {
                             var commaSeparatedFqns = classMatches.stream()
                                     .map(CodeUnit::fqName)
