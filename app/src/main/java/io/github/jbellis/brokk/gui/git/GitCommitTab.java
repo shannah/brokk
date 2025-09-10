@@ -8,7 +8,7 @@ import io.github.jbellis.brokk.context.ContextHistory;
 import io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel;
 import io.github.jbellis.brokk.difftool.ui.BufferSource;
 import io.github.jbellis.brokk.git.GitRepo;
-import io.github.jbellis.brokk.git.GitWorkflowService;
+import io.github.jbellis.brokk.git.GitWorkflow;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.CommitDialog;
 import io.github.jbellis.brokk.gui.Constants;
@@ -38,7 +38,7 @@ public class GitCommitTab extends JPanel {
 
     private final Chrome chrome;
     private final ContextManager contextManager;
-    private final GitWorkflowService workflowService;
+    private final GitWorkflow workflowService;
 
     // Commit tab UI
     private JTable uncommittedFilesTable; // Initialized via fileStatusPane
@@ -57,7 +57,7 @@ public class GitCommitTab extends JPanel {
         super(new BorderLayout());
         this.chrome = chrome;
         this.contextManager = contextManager;
-        this.workflowService = new GitWorkflowService(contextManager);
+        this.workflowService = new GitWorkflow(contextManager);
         buildCommitTabUI();
     }
 
