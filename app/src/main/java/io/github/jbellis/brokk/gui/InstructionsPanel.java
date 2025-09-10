@@ -42,6 +42,8 @@ import io.github.jbellis.brokk.util.LoggingExecutorService;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.event.ActionEvent;
+import java.awt.event.FocusEvent;
+import java.awt.event.FocusListener;
 import java.awt.event.KeyEvent;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -481,8 +483,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 try {
                     g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
                     int arc = 12;
-                    Color borderColor = UIManager.getColor("Component.borderColor");
-                    if (borderColor == null) borderColor = Color.GRAY;
+
+                    // Use blue focus border when focused, normal border otherwise
+                    Color borderColor;
+                    if (hasFocus()) {
+                        borderColor = new Color(0x007ACC); // Blue focus color
+                        g2.setStroke(new BasicStroke(2.0f)); // Thicker border for focus
+                    } else {
+                        borderColor = UIManager.getColor("Component.borderColor");
+                        if (borderColor == null) borderColor = Color.GRAY;
+                        g2.setStroke(new BasicStroke(1.0f)); // Normal border thickness
+                    }
+
                     g2.setColor(borderColor);
                     g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
                 } finally {
@@ -496,10 +508,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
         actionButton.setOpaque(false);
         actionButton.setContentAreaFilled(false);
-        actionButton.setFocusPainted(false);
+        actionButton.setFocusPainted(true);
         actionButton.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         actionButton.setRolloverEnabled(true);
         actionButton.addActionListener(e -> onActionButtonPressed());
+
+        // Add focus listeners to repaint the border when focus changes
+        actionButton.addFocusListener(new FocusListener() {
+            @Override
+            public void focusGained(FocusEvent e) {
+                actionButton.repaint();
+            }
+
+            @Override
+            public void focusLost(FocusEvent e) {
+                actionButton.repaint();
+            }
+        });
 
         modelSelector = new ModelSelector(chrome);
         modelSelector.selectConfig(chrome.getProject().getCodeModelConfig());
@@ -592,7 +617,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Add this panel as a listener to context changes
         this.contextManager.addContextListener(this);
-        
+
         // Register for settings changes to update shortcuts
         MainProject.addSettingsChangeListener(this);
 
@@ -2618,8 +2643,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     /**
-     * Focus traversal so TAB cycles through: input, mic, model selector, history dropdown, mode toggle, plan/search
-     * checkbox, optional plan options, and the Send/Stop button.
+     * Focus traversal so TAB cycles through: input, send button, mode toggle, plan/search checkbox, optional plan options, 
+     * mic, model selector, history dropdown, and back to input.
      */
     private final class InstructionsFocusTraversalPolicy extends FocusTraversalPolicy {
         private List<Component> currentOrder() {
@@ -2629,12 +2654,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 order.add(instructionsArea);
             }
 
-            order.add(micButton);
-
-            @Nullable Component modelComp = firstFocusable(modelSelectorComponent);
-            if (modelComp != null) order.add(modelComp);
-
-            if (historyDropdown != null) order.add(historyDropdown);
+            order.add(actionButton);
 
             order.add(modeSwitch);
 
@@ -2645,7 +2665,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 order.add(searchProjectCheckBox);
             }
 
-            order.add(actionButton);
+            order.add(micButton);
+
+            @Nullable Component modelComp = firstFocusable(modelSelectorComponent);
+            if (modelComp != null) order.add(modelComp);
+
+            if (historyDropdown != null) order.add(historyDropdown);
 
             order.removeIf(c -> !isEffectivelyFocusable(c));
             return order;
@@ -2695,12 +2720,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         @Override
         public Component getComponentAfter(Container aContainer, Component aComponent) {
-            // Special-case: From input, jump to Send/Stop first as requested
-            if (aComponent == instructionsArea && isEffectivelyFocusable(actionButton)) {
-                return actionButton;
-            }
             List<Component> order = currentOrder();
             if (order.isEmpty()) return instructionsArea;
+
             int idx = order.indexOf(aComponent);
             if (idx < 0) return order.get(0);
             return wrap(order, idx + 1);
@@ -2729,34 +2751,43 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Clear existing shortcuts by removing them from input/action maps
         var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         var actionMap = rootPane.getActionMap();
-        
+
         // Remove our specific shortcuts
-        inputMap.remove(MainProject.getShortcut("instructions.toggleMode", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M)));
-        inputMap.remove(MainProject.getShortcut("instructions.togglePlanOrSearch", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON)));
-        inputMap.remove(MainProject.getShortcut("instructions.openPlanOptions", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA)));
-        
+        inputMap.remove(MainProject.getShortcut(
+                "instructions.toggleMode",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M)));
+        inputMap.remove(MainProject.getShortcut(
+                "instructions.togglePlanOrSearch",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON)));
+        inputMap.remove(MainProject.getShortcut(
+                "instructions.openPlanOptions",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA)));
+
         actionMap.remove("ToggleMode");
         actionMap.remove("ToggleSearchFirst");
         actionMap.remove("PlanOptions");
 
         // Re-register shortcuts with new values
-        KeyStroke toggleKs = MainProject.getShortcut("instructions.toggleMode", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
-        KeyStroke toggleSearchKs = MainProject.getShortcut("instructions.togglePlanOrSearch", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON));
-        KeyStroke planOptionsKs = MainProject.getShortcut("instructions.openPlanOptions", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA));
+        KeyStroke toggleKs = MainProject.getShortcut(
+                "instructions.toggleMode",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
+        KeyStroke toggleSearchKs = MainProject.getShortcut(
+                "instructions.togglePlanOrSearch",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON));
+        KeyStroke planOptionsKs = MainProject.getShortcut(
+                "instructions.openPlanOptions",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA));
 
         // Toggle mode shortcut
         io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
                 rootPane, toggleKs, "ToggleMode", () -> SwingUtilities.invokeLater(() -> modeSwitch.doClick()));
 
-        // Toggle plan/search shortcut  
+        // Toggle plan/search shortcut
         io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
-                rootPane, toggleSearchKs, "ToggleSearchFirst", () -> SwingUtilities.invokeLater(() -> {
+                rootPane,
+                toggleSearchKs,
+                "ToggleSearchFirst",
+                () -> SwingUtilities.invokeLater(() -> {
                     if (modeSwitch.isSelected()) {
                         searchProjectCheckBox.doClick();
                     } else {
@@ -2776,23 +2807,30 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     private void updateTooltips() {
-        KeyStroke toggleKs = MainProject.getShortcut("instructions.toggleMode", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
-        KeyStroke toggleSearchKs = MainProject.getShortcut("instructions.togglePlanOrSearch", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON));
-        KeyStroke planOptionsKs = MainProject.getShortcut("instructions.openPlanOptions", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA));
-        KeyStroke submitKs = MainProject.getShortcut("instructions.submit", 
-            KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
+        KeyStroke toggleKs = MainProject.getShortcut(
+                "instructions.toggleMode",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
+        KeyStroke toggleSearchKs = MainProject.getShortcut(
+                "instructions.togglePlanOrSearch",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_SEMICOLON));
+        KeyStroke planOptionsKs = MainProject.getShortcut(
+                "instructions.openPlanOptions",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA));
+        KeyStroke submitKs = MainProject.getShortcut(
+                "instructions.submit",
+                KeyStroke.getKeyStroke(
+                        KeyEvent.VK_ENTER, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
 
-        String modeTooltipText = """
+        String modeTooltipText =
+                """
                 <html>
                 <b>Code Mode:</b> For generating or modifying code based on your instructions.<br>
                 <b>Answer Mode:</b> For answering questions about your project or general programming topics.<br>
                 <br>
                 Click to toggle between Code and Answer modes (%s).
                 </html>
-                """.formatted(formatKeyStroke(toggleKs));
+                """
+                        .formatted(formatKeyStroke(toggleKs));
         modeSwitch.setToolTipText(modeTooltipText);
         codeModeLabel.setToolTipText(modeTooltipText);
         answerModeLabel.setToolTipText(modeTooltipText);
@@ -2807,8 +2845,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 + "<li><b>unchecked:</b> Answers using only the Workspace (faster for follow-ups)</li>"
                 + "</ul> (" + formatKeyStroke(toggleSearchKs) + ")</html>");
 
-        planOptionsLink.setToolTipText("Configure options for the Architect agent (Plan First) ("
-                + formatKeyStroke(planOptionsKs) + ")");
+        planOptionsLink.setToolTipText(
+                "Configure options for the Architect agent (Plan First) (" + formatKeyStroke(planOptionsKs) + ")");
 
         actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
     }

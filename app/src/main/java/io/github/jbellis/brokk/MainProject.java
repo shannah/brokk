@@ -32,8 +32,8 @@ import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
-import javax.swing.SwingUtilities;
 import javax.swing.KeyStroke;
+import javax.swing.SwingUtilities;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.errors.ConfigInvalidException;
@@ -1079,8 +1079,7 @@ public final class MainProject extends AbstractProject {
 
     public static void setShortcut(String id, KeyStroke keyStroke) {
         var props = loadGlobalProperties();
-        props.setProperty(
-                SHORTCUT_PREFIX + id, keyStroke.getKeyCode() + "," + keyStroke.getModifiers());
+        props.setProperty(SHORTCUT_PREFIX + id, keyStroke.getKeyCode() + "," + keyStroke.getModifiers());
         saveGlobalProperties(props);
         notifyShortcutsChanged();
     }

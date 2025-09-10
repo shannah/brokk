@@ -462,7 +462,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Register global keyboard shortcuts now that actions are fully initialized
         registerGlobalKeyboardShortcuts();
-        
+
         // Register for settings changes to update shortcuts
         MainProject.addSettingsChangeListener(this);
 
@@ -778,39 +778,46 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         var rootPane = frame.getRootPane();
 
         // Text editing shortcuts with customizable keys
-        var undoKeyStroke = MainProject.getShortcut("global.undo", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_Z));
+        var undoKeyStroke = MainProject.getShortcut(
+                "global.undo",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_Z));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(undoKeyStroke, "globalUndo");
         rootPane.getActionMap().put("globalUndo", globalUndoAction);
 
-        var redoKeyStroke = MainProject.getShortcut("global.redo", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShiftShortcut(KeyEvent.VK_Z));
+        var redoKeyStroke = MainProject.getShortcut(
+                "global.redo",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShiftShortcut(KeyEvent.VK_Z));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(redoKeyStroke, "globalRedo");
         rootPane.getActionMap().put("globalRedo", globalRedoAction);
 
-        var copyKeyStroke = MainProject.getShortcut("global.copy", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_C));
+        var copyKeyStroke = MainProject.getShortcut(
+                "global.copy",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_C));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(copyKeyStroke, "globalCopy");
         rootPane.getActionMap().put("globalCopy", globalCopyAction);
 
-        var pasteKeyStroke = MainProject.getShortcut("global.paste", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_V));
+        var pasteKeyStroke = MainProject.getShortcut(
+                "global.paste",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_V));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(pasteKeyStroke, "globalPaste");
         rootPane.getActionMap().put("globalPaste", globalPasteAction);
 
         // Voice interface shortcut
-        var toggleMicKeyStroke = MainProject.getShortcut("global.toggleMicrophone", 
-            io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_L));
+        var toggleMicKeyStroke = MainProject.getShortcut(
+                "global.toggleMicrophone",
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_L));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(toggleMicKeyStroke, "globalToggleMic");
         rootPane.getActionMap().put("globalToggleMic", globalToggleMicAction);
 
         // Panel navigation shortcuts with customizable keys
-        int defaultModifier = System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
-                ? KeyEvent.META_DOWN_MASK : KeyEvent.ALT_DOWN_MASK;
+        int defaultModifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? KeyEvent.META_DOWN_MASK
+                        : KeyEvent.ALT_DOWN_MASK;
 
-        // Alt/Cmd+1 for Project Files  
-        var switchToProjectFiles = MainProject.getShortcut("panel.switchToProjectFiles", 
-            KeyStroke.getKeyStroke(KeyEvent.VK_1, defaultModifier));
+        // Alt/Cmd+1 for Project Files
+        var switchToProjectFiles = MainProject.getShortcut(
+                "panel.switchToProjectFiles", KeyStroke.getKeyStroke(KeyEvent.VK_1, defaultModifier));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(switchToProjectFiles, "switchToProjectFiles");
         rootPane.getActionMap().put("switchToProjectFiles", new AbstractAction() {
             @Override
@@ -821,8 +828,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Alt/Cmd+2 for Changes (GitCommitTab)
         if (gitCommitTab != null) {
-            var switchToChanges = MainProject.getShortcut("panel.switchToChanges", 
-                KeyStroke.getKeyStroke(KeyEvent.VK_2, defaultModifier));
+            var switchToChanges = MainProject.getShortcut(
+                    "panel.switchToChanges", KeyStroke.getKeyStroke(KeyEvent.VK_2, defaultModifier));
             rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(switchToChanges, "switchToChanges");
             rootPane.getActionMap().put("switchToChanges", new AbstractAction() {
                 @Override
@@ -835,8 +842,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Alt/Cmd+3 for Worktrees
         if (gitWorktreeTab != null) {
-            var switchToWorktrees = MainProject.getShortcut("panel.switchToWorktrees", 
-                KeyStroke.getKeyStroke(KeyEvent.VK_3, defaultModifier));
+            var switchToWorktrees = MainProject.getShortcut(
+                    "panel.switchToWorktrees", KeyStroke.getKeyStroke(KeyEvent.VK_3, defaultModifier));
             rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(switchToWorktrees, "switchToWorktrees");
             rootPane.getActionMap().put("switchToWorktrees", new AbstractAction() {
                 @Override
@@ -849,8 +856,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Alt/Cmd+4 for Log
         if (gitLogTab != null) {
-            var switchToLog = MainProject.getShortcut("panel.switchToLog", 
-                KeyStroke.getKeyStroke(KeyEvent.VK_4, defaultModifier));
+            var switchToLog = MainProject.getShortcut(
+                    "panel.switchToLog", KeyStroke.getKeyStroke(KeyEvent.VK_4, defaultModifier));
             rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(switchToLog, "switchToLog");
             rootPane.getActionMap().put("switchToLog", new AbstractAction() {
                 @Override
@@ -863,8 +870,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Alt/Cmd+5 for Pull Requests panel (if available)
         if (pullRequestsPanel != null) {
-            var switchToPR = MainProject.getShortcut("panel.switchToPullRequests", 
-                KeyStroke.getKeyStroke(KeyEvent.VK_5, defaultModifier));
+            var switchToPR = MainProject.getShortcut(
+                    "panel.switchToPullRequests", KeyStroke.getKeyStroke(KeyEvent.VK_5, defaultModifier));
             rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(switchToPR, "switchToPullRequests");
             rootPane.getActionMap().put("switchToPullRequests", new AbstractAction() {
                 @Override
@@ -877,8 +884,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Alt/Cmd+6 for Issues panel (if available)
         if (issuesPanel != null) {
-            var switchToIssues = MainProject.getShortcut("panel.switchToIssues", 
-                KeyStroke.getKeyStroke(KeyEvent.VK_6, defaultModifier));
+            var switchToIssues = MainProject.getShortcut(
+                    "panel.switchToIssues", KeyStroke.getKeyStroke(KeyEvent.VK_6, defaultModifier));
             rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(switchToIssues, "switchToIssues");
             rootPane.getActionMap().put("switchToIssues", new AbstractAction() {
                 @Override
@@ -890,8 +897,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         }
 
         // Window management shortcuts
-        var closeWindowKeyStroke = MainProject.getShortcut("global.closeWindow", 
-            KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0));
+        var closeWindowKeyStroke =
+                MainProject.getShortcut("global.closeWindow", KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0));
         rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW).put(closeWindowKeyStroke, "closeWindow");
         rootPane.getActionMap().put("closeWindow", new AbstractAction() {
             @Override
@@ -905,15 +912,23 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         var rootPane = frame.getRootPane();
         var inputMap = rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW);
         var actionMap = rootPane.getActionMap();
-        
+
         // Clear existing customizable shortcuts
         String[] actionNames = {
-            "globalUndo", "globalRedo", "globalCopy", "globalPaste", 
-            "globalToggleMic", "switchToProjectFiles", "switchToChanges", 
-            "switchToWorktrees", "switchToLog", "switchToPullRequests", 
-            "switchToIssues", "closeWindow"
+            "globalUndo",
+            "globalRedo",
+            "globalCopy",
+            "globalPaste",
+            "globalToggleMic",
+            "switchToProjectFiles",
+            "switchToChanges",
+            "switchToWorktrees",
+            "switchToLog",
+            "switchToPullRequests",
+            "switchToIssues",
+            "closeWindow"
         };
-        
+
         // Remove old keystroke mappings for these actions
         KeyStroke[] keysToRemove = inputMap.keys();
         if (keysToRemove != null) {
@@ -927,7 +942,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 }
             }
         }
-        
+
         // Remove the actions
         for (String actionName : actionNames) {
             actionMap.remove(actionName);
