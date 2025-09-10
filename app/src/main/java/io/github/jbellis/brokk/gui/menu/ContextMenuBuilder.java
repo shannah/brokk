@@ -455,7 +455,6 @@ public class ContextMenuBuilder {
         }
 
         var fqn = context.fqn() != null ? context.fqn() : context.symbolName();
-
         context.contextManager().submitBackgroundTask("Capture Source Code", () -> {
             var definition = findSymbolDefinition(context);
             if (definition.isPresent()) {

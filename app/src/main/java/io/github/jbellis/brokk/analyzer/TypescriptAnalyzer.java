@@ -614,17 +614,14 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
 
     @SuppressWarnings("RedundantNullCheck")
     public boolean isTypeAlias(CodeUnit cu) {
-
         // Check if this field-type CodeUnit represents a type alias
         // We can identify this by checking if there are signatures that contain "type " and " = "
-        List<String> sigList = withSignatures(signatures -> signatures.get(cu));
+        var sigList = withSignatures(signatures -> signatures.get(cu));
 
         if (sigList != null) {
-            for (int i = 0; i < sigList.size(); i++) {
-                String sig = sigList.get(i);
-
-                boolean hasType = sig.contains("type ") || sig.contains("export type ");
-                boolean hasEquals = sig.contains(" = ");
+            for (var sig : sigList) {
+                var hasType = sig.contains("type ") || sig.contains("export type ");
+                var hasEquals = sig.contains(" = ");
 
                 if (hasType && hasEquals) {
                     return true;

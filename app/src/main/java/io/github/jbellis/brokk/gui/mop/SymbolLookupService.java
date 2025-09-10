@@ -89,9 +89,12 @@ public class SymbolLookupService {
             }
 
             // Process each symbol individually and send result immediately
+            logger.debug("Starting symbol lookup for {} symbols using analyzer: {}", symbolNames.size(), analyzer.getClass().getSimpleName());
             for (var symbolName : symbolNames) {
                 try {
                     var symbolResult = checkSymbolExists(analyzer, symbolName);
+                    logger.trace("Symbol lookup for '{}': found={}, isPartial={}, fqn='{}'",
+                            symbolName, symbolResult.fqn() != null, symbolResult.isPartialMatch(), symbolResult.fqn());
 
                     // Send result immediately (always send the SymbolLookupResult)
                     resultCallback.accept(symbolName, symbolResult);
@@ -102,6 +105,7 @@ public class SymbolLookupService {
                     resultCallback.accept(symbolName, notFoundResult);
                 }
             }
+            logger.debug("Completed symbol lookup for {} symbols", symbolNames.size());
 
             // Streaming lookup completed silently
 
@@ -121,26 +125,25 @@ public class SymbolLookupService {
         }
 
         var trimmed = symbolName.trim();
-        logger.info(
-                "DEBUG: Looking up symbol '{}', analyzer type: {}, isEmpty: {}",
-                trimmed,
-                analyzer.getClass().getSimpleName(),
-                analyzer.isEmpty());
+        logger.trace("Checking symbol existence for '{}' using {}", trimmed, analyzer.getClass().getSimpleName());
 
         try {
             // First try exact FQN match
             var definition = analyzer.getDefinition(trimmed);
             if (definition.isPresent() && definition.get().isClass()) {
+                logger.trace("Found exact FQN match for '{}': {}", trimmed, definition.get().fqName());
                 return SymbolLookupResult.exactMatch(definition.get().fqName(), trimmed);
             }
 
             // Then try pattern search for exact matches
             var searchResults = analyzer.searchDefinitions(trimmed);
+            logger.trace("Pattern search for '{}' returned {} results", trimmed, searchResults.size());
             if (!searchResults.isEmpty()) {
                 var classMatches = findAllClassMatches(trimmed, searchResults);
                 if (!classMatches.isEmpty()) {
                     var commaSeparatedFqns =
                             classMatches.stream().map(CodeUnit::fqName).sorted().collect(Collectors.joining(","));
+                    logger.trace("Found {} exact class matches for '{}': {}", classMatches.size(), trimmed, commaSeparatedFqns);
                     return SymbolLookupResult.exactMatch(commaSeparatedFqns, trimmed);
                 }
             }
@@ -149,12 +152,15 @@ public class SymbolLookupService {
             var extractedClassName = analyzer.extractClassName(trimmed);
             if (extractedClassName.isPresent()) {
                 var rawClassName = extractedClassName.get();
+                logger.trace("Extracted class name '{}' from '{}'", rawClassName, trimmed);
 
                 var candidates = ClassNameExtractor.normalizeVariants(rawClassName);
+                logger.trace("Generated {} candidate variants for '{}': {}", candidates.size(), rawClassName, candidates);
                 for (var candidate : candidates) {
                     // Try exact FQN match for candidate
                     var classDefinition = analyzer.getDefinition(candidate);
                     if (classDefinition.isPresent() && classDefinition.get().isClass()) {
+                        logger.trace("Found partial match via FQN lookup for candidate '{}': {}", candidate, classDefinition.get().fqName());
                         return SymbolLookupResult.partialMatch(
                                 classDefinition.get().fqName(), trimmed, rawClassName);
                     }
@@ -168,12 +174,14 @@ public class SymbolLookupService {
                                     .map(CodeUnit::fqName)
                                     .sorted()
                                     .collect(Collectors.joining(","));
+                            logger.trace("Found partial match via pattern search for candidate '{}': {}", candidate, commaSeparatedFqns);
                             return SymbolLookupResult.partialMatch(commaSeparatedFqns, trimmed, rawClassName);
                         }
                     }
                 }
             }
 
+            logger.trace("No symbol found for '{}'", trimmed);
             return SymbolLookupResult.notFound(trimmed);
 
         } catch (Exception e) {

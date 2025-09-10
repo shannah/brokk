@@ -634,21 +634,16 @@ public abstract class TreeSitterAnalyzer
 
     @Override
     public Optional<String> getClassSource(String fqName) {
-
         var definition = getDefinition(fqName);
-
-        if (definition.isPresent()) {
-            var cu = definition.get();
-
-            // For TypeScript type aliases, we don't filter by isClass() since they're field-type CodeUnits
-            if (!cu.isClass() && !(this instanceof TypescriptAnalyzer && cu.isField())) {
-                throw new SymbolNotFoundException("Symbol is not a class or TypeScript type alias: " + fqName);
-            }
-        } else {
+        if (definition.isEmpty()) {
             throw new SymbolNotFoundException("Class not found: " + fqName);
         }
 
         var cu = definition.get();
+        // For TypeScript type aliases, we don't filter by isClass() since they're field-type CodeUnits
+        if (!cu.isClass() && !(this instanceof TypescriptAnalyzer && cu.isField())) {
+            throw new SymbolNotFoundException("Symbol is not a class or TypeScript type alias: " + fqName);
+        }
         var ranges = sourceRanges.get(cu);
 
         if (ranges == null || ranges.isEmpty()) {
@@ -2177,21 +2172,13 @@ public abstract class TreeSitterAnalyzer
                 .filter(pf -> {
                     Path abs = pf.absPath().toAbsolutePath().normalize();
                     if (normalizedExcludedPaths.stream().anyMatch(abs::startsWith)) {
-                        log.debug("DEBUG: File excluded by path: {}", pf.absPath());
                         return false;
                     }
                     String p = abs.toString();
                     boolean matches = language.getExtensions().stream().anyMatch(p::endsWith);
-                    if (!matches) {
-                        log.debug("DEBUG: File excluded by extension (language={}): {}", language.name(), pf.absPath());
-                    } else {
-                        log.info("DEBUG: File INCLUDED for analysis (language={}): {}", language.name(), pf.absPath());
-                    }
                     return matches;
                 })
                 .collect(Collectors.toSet());
-
-        log.info("DEBUG: {} analyzer found {} files to analyze", language.name(), currentFiles.size());
 
         Set<ProjectFile> changed = new HashSet<>();
 

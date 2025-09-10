@@ -61,13 +61,26 @@ public final class ClassNameExtractor {
     /* JS/TS heuristics ---------------------------------------------------- */
 
     /**
-     * Extract a JS/TS "class-like" token from an expression such as: - MyClass?.doWork() - Array.prototype.map -
-     * MyNamespace.MyClass.method - rxjs.Observable.of - Map<string, number>.set - Foo['bar']()
+     * Extract a JS/TS "class-like" token from an expression such as:
      *
-     * <p>Heuristics: - Normalize optional chaining (?.), non-null assertions (!), generics (<...>), bracket properties
-     * (['prop']). - Only recognize Java-like class tokens (PascalCase: [A-Z][a-zA-Z0-9_$]*). - Return the rightmost
-     * PascalCase token before the final method/property segment. - Be conservative; return empty when uncertain (e.g.,
-     * console.log).
+     * <ul>
+     *   <li>MyClass?.doWork()
+     *   <li>Array.prototype.map
+     *   <li>MyNamespace.MyClass.method
+     *   <li>rxjs.Observable.of
+     *   <li>Map&lt;string, number&gt;.set
+     *   <li>Foo['bar']()
+     * </ul>
+     *
+     * <p>Heuristics:
+     *
+     * <ul>
+     *   <li>Normalize optional chaining (?.), non-null assertions (!), generics (&lt;...&gt;), bracket properties
+     *       (['prop']).
+     *   <li>Only recognize Java-like class tokens (PascalCase: [A-Z][a-zA-Z0-9_$]*).
+     *   <li>Return the rightmost PascalCase token before the final method/property segment.
+     *   <li>Be conservative; return empty when uncertain (e.g., console.log).
+     * </ul>
      */
     public static Optional<String> extractForJsTs(String reference) {
         if (reference == null) return Optional.empty();
@@ -84,7 +97,7 @@ public final class ClassNameExtractor {
             return Optional.empty();
         }
 
-        int lastDot = findLastTopLevelDot(normalized);
+        var lastDot = findLastTopLevelDot(normalized);
         if (lastDot <= 0 || lastDot >= normalized.length() - 1) return Optional.empty();
 
         var lastPart = normalized.substring(lastDot + 1).trim();
