@@ -2604,8 +2604,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     /**
-     * Focus traversal so TAB cycles through: input, mic, model selector, history dropdown, mode toggle,
-     * plan/search checkbox, optional plan options, and the Send/Stop button.
+     * Focus traversal so TAB cycles through: input, mic, model selector, history dropdown, mode toggle, plan/search
+     * checkbox, optional plan options, and the Send/Stop button.
      */
     private final class InstructionsFocusTraversalPolicy extends FocusTraversalPolicy {
         private List<Component> currentOrder() {
