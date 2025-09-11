@@ -609,7 +609,13 @@ public interface ContextFragment {
         @Override
         public Image image() throws UncheckedIOException {
             try {
-                return javax.imageio.ImageIO.read(file.absPath().toFile());
+                Image result = javax.imageio.ImageIO.read(file.absPath().toFile());
+                if (result == null) {
+                    // ImageIO.read() returns null if no registered ImageReader can read the file
+                    // This can happen for unsupported formats, corrupted files, or non-image files
+                    throw new UncheckedIOException(new IOException("Unable to read image file: " + file.absPath()));
+                }
+                return result;
             } catch (IOException e) {
                 throw new UncheckedIOException(e);
             }
@@ -964,7 +970,8 @@ public interface ContextFragment {
         private final Image image;
 
         // Helper to get image bytes, might throw UncheckedIOException
-        private static byte[] imageToBytes(Image image) {
+        @Nullable
+        private static byte[] imageToBytes(@Nullable Image image) {
             try {
                 // Assuming FrozenFragment.imageToBytes will be made public
                 return FrozenFragment.imageToBytes(image);
@@ -1018,6 +1025,7 @@ public interface ContextFragment {
             return image;
         }
 
+        @Nullable
         public byte[] imageBytes() {
             return imageToBytes(image);
         }
