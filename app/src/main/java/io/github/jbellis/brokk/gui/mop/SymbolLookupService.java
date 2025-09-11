@@ -188,7 +188,7 @@ public class SymbolLookupService {
             var batchStartTime = System.nanoTime();
 
             // Process symbols with priority-based streaming
-            logger.debug(
+            logger.trace(
                     "[PERF][STREAM] Starting batch {} with {} symbols using analyzer: {}",
                     batchId,
                     symbolNames.size(),
@@ -215,7 +215,7 @@ public class SymbolLookupService {
                         foundCount++;
                     }
 
-                    logger.debug(
+                    logger.trace(
                             "[PERF][STREAM] Symbol '{}' processed in {}ms: found={}, confidence={}, priority={}",
                             symbolName,
                             symbolProcessingTime,
@@ -233,7 +233,7 @@ public class SymbolLookupService {
                     if (processedCount % 5 == 0 || processedCount == symbolNames.size()) {
                         var batchElapsedTime = (System.nanoTime() - batchStartTime) / 1_000_000;
                         var avgTimePerSymbol = processedCount > 0 ? (double) batchElapsedTime / processedCount : 0.0;
-                        logger.debug(
+                        logger.trace(
                                 "[PERF][STREAM] Batch {} progress: {}/{} symbols processed in {}ms (avg {}ms/symbol, {} found)",
                                 batchId,
                                 processedCount,
@@ -245,7 +245,7 @@ public class SymbolLookupService {
 
                 } catch (Exception e) {
                     var symbolProcessingTime = (System.nanoTime() - symbolStartTime) / 1_000_000;
-                    logger.warn(
+                    logger.trace(
                             "[PERF][STREAM] Error processing symbol '{}' in batch {} after {}ms",
                             symbolName,
                             batchId,
@@ -261,7 +261,7 @@ public class SymbolLookupService {
 
             var totalBatchTime = (System.nanoTime() - batchStartTime) / 1_000_000;
             var avgTimePerSymbol = symbolNames.size() > 0 ? (double) totalBatchTime / symbolNames.size() : 0.0;
-            logger.debug(
+            logger.trace(
                     "[PERF][STREAM] Batch {} completed: {} symbols processed in {}ms (avg {}ms/symbol, {} found, {}% success rate)",
                     batchId,
                     symbolNames.size(),
@@ -289,7 +289,7 @@ public class SymbolLookupService {
 
         var trimmed = symbolName.trim();
         var startTime = System.nanoTime();
-        logger.debug(
+        logger.trace(
                 "[PERF][STREAM] Checking symbol existence for '{}' using {}",
                 trimmed,
                 analyzer.getClass().getSimpleName());
@@ -299,7 +299,7 @@ public class SymbolLookupService {
             var definition = analyzer.getDefinition(trimmed);
             if (definition.isPresent() && definition.get().isClass()) {
                 var processingTime = (System.nanoTime() - startTime) / 1_000_000;
-                logger.debug(
+                logger.trace(
                         "[PERF][STREAM] Found exact FQN match for '{}': {} in {}ms",
                         trimmed,
                         definition.get().fqName(),
@@ -307,7 +307,10 @@ public class SymbolLookupService {
                 return SymbolLookupResult.exactMatch(definition.get().fqName(), trimmed, processingTime);
             }
 
-            // Then try pattern search for exact matches
+            // Only try pattern search if exact FQN lookup failed
+            logger.trace(
+                    "[PERF][SEARCH] Exact FQN lookup failed, proceeding with expensive pattern search for '{}'",
+                    trimmed);
             var searchResults = analyzer.searchDefinitions(trimmed);
             logger.trace("Pattern search for '{}' returned {} results", trimmed, searchResults.size());
             if (!searchResults.isEmpty()) {
@@ -316,7 +319,7 @@ public class SymbolLookupService {
                     var commaSeparatedFqns =
                             classMatches.stream().map(CodeUnit::fqName).sorted().collect(Collectors.joining(","));
                     var processingTime = (System.nanoTime() - startTime) / 1_000_000;
-                    logger.debug(
+                    logger.trace(
                             "[PERF][STREAM] Found {} exact class matches for '{}': {} in {}ms",
                             classMatches.size(),
                             trimmed,
@@ -340,16 +343,22 @@ public class SymbolLookupService {
                     var classDefinition = analyzer.getDefinition(candidate);
                     if (classDefinition.isPresent() && classDefinition.get().isClass()) {
                         var processingTime = (System.nanoTime() - startTime) / 1_000_000;
-                        logger.debug(
+                        logger.trace(
                                 "[PERF][STREAM] Found partial match via FQN lookup for candidate '{}': {} in {}ms",
                                 candidate,
                                 classDefinition.get().fqName(),
                                 processingTime);
+                        logger.trace(
+                                "[PERF][SEARCH] Skipping expensive pattern search for candidate '{}' - exact FQN match found",
+                                candidate);
                         return SymbolLookupResult.partialMatch(
                                 classDefinition.get().fqName(), trimmed, rawClassName, processingTime);
                     }
 
-                    // Try pattern search for candidate
+                    // Only try pattern search if exact FQN lookup failed for this candidate
+                    logger.trace(
+                            "[PERF][SEARCH] FQN lookup failed for candidate '{}', trying expensive pattern search",
+                            candidate);
                     var classSearchResults = analyzer.searchDefinitions(candidate);
                     if (!classSearchResults.isEmpty()) {
                         var classMatches = findAllClassMatches(candidate, classSearchResults);
@@ -359,7 +368,7 @@ public class SymbolLookupService {
                                     .sorted()
                                     .collect(Collectors.joining(","));
                             var processingTime = (System.nanoTime() - startTime) / 1_000_000;
-                            logger.debug(
+                            logger.trace(
                                     "[PERF][STREAM] Found partial match via pattern search for candidate '{}': {} in {}ms",
                                     candidate,
                                     commaSeparatedFqns,
@@ -372,12 +381,12 @@ public class SymbolLookupService {
             }
 
             var processingTime = (System.nanoTime() - startTime) / 1_000_000;
-            logger.debug("[PERF][STREAM] No symbol found for '{}' in {}ms", trimmed, processingTime);
+            logger.trace("[PERF][STREAM] No symbol found for '{}' in {}ms", trimmed, processingTime);
             return SymbolLookupResult.notFound(trimmed, processingTime);
 
         } catch (Exception e) {
             var processingTime = (System.nanoTime() - startTime) / 1_000_000;
-            logger.debug(
+            logger.trace(
                     "[PERF][STREAM] Error checking symbol existence for '{}' in {}ms: {}",
                     trimmed,
                     processingTime,
