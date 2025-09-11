@@ -104,9 +104,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     // Labels flanking the mode switch; bold the selected side
     private final JLabel codeModeLabel = new JLabel("Code");
     private final JLabel answerModeLabel = new JLabel("Answer");
-    private final JButton actionButton;
+    private JButton actionButton;
     private @Nullable volatile Future<?> currentActionFuture;
-    private final ModelSelector modelSelector;
+    private ModelSelector modelSelector;
     private @Nullable Component modelSelectorComponent;
     private String storedAction;
     private final ContextManager contextManager;
@@ -115,7 +115,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private JLabel failureReasonLabel;
     private JPanel suggestionContentPanel;
     private CardLayout suggestionCardLayout;
-    private final JPanel centerPanel;
+    private JPanel centerPanel;
     private @Nullable JPanel modeIndicatorPanel;
     private @Nullable JLabel modeBadge;
     private @Nullable JComponent inputLayeredPane;
@@ -123,7 +123,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private @Nullable TitledBorder instructionsTitledBorder;
     private static final int CONTEXT_SUGGESTION_DELAY = 100; // ms for paste/bulk changes
     private static final int CONTEXT_SUGGESTION_TYPING_DELAY = 1000; // ms for single character typing
-    private final javax.swing.Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
+    private javax.swing.Timer contextSuggestionTimer; // Timer for debouncing quick context suggestions
     private final AtomicBoolean forceSuggestions = new AtomicBoolean(false);
     // Worker for autocontext suggestion tasks. we don't use CM.backgroundTasks b/c we want this to be single threaded
     private final ExecutorService suggestionWorker = new LoggingExecutorService(
