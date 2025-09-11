@@ -3,9 +3,8 @@ package dev.langchain4j.agent.tool;
 import static dev.langchain4j.internal.Utils.quoted;
 
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.Objects;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Describes a tool that language model can execute.

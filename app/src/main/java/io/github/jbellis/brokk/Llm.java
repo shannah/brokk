@@ -1005,7 +1005,9 @@ public class Llm {
             List<ToolSpecification> tools, Function<@Nullable Throwable, String> retryInstructionsProvider) {
         String toolsDescription = tools.stream()
                 .map(tool -> {
-                    var props = tool.parameters() == null ? Map.<String, JsonSchemaElement>of() : tool.parameters().properties();
+                    var props = tool.parameters() == null
+                            ? Map.<String, JsonSchemaElement>of()
+                            : tool.parameters().properties();
                     var parametersInfo = props.entrySet().stream()
                             .map(entry -> {
                                 var schema = entry.getValue();
@@ -1059,7 +1061,9 @@ public class Llm {
                                         .formatted(
                                                 entry.getKey(),
                                                 type,
-                                                requireNonNull(tool.parameters()).required().contains(entry.getKey()),
+                                                requireNonNull(tool.parameters())
+                                                        .required()
+                                                        .contains(entry.getKey()),
                                                 description);
                             })
                             .collect(Collectors.joining("\n"));
