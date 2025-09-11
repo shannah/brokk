@@ -9,18 +9,24 @@ import io.github.jbellis.brokk.EditBlock;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import java.util.*;
 import java.util.stream.Stream;
-import org.jetbrains.annotations.Nullable;
 
 public class EditBlockParser {
     public static EditBlockParser instance = new EditBlockParser();
 
     protected EditBlockParser() {}
 
-    public List<ChatMessage> exampleMessages() {
-        return List.of(
-                new UserMessage("Change get_factorial() to use math.factorial"),
-                new AiMessage(
-                        """
+    public enum InstructionsFlags {
+        MERGE_AGENT_MARKERS
+    }
+
+    public List<ChatMessage> exampleMessages(Set<InstructionsFlags> flags) {
+        var examples = new ArrayList<ChatMessage>();
+
+        examples.addAll(
+                List.of(
+                        new UserMessage("Change get_factorial() to use math.factorial"),
+                        new AiMessage(
+                                """
             To make this change we need to modify `mathweb/flask/app.py` to:
 
             1. Import the math package.
@@ -61,45 +67,70 @@ public class EditBlockParser {
                 return str(math.factorial(n))
             >>>>>>> REPLACE
             ```
-            """
-                                .stripIndent()),
-                new UserMessage("Refactor hello() into its own file."),
-                new AiMessage(
-                        """
-            To make this change we need to modify `main.py` and make a new file `hello.py`:
+            """)));
+        if (flags.contains(InstructionsFlags.MERGE_AGENT_MARKERS)) {
+            examples.addAll(
+                    List.of(
+                            new UserMessage("Resolve the conflict in src/main/java/com/acme/Widget.java."),
+                            new AiMessage(
+                                    """
+                Here is the *SEARCH/REPLACE* block to resolve the Widget conflict:
 
-            1. Make a new hello.py file with hello() in it.
-            2. Remove hello() from main.py and replace it with an import.
+                ```
+                src/main/java/com/acme/Widget.java
+                <<<<<<< SEARCH
+                BRK_CONFLICT_BEGIN7..BRK_CONFLICT_END7
+                =======
+                public class Widget {
+                    public String greet(String name) {
+                        return "Hello, " + name + "!";
+                    }
+                }
+                >>>>>>> REPLACE
+                ```
+                """)));
+        } else {
+            examples.addAll(
+                    List.of(
+                            new UserMessage("Refactor hello() into its own file."),
+                            new AiMessage(
+                                    """
+                    To make this change we need to modify `main.py` and make a new file `hello.py`:
 
-            Here are the *SEARCH/REPLACE* blocks:
+                    1. Make a new hello.py file with hello() in it.
+                    2. Remove hello() from main.py and replace it with an import.
 
-            ```
-            hello.py
-            <<<<<<< SEARCH
-            =======
-            def hello():
-                "print a greeting"
+                    Here are the *SEARCH/REPLACE* blocks:
 
-                print("hello")
-            >>>>>>> REPLACE
-            ```
+                    ```
+                    hello.py
+                    <<<<<<< SEARCH
+                    =======
+                    def hello():
+                        "print a greeting"
 
-            ```
-            main.py
-            <<<<<<< SEARCH
-            def hello():
-                "print a greeting"
+                        print("hello")
+                    >>>>>>> REPLACE
+                    ```
 
-                print("hello")
-            =======
-            from hello import hello
-            >>>>>>> REPLACE
-            ```
-            """
-                                .stripIndent()));
+                    ```
+                    main.py
+                    <<<<<<< SEARCH
+                    def hello():
+                        "print a greeting"
+
+                        print("hello")
+                    =======
+                    from hello import hello
+                    >>>>>>> REPLACE
+                    ```
+                    """)));
+        }
+
+        return examples;
     }
 
-    protected final String instructions(String input, @Nullable ProjectFile file, String reminder) {
+    protected final String instructions(String input, Set<InstructionsFlags> flags, String reminder) {
         return """
         <rules>
         %s
@@ -149,18 +180,21 @@ public class EditBlockParser {
         %s
         </rules>
 
-        <goal%s>
+        <goal>
         %s
         </goal>
         """
-                .formatted(
-                        diffFormatInstructions(),
-                        reminder,
-                        file == null ? "" : " target=\"%s\">".formatted(file),
-                        input);
+                .formatted(diffFormatInstructions(flags), reminder, input);
     }
 
-    public String diffFormatInstructions() {
+    String diffFormatInstructions(Set<InstructionsFlags> flags) {
+        var mergeText = flags.contains(InstructionsFlags.MERGE_AGENT_MARKERS)
+                ? """
+                           \nSPECIAL CASE: You can match an entire conflict block with a single line consisting of its begin and end markers:
+                           `BRK_CONFLICT_BEGIN$n..BRK_CONFLICT_END$n` where $n is the conflict number.
+                """
+                : "";
+
         return """
         # *SEARCH/REPLACE block* Rules:
 
@@ -168,7 +202,7 @@ public class EditBlockParser {
         1. The opening fence: ```
         2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
         3. The start of search block: <<<<<<< SEARCH
-        4. A contiguous chunk of lines to search for in the existing source code
+        4. A contiguous chunk of lines to search for in the existing source code.%s
         5. The dividing line: =======
         6. The lines to replace into the source code
         7. The end of the replace block: >>>>>>> REPLACE
@@ -176,6 +210,7 @@ public class EditBlockParser {
 
         Use the *FULL* file path, as shown to you by the user. No other text should appear on the marker lines.
         """
+                .formatted(mergeText)
                 .stripIndent();
     }
 

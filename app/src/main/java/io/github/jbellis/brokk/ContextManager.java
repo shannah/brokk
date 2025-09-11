@@ -171,6 +171,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     // BuildAgent task tracking for cancellation
     private volatile @Nullable CompletableFuture<BuildAgent.BuildDetails> buildAgentFuture;
 
+    // Special fragment that holds the latest build results (created lazily on first update)
+    private volatile @Nullable ContextFragment.BuildFragment buildFragment;
+
     // Model reload state to prevent concurrent reloads
     private final AtomicBoolean isReloadingModels = new AtomicBoolean(false);
 
@@ -1024,6 +1027,31 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /** Adds any virtual fragment directly to the live context. */
     public void addVirtualFragment(VirtualFragment fragment) {
         pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(fragment));
+    }
+
+    /**
+     * Lazily creates and updates the special BuildFragment with the latest build results text. Does not push a history
+     * entry for updates after creation. Triggers a workspace UI refresh.
+     */
+    public void updateBuildFragment(String text) {
+        var existing = this.buildFragment;
+        boolean needsCreate = existing == null
+                || liveContext()
+                        .virtualFragments()
+                        .noneMatch(f -> f instanceof ContextFragment.BuildFragment bf && bf.equals(existing));
+
+        if (needsCreate) {
+            var bf = new ContextFragment.BuildFragment(this);
+            bf.setContent(text);
+            this.buildFragment = bf;
+            // Adding the fragment pushes a new frozen snapshot once.
+            addVirtualFragment(bf);
+        } else {
+            // Update the dynamic fragment in place (no history entry).
+            requireNonNull(existing).setContent(text);
+            // Request UI refresh so frozen view mirrors dynamic content.
+            SwingUtilities.invokeLater(io::updateWorkspace);
+        }
     }
 
     /**
@@ -2501,11 +2529,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     public static class SummarizeWorker extends SwingWorker<String, String> {
-        private final ContextManager cm;
+        private final IContextManager cm;
         private final String content;
         private final int words;
 
-        public SummarizeWorker(ContextManager cm, String content, int words) {
+        public SummarizeWorker(IContextManager cm, String content, int words) {
             this.cm = cm;
             this.content = content;
             this.words = words;

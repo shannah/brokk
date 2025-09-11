@@ -178,7 +178,7 @@ class EditBlockConflictsTest {
         var blocks = EditBlockConflictsParser.instance
                 .parseEditBlocks(response, ctx.getEditableFiles())
                 .blocks();
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        var result = EditBlock.apply(ctx, io, blocks);
 
         assertNotEquals(List.of(), result.failedBlocks());
     }
@@ -258,7 +258,7 @@ class EditBlockConflictsTest {
         var blocks = EditBlockConflictsParser.instance
                 .parseEditBlocks(response, ctx.getEditableFiles())
                 .blocks();
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        var result = EditBlock.apply(ctx, io, blocks);
 
         // Assert exactly one failure with the correct reason
         assertEquals(1, result.failedBlocks().size(), "Expected exactly one failed block");
@@ -293,7 +293,7 @@ class EditBlockConflictsTest {
         var blocks = EditBlockConflictsParser.instance
                 .parseEditBlocks(response, ctx.getEditableFiles())
                 .blocks();
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        var result = EditBlock.apply(ctx, io, blocks);
 
         // Verify original content is returned
         var fileA = new ProjectFile(tempDir, Path.of("fileA.txt"));
@@ -329,7 +329,7 @@ class EditBlockConflictsTest {
         assertEquals(1, blocks.size());
         assertTrue(blocks.getFirst().beforeText().isEmpty()); // Verify search block is empty
 
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        var result = EditBlock.apply(ctx, io, blocks);
 
         // Verify the file content is now *only* the replacement text
         String actualContent = Files.readString(testFile);
@@ -484,7 +484,7 @@ class EditBlockConflictsTest {
         var blocks = EditBlockConflictsParser.instance
                 .parseEditBlocks(response, ctx.getEditableFiles())
                 .blocks();
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        var result = EditBlock.apply(ctx, io, blocks);
 
         // Assert exactly one failure with NO_MATCH reason
         assertEquals(1, result.failedBlocks().size(), "Expected exactly one failed block");
@@ -527,7 +527,7 @@ class EditBlockConflictsTest {
         var blocks = EditBlockConflictsParser.instance
                 .parseEditBlocks(response, ctx.getEditableFiles())
                 .blocks();
-        var result = EditBlock.applyEditBlocks(ctx, io, blocks);
+        var result = EditBlock.apply(ctx, io, blocks);
 
         // Assert exactly one failure with NO_MATCH reason
         assertEquals(1, result.failedBlocks().size(), "Expected exactly one failed block");

@@ -22,8 +22,12 @@ public final class TestContextManager implements IContextManager {
     private final Context liveContext;
 
     public TestContextManager(Path projectRoot, IConsoleIO consoleIO) {
-        this.project = new TestProject(projectRoot, Language.JAVA);
-        this.mockAnalyzer = new MockAnalyzer(projectRoot);
+        this(new TestProject(projectRoot, Language.JAVA), consoleIO);
+    }
+
+    public TestContextManager(TestProject project, IConsoleIO consoleIO) {
+        this.project = project;
+        this.mockAnalyzer = new MockAnalyzer(project.getRoot());
         this.inMemoryRepo = new InMemoryRepo();
         this.consoleIO = consoleIO;
         this.stubService = new TestService(this.project);

@@ -1531,9 +1531,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             contextManager.addToHistory(result, false);
         } catch (InterruptedException e) {
             throw new CancellationException(e.getMessage());
-        } catch (Exception e) {
-            logger.error("Error during Architect execution", e);
-            chrome.toolError("Internal error during Architect command: " + e.getMessage());
         }
     }
 
@@ -1922,7 +1919,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var cm = chrome.getContextManager();
         // need to set the correct parser here since we're going to append to the same fragment during the action
         String finalAction = (action + " MODE").toUpperCase(Locale.ROOT);
-
         // Map some actions to a more user-friendly display string for the spinner.
         // We keep the original `finalAction` (used for LLM output / history) unchanged to avoid
         // affecting other subsystems that detect action by name, but present a clearer label
@@ -1938,8 +1934,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             displayAction = action;
         }
 
-        chrome.setLlmOutput(new ContextFragment.TaskFragment(
-                cm, cm.getParserForWorkspace(), List.of(new UserMessage(finalAction, input)), input));
+        chrome.setLlmOutput(new ContextFragment.TaskFragment(cm, List.of(new UserMessage(finalAction, input)), input));
         return cm.submitUserTask(finalAction, true, () -> {
             try {
                 chrome.showOutputSpinner("Executing " + displayAction + " command...");

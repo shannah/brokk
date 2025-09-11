@@ -7,7 +7,7 @@ import io.github.jbellis.brokk.prompts.EditBlockParser;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-class EditBlockParseAllBlocksTest {
+class EditBlockParserTest {
     @Test
     void testParseEmptyString() {
         var result = EditBlockParser.instance.parse("", Set.of()).blocks();

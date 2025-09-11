@@ -102,8 +102,8 @@ public class EditBlock {
      * <p>Note: it is the responsibility of the caller (e.g. CodeAgent::preCreateNewFiles) to create empty files for
      * blocks corresponding to new files.
      */
-    public static EditResult applyEditBlocks(
-            IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks) throws IOException {
+    public static EditResult apply(IContextManager contextManager, IConsoleIO io, Collection<SearchReplaceBlock> blocks)
+            throws IOException {
         // Track which blocks succeed or fail during application
         List<FailedBlock> failed = new ArrayList<>();
         Map<SearchReplaceBlock, ProjectFile> succeeded = new HashMap<>();
@@ -302,6 +302,38 @@ public class EditBlock {
      */
     static String replaceMostSimilarChunk(String content, String target, String replace)
             throws AmbiguousMatchException, NoMatchException {
+        // Special-case: if the search block is a BRK_CONFLICT_BEGIN<n> ... BRK_CONFLICT_END<n> block (allow
+        // surrounding whitespace), then replace the entire conflict block (from the matching begin to end)
+        // in `content` with `replace`.
+        var trimmedTarget = target.strip();
+        var conflictPattern =
+                java.util.regex.Pattern.compile("(?s)^BRK_CONFLICT_BEGIN(\\d+)[\\s\\S]*BRK_CONFLICT_END\\1$");
+        var m = conflictPattern.matcher(trimmedTarget);
+        if (m.matches()) {
+            var num = m.group(1);
+            // Find occurrences in the whole content. Include an optional trailing newline after the BRK_CONFLICT_END
+            // so that replacing a block that is followed by a newline doesn't leave a duplicate blank line.
+            var findPattern = java.util.regex.Pattern.compile("BRK_CONFLICT_BEGIN" + java.util.regex.Pattern.quote(num)
+                    + "[\\s\\S]*?BRK_CONFLICT_END" + java.util.regex.Pattern.quote(num)
+                    + "(?:\\r?\\n)?");
+            var matcher = findPattern.matcher(content);
+            int count = 0;
+            while (matcher.find()) {
+                count++;
+            }
+            if (count == 0) {
+                throw new NoMatchException("No matching conflict block found for BRK_CONFLICT_BEGIN" + num);
+            }
+            if (count > 1) {
+                throw new AmbiguousMatchException(
+                        "Multiple matching conflict blocks found for BRK_CONFLICT_BEGIN" + num);
+            }
+            // Replace the single occurrence
+            var replaceMatcher = findPattern.matcher(content);
+            var replaced = replaceMatcher.replaceFirst(java.util.regex.Matcher.quoteReplacement(replace));
+            return replaced;
+        }
+
         // 1) prep for line-based matching
         ContentLines originalCL = prep(content);
         ContentLines targetCl = prep(target);

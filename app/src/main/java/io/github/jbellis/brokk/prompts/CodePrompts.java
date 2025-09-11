@@ -20,7 +20,6 @@ import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
 
 /** Generates prompts for the main coding agent loop, including instructions for SEARCH/REPLACE blocks. */
 public abstract class CodePrompts {
@@ -144,7 +143,8 @@ public abstract class CodePrompts {
             EditBlockParser parser,
             List<ChatMessage> taskMessages,
             UserMessage request,
-            Set<ProjectFile> changedFiles)
+            Set<ProjectFile> changedFiles,
+            Set<EditBlockParser.InstructionsFlags> flags)
             throws InterruptedException {
         var messages = new ArrayList<ChatMessage>();
         var reminder = codeReminder(cm.getService(), model);
@@ -156,7 +156,7 @@ public abstract class CodePrompts {
         } else {
             messages.addAll(getWorkspaceContentsMessages(getWorkspaceReadOnlyMessages(ctx), List.of()));
         }
-        messages.addAll(parser.exampleMessages());
+        messages.addAll(parser.exampleMessages(flags));
         messages.addAll(getHistoryMessages(ctx));
         messages.addAll(taskMessages);
         if (!changedFiles.isEmpty()) {
@@ -173,7 +173,8 @@ public abstract class CodePrompts {
             List<ChatMessage> readOnlyMessages,
             List<ChatMessage> taskMessages,
             UserMessage request,
-            ProjectFile file) {
+            ProjectFile file,
+            Set<EditBlockParser.InstructionsFlags> flags) {
         var messages = new ArrayList<ChatMessage>();
 
         var systemPrompt =
@@ -212,7 +213,7 @@ public abstract class CodePrompts {
             throw new UncheckedIOException(e);
         }
 
-        messages.addAll(parser.exampleMessages());
+        messages.addAll(parser.exampleMessages(flags));
         messages.addAll(taskMessages);
         messages.add(request);
 
@@ -326,7 +327,8 @@ public abstract class CodePrompts {
                 .formatted(reminder);
     }
 
-    public UserMessage codeRequest(String input, String reminder, EditBlockParser parser, @Nullable ProjectFile file) {
+    public UserMessage codeRequest(
+            String input, String reminder, EditBlockParser parser, Set<EditBlockParser.InstructionsFlags> flags) {
         var instructions =
                 """
         <instructions>
@@ -357,7 +359,7 @@ public abstract class CodePrompts {
                                 GraphicsEnvironment.isHeadless()
                                         ? "decide what the most logical interpretation is"
                                         : "ask questions");
-        return new UserMessage(instructions + parser.instructions(input, file, reminder));
+        return new UserMessage(instructions + parser.instructions(input, flags, reminder));
     }
 
     public UserMessage askRequest(String input) {

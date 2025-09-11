@@ -197,7 +197,7 @@ public class BlitzForgeProgressDialog extends JDialog {
             result = InstructionsPanel.executeAskCommand(llm, messages, cm, instructions);
         } else { // "Code"
             var agent = new CodeAgent(cm, model, dialogConsoleIO);
-            result = agent.runSingleFileEdit(file, instructions, readOnlyMessages);
+            result = agent.runSingleFileEdit(file, instructions, readOnlyMessages, Set.of());
         }
         // output the result
         if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
@@ -574,6 +574,22 @@ public class BlitzForgeProgressDialog extends JDialog {
                             : "Here are the postprocessing instructions:\n```\n%s```"
                                     .formatted(postProcessingInstructions);
 
+                    // Prepare concise build-fragment content and update the project's BuildFragment so the
+                    // Architect can consult it instead of inlining raw build output into the prompt.
+                    var buildFragmentContent = new StringBuilder();
+                    if (buildFailureText.isBlank()) {
+                        buildFragmentContent.append("Build succeeded.");
+                    } else {
+                        buildFragmentContent.append("Build output:\n").append(buildFailureText);
+                    }
+                    // Include the parallel-details summary to provide context (kept concise).
+                    buildFragmentContent.append("\n\n").append(parallelDetails);
+
+                    // Update the BuildFragment in the ContextManager (so it's visible to LLMs/Agents).
+                    contextManager.updateBuildFragment(buildFragmentContent.toString());
+
+                    // Build the agent instructions WITHOUT embedding raw build output; Architect should consult
+                    // the Build Results fragment in the session context for full build logs/details.
                     var agentInstructions =
                             """
                                             I just finished a parallel upgrade task with the following instructions:
@@ -583,14 +599,12 @@ public class BlitzForgeProgressDialog extends JDialog {
 
                                             %s
 
-                                            Build status:
-                                            ```
-                                            %s
-                                            ```
+                                            Build details and verification output are available in the session's Build Results fragment;
+                                            please consult it when fixing any remaining issues.
 
                                             %s
                                             """
-                                    .formatted(instructions, parallelDetails, buildFailureText, effectiveGoal);
+                                    .formatted(instructions, parallelDetails, effectiveGoal);
 
                     if (runOption == PostProcessingOption.ASK) {
                         outputTextArea.append("Ask command has been invoked. You can close this window.\n");
@@ -599,6 +613,7 @@ public class BlitzForgeProgressDialog extends JDialog {
                     }
 
                     outputTextArea.append("Architect has been invoked. You can close this window.\n");
+                    // Submit the Architect task; the updated BuildFragment is already in the session context.
                     contextManager.submitUserTask("Architect post-upgrade build fix", () -> {
                         var options = new ArchitectAgent.ArchitectOptions(
                                 false, false, false, true, true, false, false, false, false, false);

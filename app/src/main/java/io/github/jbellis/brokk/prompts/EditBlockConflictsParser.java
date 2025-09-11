@@ -20,7 +20,7 @@ public class EditBlockConflictsParser extends EditBlockParser {
     }
 
     @Override
-    public List<ChatMessage> exampleMessages() {
+    public List<ChatMessage> exampleMessages(Set<InstructionsFlags> flags) {
         return List.of(
                 new UserMessage("Change get_factorial() to use math.factorial"),
                 new AiMessage(
@@ -85,7 +85,7 @@ public class EditBlockConflictsParser extends EditBlockParser {
     }
 
     @Override
-    public String diffFormatInstructions() {
+    String diffFormatInstructions(Set<InstructionsFlags> flags) {
         return """
         # *SEARCH/REPLACE blocks*
 
