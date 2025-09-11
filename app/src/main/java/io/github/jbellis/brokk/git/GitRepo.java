@@ -457,6 +457,23 @@ public class GitRepo implements Closeable, IGitRepo {
         return head.getName();
     }
 
+    /**
+     * Returns an abbreviated (short) hash for the given revision. Attempts to abbreviate via JGit to a unique short id;
+     * falls back to the first 7 chars on error.
+     */
+    public String shortHash(String rev) {
+        try {
+            var id = resolve(rev);
+            try (var reader = repository.newObjectReader()) {
+                var abbrev = reader.abbreviate(id);
+                return abbrev.name();
+            }
+        } catch (GitAPIException | IOException e) {
+            logger.warn(e);
+            return rev;
+        }
+    }
+
     /** Performs git diff operation with the given filter group, handling NoHeadException for empty repositories. */
     private String performDiffWithFilter(TreeFilter filterGroup) throws GitAPIException {
         try (var out = new ByteArrayOutputStream()) {

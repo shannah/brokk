@@ -224,7 +224,7 @@ public class GitCommitTab extends JPanel {
                     filesToCommit,
                     commitResult -> { // This is the onCommitSuccessCallback
                         chrome.systemOutput("Committed "
-                                + GitUiUtil.shortenCommitId(commitResult.commitId())
+                                + getRepo().shortHash(commitResult.commitId())
                                 + ": " + commitResult.firstLine());
                         updateCommitPanel(); // Refresh file list
                         chrome.updateLogTab();
