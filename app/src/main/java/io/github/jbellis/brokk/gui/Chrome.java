@@ -22,9 +22,11 @@ import io.github.jbellis.brokk.gui.mop.MarkdownOutputPool;
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.search.MarkdownSearchableComponent;
+import io.github.jbellis.brokk.gui.terminal.TerminalDrawerPanel;
 import io.github.jbellis.brokk.gui.util.BadgedIcon;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.issues.IssueProviderType;
+import io.github.jbellis.brokk.util.CloneOperationTracker;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.Messages;
 import java.awt.*;
@@ -32,6 +34,7 @@ import java.awt.event.*;
 import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import java.time.LocalTime;
 import java.time.ZoneId;
 import java.time.format.DateTimeFormatter;
@@ -106,7 +109,11 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         lastTabToggleTime = currentTime;
 
         if (leftTabbedPanel.getSelectedIndex() == tabIndex) {
-            // Tab already selected, minimize the panel but keep tabs visible
+            // Tab already selected: capture current expanded width (if not already minimized), then minimize
+            int currentLocation = bottomSplitPane.getDividerLocation();
+            if (currentLocation >= 50) {
+                lastExpandedSidebarLocation = currentLocation;
+            }
             leftTabbedPanel.setSelectedIndex(-1);
             bottomSplitPane.setDividerSize(0);
             bottomSplitPane.setDividerLocation(40);
@@ -115,14 +122,20 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             // Restore panel if it was minimized
             if (bottomSplitPane.getDividerLocation() < 50) {
                 bottomSplitPane.setDividerSize(originalBottomDividerSize);
-                int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
-                bottomSplitPane.setDividerLocation(preferred);
+                int target = (lastExpandedSidebarLocation > 0)
+                        ? lastExpandedSidebarLocation
+                        : computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
+                bottomSplitPane.setDividerLocation(target);
             }
         }
     }
 
     // Store original divider size for hiding/showing divider
     private int originalBottomDividerSize;
+
+    // Remember the last non-minimized divider location of the left sidebar
+    // Used to restore the previous width when re-expanding after a minimize
+    private int lastExpandedSidebarLocation = -1;
 
     // Swing components:
     final JFrame frame;
@@ -178,6 +191,10 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     // Command input panel is now encapsulated in InstructionsPanel.
     private final InstructionsPanel instructionsPanel;
+
+    // Right-hand drawer (tools) - split and content
+    private InstructionsDrawerSplit instructionsDrawerSplit;
+    private TerminalDrawerPanel terminalDrawer;
 
     /** Default constructor sets up the UI. */
     @SuppressWarnings("NullAway.Init") // For complex Swing initialization patterns
@@ -373,6 +390,17 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         workspaceInstructionsSplit.setBottomComponent(instructionsPanel);
         workspaceInstructionsSplit.setResizeWeight(0.583); // ~35 % Workspace / 25 % Instructions
 
+        // Create terminal drawer panel
+        instructionsDrawerSplit = new InstructionsDrawerSplit();
+        terminalDrawer = new TerminalDrawerPanel(this, instructionsDrawerSplit);
+
+        // Attach instructions (left) and drawer (right)
+        instructionsDrawerSplit.setInstructionsComponent(instructionsPanel);
+        instructionsDrawerSplit.setDrawerComponent(terminalDrawer);
+
+        // Attach the combined instructions+drawer split as the bottom component
+        workspaceInstructionsSplit.setBottomComponent(instructionsDrawerSplit);
+
         // Keep reference so existing persistence logic still works
         topSplitPane = workspaceInstructionsSplit;
 
@@ -408,6 +436,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         bottomSplitPane.setResizeWeight(0.0);
         int initialDividerLocation = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
         bottomSplitPane.setDividerLocation(initialDividerLocation);
+        // Initialize the remembered expanded location
+        lastExpandedSidebarLocation = initialDividerLocation;
 
         // Store original divider size
         originalBottomDividerSize = bottomSplitPane.getDividerSize();
@@ -471,16 +501,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         frame.validate();
         frame.repaint();
 
-        // After the frame is visible, (re)apply the 30 % divider if no saved position exists yet
-        SwingUtilities.invokeLater(() -> {
-            if (getProject().getHorizontalSplitPosition() == 0) {
-                int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
-                bottomSplitPane.setDividerLocation(preferred);
-            }
-
-            // Add themed title bar asynchronously
-            applyTitleBar(frame, frame.getTitle());
-        });
+        // Title bar will be applied after layout restoration in loadWindowSizeAndPosition()
 
         // Possibly check if .gitignore is set
         if (getProject().hasGit()) {
@@ -503,6 +524,13 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         }
 
         SwingUtilities.invokeLater(() -> MarkdownOutputPool.instance());
+
+        // Clean up any orphaned clone operations from previous sessions
+        if (getProject() instanceof MainProject) {
+            Path dependenciesRoot =
+                    getProject().getRoot().resolve(AbstractProject.BROKK_DIR).resolve(AbstractProject.DEPENDENCIES_DIR);
+            CloneOperationTracker.cleanupOrphanedClones(dependenciesRoot);
+        }
     }
 
     /**
@@ -1527,17 +1555,14 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             });
 
             // Load and set bottom horizontal split position (ProjectFiles/Git | Output)
-            int bottomHorizPos = project.getHorizontalSplitPosition();
-            if (bottomHorizPos > 0) {
-                bottomSplitPane.setDividerLocation(bottomHorizPos);
-                // Check if restored position indicates minimized state
-                if (bottomHorizPos < 50) {
-                    bottomSplitPane.setDividerSize(0);
-                    leftTabbedPanel.setSelectedIndex(-1);
-                }
+            int safePosition = project.getSafeHorizontalSplitPosition(frame.getWidth());
+            bottomSplitPane.setDividerLocation(safePosition);
+
+            if (safePosition < 50) {
+                bottomSplitPane.setDividerSize(0);
+                leftTabbedPanel.setSelectedIndex(-1);
             } else {
-                int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
-                bottomSplitPane.setDividerLocation(preferred);
+                lastExpandedSidebarLocation = safePosition;
             }
 
             bottomSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
@@ -1545,9 +1570,16 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                     var newPos = bottomSplitPane.getDividerLocation();
                     if (newPos > 0) {
                         project.saveHorizontalSplitPosition(newPos);
+                        // Remember expanded locations only (ignore minimized 40px)
+                        if (newPos >= 50) {
+                            lastExpandedSidebarLocation = newPos;
+                        }
                     }
                 }
             });
+
+            // Apply title bar after all layout restoration is complete
+            applyTitleBar(frame, frame.getTitle());
         });
     }
 
@@ -2033,6 +2065,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             var label = new JLabel(title, SwingConstants.CENTER);
             titleBar.add(label, BorderLayout.CENTER);
             frame.add(titleBar, BorderLayout.NORTH);
+            // Revalidate layout after dynamically adding title bar
+            frame.revalidate();
+            frame.repaint();
             titleBar.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
@@ -2234,5 +2269,12 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         int max = (int) (frameWidth * maxFraction);
 
         return Math.max(min, Math.min(ideal, max));
+    }
+
+    /** Updates the terminal font size for all active terminals. */
+    public void updateTerminalFontSize() {
+        SwingUtilities.invokeLater(() -> {
+            terminalDrawer.updateTerminalFontSize();
+        });
     }
 }

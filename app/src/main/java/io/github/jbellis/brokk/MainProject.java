@@ -146,10 +146,10 @@ public final class MainProject extends AbstractProject {
     public MainProject(Path root) {
         super(root); // Initializes this.root and this.repo
 
-        this.propertiesFile = this.masterRootPathForConfig.resolve(".brokk").resolve("project.properties");
-        this.styleGuidePath = this.masterRootPathForConfig.resolve(".brokk").resolve("style.md");
-        this.reviewGuidePath = this.masterRootPathForConfig.resolve(".brokk").resolve("review.md");
-        var sessionsDir = this.masterRootPathForConfig.resolve(".brokk").resolve("sessions");
+        this.propertiesFile = this.masterRootPathForConfig.resolve(BROKK_DIR).resolve(PROJECT_PROPERTIES_FILE);
+        this.styleGuidePath = this.masterRootPathForConfig.resolve(BROKK_DIR).resolve(STYLE_GUIDE_FILE);
+        this.reviewGuidePath = this.masterRootPathForConfig.resolve(BROKK_DIR).resolve(REVIEW_GUIDE_FILE);
+        var sessionsDir = this.masterRootPathForConfig.resolve(BROKK_DIR).resolve(SESSIONS_DIR);
         this.sessionManager = new SessionManager(sessionsDir);
 
         this.projectProps = new Properties();
@@ -1004,6 +1004,7 @@ public final class MainProject extends AbstractProject {
     //  - "auto" (default): detect from environment (kscreen-doctor/gsettings on Linux)
     //  - numeric value (e.g., "1.25"), applied to sun.java2d.uiScale at startup, capped elsewhere to sane bounds
     private static final String UI_SCALE_KEY = "uiScale";
+    private static final String TERMINAL_FONT_SIZE_KEY = "terminalFontSize";
 
     public static String getUiScalePref() {
         var props = loadGlobalProperties();
@@ -1019,6 +1020,29 @@ public final class MainProject extends AbstractProject {
     public static void setUiScalePrefCustom(double scale) {
         var props = loadGlobalProperties();
         props.setProperty(UI_SCALE_KEY, Double.toString(scale));
+        saveGlobalProperties(props);
+    }
+
+    public static float getTerminalFontSize() {
+        var props = loadGlobalProperties();
+        String valueStr = props.getProperty(TERMINAL_FONT_SIZE_KEY);
+        if (valueStr != null) {
+            try {
+                return Float.parseFloat(valueStr);
+            } catch (NumberFormatException e) {
+                // fall through and return default
+            }
+        }
+        return 11.0f;
+    }
+
+    public static void setTerminalFontSize(float size) {
+        var props = loadGlobalProperties();
+        if (size == 11.0f) {
+            props.remove(TERMINAL_FONT_SIZE_KEY);
+        } else {
+            props.setProperty(TERMINAL_FONT_SIZE_KEY, Float.toString(size));
+        }
         saveGlobalProperties(props);
     }
 
@@ -1537,7 +1561,7 @@ public final class MainProject extends AbstractProject {
     public Path getWorktreeStoragePath() {
         return Path.of(
                 System.getProperty("user.home"),
-                ".brokk",
+                BROKK_DIR,
                 "worktrees",
                 getMasterRootPathForConfig().getFileName().toString());
     }
@@ -1557,7 +1581,7 @@ public final class MainProject extends AbstractProject {
                     continue;
                 }
 
-                var wsPropsPath = wtPath.resolve(".brokk").resolve("workspace.properties");
+                var wsPropsPath = wtPath.resolve(BROKK_DIR).resolve(WORKSPACE_PROPERTIES_FILE);
                 if (!Files.exists(wsPropsPath)) {
                     continue;
                 }

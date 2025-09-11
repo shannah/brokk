@@ -62,10 +62,6 @@ import javax.swing.event.DocumentListener;
 import javax.swing.event.PopupMenuEvent;
 import javax.swing.event.PopupMenuListener;
 import javax.swing.text.*;
-import javax.swing.text.AbstractDocument;
-import javax.swing.text.AttributeSet;
-import javax.swing.text.BadLocationException;
-import javax.swing.text.DocumentFilter;
 import javax.swing.undo.UndoManager;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
@@ -123,7 +119,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private @Nullable JPanel modeIndicatorPanel;
     private @Nullable JLabel modeBadge;
     private @Nullable JComponent inputLayeredPane;
-    private @Nullable JPanel actionGroupPanel;
+    private ActionGroupPanel actionGroupPanel;
     private @Nullable TitledBorder instructionsTitledBorder;
     private static final int CONTEXT_SUGGESTION_DELAY = 100; // ms for paste/bulk changes
     private static final int CONTEXT_SUGGESTION_TYPING_DELAY = 1000; // ms for single character typing
@@ -327,56 +323,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }
                 });
 
-                // Bind Enter and Space to activation for accessibility
-                getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_ENTER, 0), "activate");
-                getInputMap(WHEN_FOCUSED).put(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, 0), "activate");
-                getActionMap().put("activate", new AbstractAction() {
-                    @Override
-                    public void actionPerformed(ActionEvent e) {
-                        ArchitectOptionsDialog.showDialogAndWait(chrome);
-                        javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
-                    }
+        // Register global platform shortcut (e.g., Ctrl+, or Cmd+,) to open Plan Options and restore focus
+        io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
+                chrome.getFrame().getRootPane(), planOptionsKs, "PlanOptions", () -> {
+                    ArchitectOptionsDialog.showDialogAndWait(chrome);
+                    javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
                 });
-
-                // Register global platform shortcut (e.g., Ctrl+, or Cmd+,) to open Plan Options and restore focus
-                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
-                        chrome.getFrame().getRootPane(), planOptionsKs, "PlanOptions", () -> {
-                            ArchitectOptionsDialog.showDialogAndWait(chrome);
-                            javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
-                        });
-            }
-
-            @Override
-            protected void paintComponent(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                try {
-                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-
-                    // Draw hover/focus rounded background with animated alpha
-                    if (hoverAlpha > 0f) {
-                        boolean isDark = UIManager.getBoolean("laf.dark");
-                        java.awt.Color hoverColor;
-                        try {
-                            hoverColor = ThemeColors.getColor(isDark, "badge_background");
-                            if (hoverColor == null) throw new Exception("null");
-                        } catch (Exception ex) {
-                            // fallback light-blue for light theme, translucent bluish for dark theme
-                            hoverColor = isDark ? new Color(0x1F6FEB) : new Color(0xD9EEFF);
-                        }
-                        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, hoverAlpha));
-                        g2.setColor(hoverColor);
-                        int arc = 8;
-                        g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-                        g2.setComposite(AlphaComposite.getInstance(AlphaComposite.SRC_OVER, 1f));
-                    }
-
-                    // Draw the text/icon on top (use default button painting for text)
-                    super.paintComponent(g);
-                } finally {
-                    g2.dispose();
-                }
-            }
-        };
 
         // Try to use a link-like color from UI, fall back to label foreground or blue
         java.awt.Color linkColor = UIManager.getColor("Label.linkForeground");
@@ -811,6 +763,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.historyDropdown = createHistoryDropdown();
         topBarPanel.add(this.historyDropdown, BorderLayout.CENTER);
 
+
         return topBarPanel;
     }
 
@@ -829,7 +782,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.inputLayeredPane.setBorder(new EmptyBorder(0, H_PAD, 0, H_PAD));
 
         panel.add(buildModeIndicatorPanel()); // Mode badge
-        panel.add(this.inputLayeredPane); // Add the layered pane instead of the scroll pane directly
+
+        // Add the layered input directly (drawer will host tool panels)
+        panel.add(this.inputLayeredPane);
 
         // Reference-file table will be inserted just below the command input (now layeredPane)
         // by initializeReferenceFileTable()
@@ -1059,12 +1014,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             inputLayeredPane.repaint();
         }
 
-        if (actionGroupPanel != null) {
-            actionGroupPanel.setBorder(BorderFactory.createCompoundBorder(
-                    new io.github.jbellis.brokk.gui.components.RoundedLineBorder(accent, 1, -1),
-                    BorderFactory.createEmptyBorder(2, 6, 2, 2)));
-            actionGroupPanel.repaint();
-        }
+        actionGroupPanel.setAccentColor(accent);
 
         if (instructionsTitledBorder != null) {
             instructionsTitledBorder.setTitle(askMode ? "Instructions - Answer" : "Instructions - Code");
@@ -1096,23 +1046,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         bottomPanel.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
 
         // Action selector group: Code/Answer switch inside a bordered panel
-        this.actionGroupPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 2, 0));
-        java.awt.Color borderColor = UIManager.getColor("Component.borderColor");
-        if (borderColor == null) {
-            borderColor = java.awt.Color.GRAY;
-        }
-        this.actionGroupPanel.setBorder(BorderFactory.createCompoundBorder(
-                new io.github.jbellis.brokk.gui.components.RoundedLineBorder(borderColor, 1, -1),
-                BorderFactory.createEmptyBorder(2, 6, 2, 2)));
-        this.actionGroupPanel.setOpaque(false);
-        this.actionGroupPanel.add(codeModeLabel);
-        this.actionGroupPanel.add(Box.createHorizontalStrut(2));
-        this.actionGroupPanel.add(modeSwitch);
-        this.actionGroupPanel.add(Box.createHorizontalStrut(2));
-        this.actionGroupPanel.add(answerModeLabel);
-
-        // Keep the grouping box tight; prevent BoxLayout from stretching it
-        this.actionGroupPanel.setMaximumSize(this.actionGroupPanel.getPreferredSize());
+        this.actionGroupPanel = new ActionGroupPanel(codeModeLabel, modeSwitch, answerModeLabel);
         this.actionGroupPanel.setAlignmentY(Component.CENTER_ALIGNMENT);
 
         bottomPanel.add(this.actionGroupPanel);
@@ -2278,18 +2212,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 f.cancel(true);
             }
             // Button will flip back to "Go" once the Future completes (see watcher in setActionRunning)
-            return;
+        } else {
+            // Go action
+            switch (storedAction) {
+                case ACTION_ARCHITECT -> runArchitectCommand();
+                case ACTION_CODE -> runCodeCommand();
+                case ACTION_SEARCH -> runSearchCommand();
+                case ACTION_ASK -> runAskCommand(getInstructions());
+                case ACTION_SCAN_PROJECT -> runScanProjectCommand();
+                default -> runArchitectCommand();
+            }
         }
-
-        // Go action
-        switch (storedAction) {
-            case ACTION_ARCHITECT -> runArchitectCommand();
-            case ACTION_CODE -> runCodeCommand();
-            case ACTION_SEARCH -> runSearchCommand();
-            case ACTION_ASK -> runAskCommand(getInstructions());
-            case ACTION_SCAN_PROJECT -> runScanProjectCommand();
-            default -> runArchitectCommand();
-        }
+        // Always return focus to the instructions area to avoid re-triggering with Enter on the button
+        requestCommandInputFocus();
     }
 
     private void setActionRunning(Future<?> f) {
