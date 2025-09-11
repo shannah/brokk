@@ -3,6 +3,8 @@ package dev.langchain4j.agent.tool;
 import static dev.langchain4j.internal.Utils.quoted;
 
 import dev.langchain4j.model.chat.request.json.JsonObjectSchema;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.Objects;
 
 /**
@@ -14,7 +16,7 @@ public class ToolSpecification {
 
     private final String name;
     private final String description;
-    private final JsonObjectSchema parameters;
+    private final @Nullable JsonObjectSchema parameters;
 
     /**
      * Creates a {@link ToolSpecification} from a {@link Builder}.
@@ -46,7 +48,7 @@ public class ToolSpecification {
     }
 
     /** Returns the parameters of the tool. */
-    public JsonObjectSchema parameters() {
+    public @Nullable JsonObjectSchema parameters() {
         return parameters;
     }
 
