@@ -725,25 +725,45 @@ public class ArchitectAgent {
                 }
             }
 
-            // If we see "projectFinished" or "abortProject", handle it and then exit
+            // If we see "projectFinished" or "abortProject", handle it and then exit.
+            // If these final/abort calls are present together with other tool calls in the same LLM response,
+            // do NOT execute them. Instead, create ToolExecutionResult entries indicating the call was ignored.
+            boolean multipleRequests = deduplicatedRequests.size() > 1;
+
             if (answerReq != null) {
-                logger.debug("LLM decided to projectFinished. We'll finalize and stop");
-                var toolResult = toolRegistry.executeTool(this, answerReq);
-                logger.debug("Project final answer: {}", toolResult.resultText());
-                var fragment = new ContextFragment.TaskFragment(
-                        contextManager, List.of(new AiMessage(toolResult.resultText())), goal);
-                var stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS, toolResult.resultText());
-                return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
+                if (multipleRequests) {
+                    var ignoredMsg = "Ignored 'projectFinished' because other tool calls were present in the same turn.";
+                    var toolResult = ToolExecutionResult.failure(answerReq, ignoredMsg);
+                    // Record the ignored result in the architect message history so planning history reflects this.
+                    architectMessages.add(ToolExecutionResultMessage.from(answerReq, toolResult.resultText()));
+                    logger.info("projectFinished ignored due to other tool calls present: {}", ignoredMsg);
+                } else {
+                    logger.debug("LLM decided to projectFinished. We'll finalize and stop");
+                    var toolResult = toolRegistry.executeTool(this, answerReq);
+                    logger.debug("Project final answer: {}", toolResult.resultText());
+                    var fragment = new ContextFragment.TaskFragment(
+                            contextManager, List.of(new AiMessage(toolResult.resultText())), goal);
+                    var stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS, toolResult.resultText());
+                    return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
+                }
             }
+
             if (abortReq != null) {
-                logger.debug("LLM decided to abortProject. We'll finalize and stop");
-                var toolResult = toolRegistry.executeTool(this, abortReq);
-                logger.debug("Project aborted: {}", toolResult.resultText());
-                var fragment = new ContextFragment.TaskFragment(
-                        contextManager, List.of(new AiMessage(toolResult.resultText())), goal);
-                var stopDetails =
-                        new TaskResult.StopDetails(TaskResult.StopReason.LLM_ABORTED, toolResult.resultText());
-                return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
+                if (multipleRequests) {
+                    var ignoredMsg = "Ignored 'abortProject' because other tool calls were present in the same turn.";
+                    var toolResult = ToolExecutionResult.failure(abortReq, ignoredMsg);
+                    architectMessages.add(ToolExecutionResultMessage.from(abortReq, toolResult.resultText()));
+                    logger.info("abortProject ignored due to other tool calls present: {}", ignoredMsg);
+                } else {
+                    logger.debug("LLM decided to abortProject. We'll finalize and stop");
+                    var toolResult = toolRegistry.executeTool(this, abortReq);
+                    logger.debug("Project aborted: {}", toolResult.resultText());
+                    var fragment = new ContextFragment.TaskFragment(
+                            contextManager, List.of(new AiMessage(toolResult.resultText())), goal);
+                    var stopDetails =
+                            new TaskResult.StopDetails(TaskResult.StopReason.LLM_ABORTED, toolResult.resultText());
+                    return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
+                }
             }
 
             // Execute askHumanQuestion if present
