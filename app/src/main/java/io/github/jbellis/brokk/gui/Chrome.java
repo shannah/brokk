@@ -498,17 +498,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         frame.validate();
         frame.repaint();
 
-        // After the frame is visible, (re)apply the 30 % divider if no saved position exists yet
-        SwingUtilities.invokeLater(() -> {
-            if (getProject().getHorizontalSplitPosition() == 0) {
-                int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
-                bottomSplitPane.setDividerLocation(preferred);
-                lastExpandedSidebarLocation = preferred;
-            }
-
-            // Add themed title bar asynchronously
-            applyTitleBar(frame, frame.getTitle());
-        });
+        // Title bar will be applied after layout restoration in loadWindowSizeAndPosition()
 
         // Possibly check if .gitignore is set
         if (getProject().hasGit()) {
@@ -1517,20 +1507,14 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             });
 
             // Load and set bottom horizontal split position (ProjectFiles/Git | Output)
-            int bottomHorizPos = project.getHorizontalSplitPosition();
-            if (bottomHorizPos > 0) {
-                bottomSplitPane.setDividerLocation(bottomHorizPos);
-                // Check if restored position indicates minimized state
-                if (bottomHorizPos < 50) {
-                    bottomSplitPane.setDividerSize(0);
-                    leftTabbedPanel.setSelectedIndex(-1);
-                } else {
-                    lastExpandedSidebarLocation = bottomHorizPos;
-                }
+            int safePosition = project.getSafeHorizontalSplitPosition(frame.getWidth());
+            bottomSplitPane.setDividerLocation(safePosition);
+
+            if (safePosition < 50) {
+                bottomSplitPane.setDividerSize(0);
+                leftTabbedPanel.setSelectedIndex(-1);
             } else {
-                int preferred = computeInitialSidebarWidth() + bottomSplitPane.getDividerSize();
-                bottomSplitPane.setDividerLocation(preferred);
-                lastExpandedSidebarLocation = preferred;
+                lastExpandedSidebarLocation = safePosition;
             }
 
             bottomSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
@@ -1545,6 +1529,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                     }
                 }
             });
+
+            // Apply title bar after all layout restoration is complete
+            applyTitleBar(frame, frame.getTitle());
         });
     }
 
@@ -2030,6 +2017,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             var label = new JLabel(title, SwingConstants.CENTER);
             titleBar.add(label, BorderLayout.CENTER);
             frame.add(titleBar, BorderLayout.NORTH);
+            // Revalidate layout after dynamically adding title bar
+            frame.revalidate();
+            frame.repaint();
             titleBar.addMouseListener(new MouseAdapter() {
                 @Override
                 public void mouseClicked(MouseEvent e) {
