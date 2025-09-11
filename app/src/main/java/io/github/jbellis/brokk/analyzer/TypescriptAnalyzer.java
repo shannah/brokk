@@ -612,6 +612,7 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
         return cleaned;
     }
 
+    @Override
     @SuppressWarnings("RedundantNullCheck")
     public boolean isTypeAlias(CodeUnit cu) {
         // Check if this field-type CodeUnit represents a type alias

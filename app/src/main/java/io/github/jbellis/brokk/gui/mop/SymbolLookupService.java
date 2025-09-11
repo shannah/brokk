@@ -4,6 +4,7 @@ import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.analyzer.ClassNameExtractor;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
+import io.github.jbellis.brokk.analyzer.TypeAliasProvider;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Set;
@@ -23,20 +24,19 @@ public class SymbolLookupService {
             boolean isPartialMatch,
             @Nullable String originalText,
             int confidence,
-            boolean moreResultsPending,
             long processingTimeMs) {
 
         public static SymbolLookupResult notFound(String originalText) {
-            return new SymbolLookupResult(null, List.of(), false, originalText, 0, false, 0);
+            return new SymbolLookupResult(null, List.of(), false, originalText, 0, 0);
         }
 
         public static SymbolLookupResult notFound(String originalText, long processingTimeMs) {
-            return new SymbolLookupResult(null, List.of(), false, originalText, 0, false, processingTimeMs);
+            return new SymbolLookupResult(null, List.of(), false, originalText, 0, processingTimeMs);
         }
 
         public static SymbolLookupResult exactMatch(String fqn, String originalText) {
             return new SymbolLookupResult(
-                    fqn, List.of(new HighlightRange(0, originalText.length())), false, originalText, 100, false, 0);
+                    fqn, List.of(new HighlightRange(0, originalText.length())), false, originalText, 100, 0);
         }
 
         public static SymbolLookupResult exactMatch(String fqn, String originalText, long processingTimeMs) {
@@ -46,7 +46,6 @@ public class SymbolLookupService {
                     false,
                     originalText,
                     100,
-                    false,
                     processingTimeMs);
         }
 
@@ -57,24 +56,12 @@ public class SymbolLookupService {
                 int classEnd = classStart + extractedClassName.length();
                 int confidence = calculatePartialMatchConfidence(originalText, extractedClassName);
                 return new SymbolLookupResult(
-                        fqn,
-                        List.of(new HighlightRange(classStart, classEnd)),
-                        true,
-                        originalText,
-                        confidence,
-                        false,
-                        0);
+                        fqn, List.of(new HighlightRange(classStart, classEnd)), true, originalText, confidence, 0);
             }
             // Fallback: highlight entire text if we can't find the class name
             int confidence = calculatePartialMatchConfidence(originalText, extractedClassName);
             return new SymbolLookupResult(
-                    fqn,
-                    List.of(new HighlightRange(0, originalText.length())),
-                    true,
-                    originalText,
-                    confidence,
-                    false,
-                    0);
+                    fqn, List.of(new HighlightRange(0, originalText.length())), true, originalText, confidence, 0);
         }
 
         public static SymbolLookupResult partialMatch(
@@ -90,7 +77,6 @@ public class SymbolLookupService {
                         true,
                         originalText,
                         confidence,
-                        false,
                         processingTimeMs);
             }
             // Fallback: highlight entire text if we can't find the class name
@@ -101,7 +87,6 @@ public class SymbolLookupService {
                     true,
                     originalText,
                     confidence,
-                    false,
                     processingTimeMs);
         }
 
@@ -112,10 +97,8 @@ public class SymbolLookupService {
                 boolean isPartial,
                 String originalText,
                 int confidence,
-                boolean moreResultsPending,
                 long processingTimeMs) {
-            return new SymbolLookupResult(
-                    fqn, ranges, isPartial, originalText, confidence, moreResultsPending, processingTimeMs);
+            return new SymbolLookupResult(fqn, ranges, isPartial, originalText, confidence, processingTimeMs);
         }
 
         /** Calculate confidence score for partial matches based on extraction quality */
@@ -314,7 +297,7 @@ public class SymbolLookupService {
             var searchResults = analyzer.searchDefinitions(trimmed);
             logger.trace("Pattern search for '{}' returned {} results", trimmed, searchResults.size());
             if (!searchResults.isEmpty()) {
-                var classMatches = findAllClassMatches(trimmed, searchResults);
+                var classMatches = findAllClassMatches(trimmed, searchResults, analyzer);
                 if (!classMatches.isEmpty()) {
                     var commaSeparatedFqns =
                             classMatches.stream().map(CodeUnit::fqName).sorted().collect(Collectors.joining(","));
@@ -361,7 +344,7 @@ public class SymbolLookupService {
                             candidate);
                     var classSearchResults = analyzer.searchDefinitions(candidate);
                     if (!classSearchResults.isEmpty()) {
-                        var classMatches = findAllClassMatches(candidate, classSearchResults);
+                        var classMatches = findAllClassMatches(candidate, classSearchResults, analyzer);
                         if (!classMatches.isEmpty()) {
                             var commaSeparatedFqns = classMatches.stream()
                                     .map(CodeUnit::fqName)
@@ -455,18 +438,26 @@ public class SymbolLookupService {
         return lastDot >= 0 ? fqName.substring(lastDot + 1) : fqName;
     }
 
-    /** Find all classes with exact simple name match for the given search term. */
-    private static List<CodeUnit> findAllClassMatches(String searchTerm, List<CodeUnit> searchResults) {
-        // Find all classes and type aliases with exact simple name match
+    /**
+     * Find all classes with exact simple name match for the given search term. Package-private for direct access by
+     * tests.
+     */
+    static List<CodeUnit> findAllClassMatches(String searchTerm, List<CodeUnit> searchResults) {
         return searchResults.stream()
-                .filter(cu -> cu.isClass() || isTypeAlias(cu)) // Include classes and type aliases
+                .filter(CodeUnit::isClass) // classes only for this overload (tests target Java behavior)
                 .filter(cu -> getSimpleName(cu.fqName()).equals(searchTerm))
                 .toList();
     }
 
-    /** Check if a CodeUnit represents a TypeScript type alias. */
-    private static boolean isTypeAlias(CodeUnit cu) {
-        // Type aliases are usually field-like CodeUnits with specific patterns
-        return cu.isField() && cu.fqName().contains("_module_.");
+    /** Find all classes with exact simple name match for the given search term. */
+    private static List<CodeUnit> findAllClassMatches(
+            String searchTerm, List<CodeUnit> searchResults, IAnalyzer analyzer) {
+        var typeAliasProvider = analyzer.as(TypeAliasProvider.class);
+        return searchResults.stream()
+                .filter(cu -> cu.isClass()
+                        || (typeAliasProvider.isPresent()
+                                && typeAliasProvider.get().isTypeAlias(cu)))
+                .filter(cu -> getSimpleName(cu.fqName()).equals(searchTerm))
+                .toList();
     }
 }

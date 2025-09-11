@@ -12,7 +12,8 @@ public class MultiAnalyzer
                 UsagesProvider,
                 SkeletonProvider,
                 SourceCodeProvider,
-                IncrementalUpdateProvider {
+                IncrementalUpdateProvider,
+                TypeAliasProvider {
     private final Map<Language, IAnalyzer> delegates;
 
     public MultiAnalyzer(Map<Language, IAnalyzer> delegates) {
@@ -219,6 +220,21 @@ public class MultiAnalyzer
     @Override
     public Optional<String> extractClassName(String reference) {
         return findFirst(analyzer -> analyzer.extractClassName(reference));
+    }
+
+    @Override
+    public boolean isTypeAlias(CodeUnit cu) {
+        for (var delegate : delegates.values()) {
+            try {
+                var providerOpt = delegate.as(TypeAliasProvider.class);
+                if (providerOpt.isPresent() && providerOpt.get().isTypeAlias(cu)) {
+                    return true;
+                }
+            } catch (UnsupportedOperationException ignored) {
+                // delegate doesn't implement capability
+            }
+        }
+        return false;
     }
 
     /** @return a copy of the delegates of this analyzer. */

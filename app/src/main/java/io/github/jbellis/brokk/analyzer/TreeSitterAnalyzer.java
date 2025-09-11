@@ -49,7 +49,7 @@ import org.treesitter.*;
  * how to map a capture to a {@link CodeUnit}.
  */
 public abstract class TreeSitterAnalyzer
-        implements IAnalyzer, SkeletonProvider, SourceCodeProvider, IncrementalUpdateProvider {
+        implements IAnalyzer, SkeletonProvider, SourceCodeProvider, IncrementalUpdateProvider, TypeAliasProvider {
     protected static final Logger log = LoggerFactory.getLogger(TreeSitterAnalyzer.class);
     // Native library loading is assumed automatic by the io.github.bonede.tree_sitter library.
 
@@ -718,6 +718,12 @@ public abstract class TreeSitterAnalyzer
         } else {
             return Optional.empty(); // Fields and other types not supported by default
         }
+    }
+
+    @Override
+    public boolean isTypeAlias(CodeUnit cu) {
+        // Default: languages that don't support or expose type aliases return false.
+        return false;
     }
 
     /* ---------- abstract hooks ---------- */

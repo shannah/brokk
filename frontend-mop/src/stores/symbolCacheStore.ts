@@ -14,7 +14,6 @@ export interface SymbolLookupResult {
     isPartialMatch: boolean;
     originalText: string | null;
     confidence?: number;              // 0-100 confidence score (optional for backward compatibility)
-    moreResultsPending?: boolean;     // UI hint for more results (optional for backward compatibility)
     processingTimeMs?: number;        // Processing time in milliseconds (optional for backward compatibility)
 }
 
