@@ -323,12 +323,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }
                 });
 
-        // Register global platform shortcut (e.g., Ctrl+, or Cmd+,) to open Plan Options and restore focus
-        io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
-                chrome.getFrame().getRootPane(), planOptionsKs, "PlanOptions", () -> {
-                    ArchitectOptionsDialog.showDialogAndWait(chrome);
-                    javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
-                });
+                // Register global platform shortcut (e.g., Ctrl+, or Cmd+,) to open Plan Options and restore focus
+                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.registerGlobalShortcut(
+                        chrome.getFrame().getRootPane(), planOptionsKs, "PlanOptions", () -> {
+                            ArchitectOptionsDialog.showDialogAndWait(chrome);
+                            javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
+                        });
+            }
+        };
 
         // Try to use a link-like color from UI, fall back to label foreground or blue
         java.awt.Color linkColor = UIManager.getColor("Label.linkForeground");
@@ -762,7 +764,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         this.historyDropdown = createHistoryDropdown();
         topBarPanel.add(this.historyDropdown, BorderLayout.CENTER);
-
 
         return topBarPanel;
     }
@@ -2578,8 +2579,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     /**
-     * Focus traversal so TAB cycles through: input, send button, mode toggle, plan/search checkbox, optional plan options, 
-     * mic, model selector, history dropdown, and back to input.
+     * Focus traversal so TAB cycles through: input, send button, mode toggle, plan/search checkbox, optional plan
+     * options, mic, model selector, history dropdown, and back to input.
      */
     private final class InstructionsFocusTraversalPolicy extends FocusTraversalPolicy {
         private List<Component> currentOrder() {
