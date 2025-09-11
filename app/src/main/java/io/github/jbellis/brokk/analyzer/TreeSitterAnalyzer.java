@@ -634,16 +634,10 @@ public abstract class TreeSitterAnalyzer
 
     @Override
     public Optional<String> getClassSource(String fqName) {
-        var definition = getDefinition(fqName);
-        if (definition.isEmpty()) {
-            throw new SymbolNotFoundException("Class not found: " + fqName);
-        }
+        var cu = getDefinition(fqName)
+                .filter(CodeUnit::isClass)
+                .orElseThrow(() -> new SymbolNotFoundException("Class not found: " + fqName));
 
-        var cu = definition.get();
-        // For TypeScript type aliases, we don't filter by isClass() since they're field-type CodeUnits
-        if (!cu.isClass() && !(this instanceof TypescriptAnalyzer && cu.isField())) {
-            throw new SymbolNotFoundException("Symbol is not a class or TypeScript type alias: " + fqName);
-        }
         var ranges = sourceRanges.get(cu);
 
         if (ranges == null || ranges.isEmpty()) {

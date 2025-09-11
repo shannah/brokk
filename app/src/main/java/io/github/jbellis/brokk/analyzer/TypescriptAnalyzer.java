@@ -748,20 +748,6 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    public Optional<String> getSourceForCodeUnit(CodeUnit codeUnit) {
-        if (codeUnit.isFunction()) {
-            return getMethodSource(codeUnit.fqName());
-        } else if (codeUnit.isClass()) {
-            return getClassSource(codeUnit.fqName());
-        } else if (codeUnit.isField() && isTypeAlias(codeUnit)) {
-            // TypeScript type aliases are field-type CodeUnits but should use class source
-            return getClassSource(codeUnit.fqName());
-        } else {
-            return Optional.empty();
-        }
-    }
-
-    @Override
     public Optional<String> extractClassName(String reference) {
         return ClassNameExtractor.extractForJsTs(reference);
     }
