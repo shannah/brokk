@@ -15,7 +15,7 @@
       ]
     },
     "brokk-0.14.0-beta1": {
-      "script-ref": "https://github.com/BrokkAi/brokk/releases/download/0.14.0-beta1/brokk-0.14.0-beta1.jar",
+      "script-ref": "https://github.com/BrokkAi/brokk/releases/download/0.14.0-beta2/brokk-0.14.0-beta2.jar",
       "java": "21",
       "java-options": [
         "--add-modules=jdk.incubator.vector"
