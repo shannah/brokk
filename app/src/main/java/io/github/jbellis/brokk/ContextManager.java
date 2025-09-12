@@ -19,6 +19,7 @@ import io.github.jbellis.brokk.context.ContextHistory;
 import io.github.jbellis.brokk.context.ContextHistory.UndoResult;
 import io.github.jbellis.brokk.exception.OomShutdownHandler;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.InstructionsPanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
@@ -85,6 +86,16 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public static boolean isTestFile(ProjectFile file) {
         return TEST_FILE_PATTERN.matcher(file.toString()).matches();
+    }
+
+    public void runTests(Set<ProjectFile> testFiles) {
+        String cmd = BuildAgent.getBuildLintSomeCommand(this, getProject().loadBuildDetails(), testFiles);
+        if (cmd.isEmpty()) {
+            getIo().toolError("Run in Shell: build commands are unknown; run Build Setup first");
+            return;
+        }
+
+        getIo().getInstructionsPanel().runRunCommand(InstructionsPanel.ACTION_RUN_TESTS, cmd);
     }
 
     private LoggingExecutorService createLoggingExecutorService(ExecutorService toWrap) {
@@ -1074,12 +1085,41 @@ public class ContextManager implements IContextManager, AutoCloseable {
         submitContextTask("Capture output", () -> {
             // Capture from the selected *frozen* context in history view
             var selectedFrozenCtx = requireNonNull(selectedContext()); // This is from history, frozen
-            if (selectedFrozenCtx.getParsedOutput() != null) {
-                // Add the captured (TaskFragment, which is Virtual) to the *live* context
-                addVirtualFragment(selectedFrozenCtx.getParsedOutput());
-                io.systemOutput("Content captured from output");
-            } else {
+
+            var parsedOutput = selectedFrozenCtx.getParsedOutput();
+            if (parsedOutput == null) {
                 io.systemOutput("No content to capture");
+                return;
+            }
+
+            String action = selectedFrozenCtx.getAction();
+            if (action.startsWith(InstructionsPanel.ACTION_RUN_TESTS)) {
+                // Update the dynamic BuildFragment instead of adding a new virtual fragment to history.
+                // This keeps build/test captures visible in the workspace without polluting the history.
+                try {
+                    assert parsedOutput.messages().size() == 2 : parsedOutput.messages();
+                    var cmd = Messages.getText(parsedOutput.messages().getFirst());
+                    var result = Messages.getText(parsedOutput.messages().getLast());
+                    var text =
+                            """
+                            Command: `%s`
+
+                            Result:
+                            ```
+                            %s
+                            ```
+                            """
+                                    .formatted(cmd, result);
+                    updateBuildFragment(text);
+                    io.systemOutput("Build/Test output captured to Build Fragment");
+                } catch (Exception e) {
+                    logger.error("Failed to update BuildFragment from captured test output", e);
+                    io.systemOutput("Failed to capture build/test output: " + e.getMessage());
+                }
+            } else {
+                // Non-build capture: preserve existing behavior of adding the parsed output into the live context.
+                addVirtualFragment(parsedOutput);
+                io.systemOutput("Content captured from output");
             }
         });
     }
