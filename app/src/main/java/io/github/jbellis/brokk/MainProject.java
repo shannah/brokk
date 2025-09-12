@@ -1021,6 +1021,17 @@ public final class MainProject extends AbstractProject {
         saveGlobalProperties(props);
     }
 
+    public static boolean getCodeBlockWrapMode() {
+        var props = loadGlobalProperties();
+        return Boolean.parseBoolean(props.getProperty("wordWrap", "true"));
+    }
+
+    public static void setCodeBlockWrapMode(boolean wrap) {
+        var props = loadGlobalProperties();
+        props.setProperty("wordWrap", String.valueOf(wrap));
+        saveGlobalProperties(props);
+    }
+
     // UI Scale global preference
     // Values:
     //  - "auto" (default): detect from environment (kscreen-doctor/gsettings on Linux)
