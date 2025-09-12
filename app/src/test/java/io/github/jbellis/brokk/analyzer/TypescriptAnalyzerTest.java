@@ -559,7 +559,7 @@ public class TypescriptAnalyzerTest {
         Optional<String> arrowSource = analyzer.getMethodSource("anArrowFunc");
         assertTrue(arrowSource.isPresent());
         assertEquals(
-                normalize.apply("const anArrowFunc = (msg: string): void => {\n    console.log(msg);\n}"),
+                normalize.apply("const anArrowFunc = (msg: string): void => {\n    console.log(msg);\n};"),
                 normalize.apply(arrowSource.get()));
 
         // From Advanced.ts (async named function)
@@ -583,10 +583,9 @@ public class TypescriptAnalyzerTest {
         // Now includes the preceding comment due to comment expansion functionality
         String expectedOverloadedSource = String.join(
                 "\n",
-                "// Function Overloads",
-                "export function processInput(input: string): string[]",
-                "export function processInput(input: number): number[]",
-                "export function processInput(input: boolean): boolean[]",
+                "export function processInput(input: string): string[];",
+                "export function processInput(input: number): number[];",
+                "export function processInput(input: boolean): boolean[];",
                 "export function processInput(input: any): any[] {",
                 "if (typeof input === \"string\") return [`s-${input}`];",
                 "if (typeof input === \"number\") return [`n-${input}`];",

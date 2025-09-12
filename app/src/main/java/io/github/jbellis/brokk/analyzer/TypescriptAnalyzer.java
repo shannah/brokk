@@ -712,43 +712,6 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    public Optional<String> getMethodSource(String fqName) {
-        Optional<String> result = super.getMethodSource(fqName);
-
-        if (result.isPresent()) {
-            String source = result.get();
-
-            // Remove trailing semicolons from arrow function assignments
-            if (source.contains("=>") && source.strip().endsWith("};")) {
-                source = TRAILING_SEMICOLON.matcher(source).replaceAll("");
-            }
-
-            // Remove semicolons from function overload signatures
-            List<String> lines = Splitter.on('\n').splitToList(source);
-            var cleaned = new StringBuilder(source.length());
-
-            for (int i = 0; i < lines.size(); i++) {
-                String line = lines.get(i);
-                String trimmed = line.strip();
-
-                // Remove semicolons from function overload signatures (lines ending with ; that don't have {)
-                if (trimmed.startsWith("export function") && trimmed.endsWith(";") && !trimmed.contains("{")) {
-                    line = TRAILING_SEMICOLON.matcher(line).replaceAll("");
-                }
-
-                cleaned.append(line);
-                if (i < lines.size() - 1) {
-                    cleaned.append("\n");
-                }
-            }
-
-            return Optional.of(cleaned.toString());
-        }
-
-        return result;
-    }
-
-    @Override
     public Optional<String> extractClassName(String reference) {
         return ClassNameExtractor.extractForJsTs(reference);
     }
