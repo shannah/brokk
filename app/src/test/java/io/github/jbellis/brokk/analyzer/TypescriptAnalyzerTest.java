@@ -577,12 +577,11 @@ public class TypescriptAnalyzerTest {
 
         // Check the actual format returned by TreeSitterAnalyzer
         String actualNormalized = normalize.apply(overloadedSource.get());
-        String[] actualLines = actualNormalized.split("\n");
 
         // Build expected based on actual separator used (without semicolons for overload signatures)
-        // Now includes the preceding comment due to comment expansion functionality
         String expectedOverloadedSource = String.join(
                 "\n",
+                "// Function Overloads",
                 "export function processInput(input: string): string[];",
                 "export function processInput(input: number): number[];",
                 "export function processInput(input: boolean): boolean[];",
