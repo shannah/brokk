@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk;
 
+import static io.github.jbellis.brokk.prompts.EditBlockUtils.DEFAULT_FENCE;
+
 import com.google.common.base.Splitter;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import java.io.IOException;
@@ -219,7 +221,30 @@ public class EditBlock {
      * Simple record storing the parts of a search-replace block. If {@code rawFileName} is non-null, then this block
      * corresponds to a rawFileName’s search/replace. Note, {@code rawFileName} has not been checked for validity.
      */
-    public record SearchReplaceBlock(@Nullable String rawFileName, String beforeText, String afterText) {}
+    public record SearchReplaceBlock(@Nullable String rawFileName, String beforeText, String afterText) {
+        public String repr() {
+            var beforeText = beforeText();
+            var afterText = afterText();
+            return """
+                   %s
+                   %s
+                   <<<<<<< SEARCH
+                   %s%s
+                   =======
+                   %s%s
+                   >>>>>>> REPLACE
+                   %s
+                   """
+                    .formatted(
+                            DEFAULT_FENCE.get(0),
+                            rawFileName(),
+                            beforeText,
+                            beforeText.endsWith("\n") ? "" : "\n",
+                            afterText,
+                            afterText.endsWith("\n") ? "" : "\n",
+                            DEFAULT_FENCE.get(1));
+        }
+    }
 
     public record ParseResult(List<SearchReplaceBlock> blocks, @Nullable String parseError) {}
 

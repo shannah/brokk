@@ -20,7 +20,7 @@ import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitWorkflow;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
+import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import java.io.IOException;
@@ -528,7 +528,7 @@ public final class MergeOneFile {
                 requireNonNull(file),
                 instructions,
                 requireNonNull(currentSessionMessages),
-                EnumSet.of(EditBlockParser.InstructionsFlags.MERGE_AGENT_MARKERS));
+                EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS));
         this.lastCodeAgentResult = result;
         return String.valueOf(result.stopDetails());
     }

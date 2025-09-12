@@ -103,8 +103,7 @@ public final class TestContextManager implements IContextManager {
         return stubService;
     }
 
-    @Override
     public EditBlockParser getParserForWorkspace() {
-        return EditBlockParser.getParserFor("");
+        return EditBlockParser.instance;
     }
 }

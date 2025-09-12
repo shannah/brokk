@@ -22,7 +22,6 @@ import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.InstructionsPanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
-import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
@@ -1751,11 +1750,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
             io.systemOutput("Build details inferred and saved");
             return inferredDetails;
         });
-    }
-
-    @Override
-    public EditBlockParser getParserForWorkspace() {
-        return CodePrompts.instance.getParser(topContext());
     }
 
     public void reloadModelsAsync() {

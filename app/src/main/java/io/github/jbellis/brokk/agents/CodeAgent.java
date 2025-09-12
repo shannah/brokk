@@ -100,7 +100,7 @@ public class CodeAgent {
         io.systemOutput(msg);
         TaskResult.StopDetails stopDetails = null;
 
-        var parser = contextManager.getParserForWorkspace();
+        var parser = EditBlockParser.instance;
         // We'll collect the conversation as ChatMessages to store in context history.
         var taskMessages = new ArrayList<ChatMessage>();
         var instructionsFlags = getInstructionsFlags();
@@ -199,7 +199,9 @@ public class CodeAgent {
                 if (msgsThisTurn > 2) {
                     var srb = es.toSearchReplaceBlocks();
                     var summaryText = "Here are the SEARCH/REPLACE blocks:\n\n"
-                            + srb.stream().map(parser::repr).collect(Collectors.joining("\n"));
+                            + srb.stream()
+                                    .map(EditBlock.SearchReplaceBlock::repr)
+                                    .collect(Collectors.joining("\n"));
                     cs = cs.replaceCurrentTurnMessages(summaryText);
                 }
             }
@@ -244,7 +246,7 @@ public class CodeAgent {
                 stopDetails);
     }
 
-    private @NotNull Set<EditBlockParser.InstructionsFlags> getInstructionsFlags() {
+    private @NotNull Set<CodePrompts.InstructionsFlags> getInstructionsFlags() {
         var hasMergeMarkers = contextManager
                         .liveContext()
                         .editableFiles()
@@ -268,8 +270,8 @@ public class CodeAgent {
                             }
                         });
         var instructionsFlags = hasMergeMarkers
-                ? EnumSet.of(EditBlockParser.InstructionsFlags.MERGE_AGENT_MARKERS)
-                : Set.<EditBlockParser.InstructionsFlags>of();
+                ? EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS)
+                : Set.<CodePrompts.InstructionsFlags>of();
         return instructionsFlags;
     }
 
@@ -289,14 +291,15 @@ public class CodeAgent {
             ProjectFile file,
             String instructions,
             List<ChatMessage> readOnlyMessages,
-            Set<EditBlockParser.InstructionsFlags> flags) {
+            Set<CodePrompts.InstructionsFlags> flags) {
         // 0.  Setup: coder, parser, initial messages, and initial state
         var coder = contextManager.getLlm(model, "Code (single-file): " + instructions, true);
         coder.setOutput(io);
 
         EditBlockParser parser;
         try {
-            parser = EditBlockParser.getParserFor(file.read());
+            file.read();
+            parser = EditBlockParser.instance;
         } catch (IOException e) {
             parser = EditBlockParser.instance;
         }

@@ -131,4 +131,172 @@ class EditBlockParserTest {
         assertEquals(1, result.size());
         assertNotNull(result.getFirst().text());
     }
+
+    @Test
+    void testParseSearchBlockContainingConflictMarkers() {
+        // replace line A + conflict marker with line B
+        String input =
+                """
+                ```
+                file.txt
+                <<<<<<< SEARCH
+                line A
+                <<<<<<< HEAD
+                conflict version
+                =======
+                other version
+                >>>>>>> branch
+                =======
+                line B
+                >>>>>>> REPLACE
+                ```
+                """;
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
+
+        assertEquals(1, result.size(), result.toString());
+        var block = result.getFirst().block();
+        assertEquals("file.txt", block.rawFileName());
+        assertTrue(
+                block.beforeText().contains("<<<<<<< HEAD"), "Nested conflict start should be preserved in beforeText");
+        assertTrue(block.beforeText().contains("conflict version"));
+        assertTrue(block.beforeText().contains("other version"));
+        assertTrue(block.afterText().contains("line B"));
+    }
+
+    @Test
+    void testParseReplaceBlockContainingConflictMarkers() {
+        // Nested conflict markers inside REPLACE side should be preserved and not terminate the block.
+        String input =
+                """
+                ```
+                File.java
+                <<<<<<< SEARCH
+                int x = 1;
+                =======
+                int x = 2;
+                <<<<<<< HEAD
+                int y = 1;
+                =======
+                int y = 2;
+                >>>>>>> branch
+                >>>>>>> REPLACE
+                ```
+                """;
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
+
+        assertEquals(1, result.size(), result.toString());
+        var block = result.getFirst().block();
+        assertEquals("File.java", block.rawFileName());
+        assertTrue(block.afterText().contains("<<<<<<< HEAD"));
+        assertTrue(block.afterText().contains(">>>>>>> branch"));
+    }
+
+    @Test
+    void testParseFenceLessBlockWithConflictMarkers() {
+        String input =
+                """
+                <<<<<<< SEARCH
+                A
+                <<<<<<< HEAD
+                ours
+                =======
+                theirs
+                >>>>>>> branch
+                =======
+                B
+                >>>>>>> REPLACE
+                """;
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
+
+        assertEquals(1, result.size(), result.toString());
+        var block = result.getFirst().block();
+        assertNull(block.rawFileName());
+        assertTrue(block.beforeText().contains("ours"));
+        assertTrue(block.afterText().contains("B"));
+    }
+
+    @Test
+    void testGitConflictAloneIsNotEditBlockAndNoError() {
+        String input =
+                """
+                Here is a plain git conflict, not an edit block:
+
+                <<<<<<< HEAD
+                alpha
+                =======
+                beta
+                >>>>>>> branch
+                """;
+
+        // parseEditBlocks should not flag an error or produce blocks
+        var editsOnly = EditBlockParser.instance.parseEditBlocks(input, Set.of());
+        assertTrue(editsOnly.blocks().isEmpty(), "No edit blocks expected");
+        assertNull(editsOnly.parseError(), "No parse error should be reported for plain git conflicts");
+
+        // Full parser should return the whole thing as plain text
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
+        assertEquals(1, result.size());
+        assertNotNull(result.getFirst().text());
+    }
+
+    @Test
+    void testFencedBlockWithoutFilenameIsSingleEditBlockAndFilenameIsNullable() {
+        // This used to produce a leading plain-text "```" block and skip updating currentFilename in the fenced path.
+        String input =
+                """
+                ```
+                <<<<<<< SEARCH
+                before
+                =======
+                after
+                >>>>>>> REPLACE
+                ```
+                """;
+
+        // Full parse should treat the entire fenced region as a single edit block
+        var result = EditBlockParser.instance.parse(input, Set.of()).blocks();
+        assertEquals(1, result.size(), result.toString());
+        var block = result.getFirst().block();
+        assertNotNull(block, "Expected an edit block");
+        assertNull(block.rawFileName(), "No explicit filename should yield a null rawFileName");
+        assertTrue(block.beforeText().contains("before"));
+        assertTrue(block.afterText().contains("after"));
+
+        // Edits-only parse should also return exactly one block with no parse error
+        var editsOnly = EditBlockParser.instance.parseEditBlocks(input, Set.of());
+        assertEquals(1, editsOnly.blocks().size());
+        assertNull(editsOnly.parseError());
+    }
+
+    @Test
+    void testParseMarkersWithoutBlocksTriggersError() {
+        // Content contains our marker but parsing yields no blocks => parseEditBlocks should produce a helpful error.
+        String input =
+                """
+                Some prelude text.
+                >>>>>>> REPLACE
+                More trailing text.
+                """;
+        var editsOnly = EditBlockParser.instance.parseEditBlocks(input, Set.of());
+        assertTrue(editsOnly.blocks().isEmpty(), "No edit blocks expected");
+        assertNotNull(editsOnly.parseError(), "Expected parse error suggesting an edit block was intended");
+    }
+
+    @Test
+    void testSuggestSearchReplaceForDiffFormat() {
+        String input =
+                """
+                Some explanation
+                @@ -1,3 +1,3 @@
+                -old line
+                +new line
+                context line
+                """;
+        var editsOnly = EditBlockParser.instance.parseEditBlocks(input, Set.of());
+        assertTrue(editsOnly.blocks().isEmpty(), "No edit blocks expected for diff input");
+        assertNotNull(editsOnly.parseError(), "Parser should suggest using SEARCH/REPLACE for diff inputs");
+        assertTrue(
+                editsOnly.parseError().toUpperCase().contains("SEARCH/REPLACE"),
+                "Error message should mention SEARCH/REPLACE");
+    }
 }
