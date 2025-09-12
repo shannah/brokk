@@ -35,7 +35,6 @@ public class SourceCaptureUtil {
             return false;
         }
 
-        // Use a lightweight check - try the source capture and catch any exceptions
         return analyzer.as(SourceCodeProvider.class)
                 .map(provider -> {
                     try {
