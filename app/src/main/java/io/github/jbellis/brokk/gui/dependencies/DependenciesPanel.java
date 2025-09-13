@@ -25,6 +25,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
@@ -83,7 +84,7 @@ public final class DependenciesPanel extends JPanel {
 
         var contentPanel = new JPanel(new BorderLayout());
 
-        Object[] columnNames = {"Enabled", "Name", "Files", "LoC"};
+        Object[] columnNames = {"Live", "Name", "Files", "LoC"};
         tableModel = new DefaultTableModel(columnNames, 0) {
             @Override
             public Class<?> getColumnClass(int columnIndex) {
@@ -98,7 +99,22 @@ public final class DependenciesPanel extends JPanel {
             }
         };
 
-        table = new JTable(tableModel);
+        table = new JTable(tableModel) {
+            @Override
+public @Nullable String getToolTipText(java.awt.event.MouseEvent e) {
+    var p = e.getPoint();
+    int row = rowAtPoint(p);
+    int col = columnAtPoint(p);
+    if (row == -1 || col == -1) return null;
+    int modelCol = convertColumnIndexToModel(col);
+    // Only provide tooltip for the "Name" column (model index 1)
+    if (modelCol != 1) return super.getToolTipText(e);
+
+    // Return the same content as shown in the table cell (the Name column)
+    Object v = getValueAt(row, col);
+    return v != null ? v.toString() : null;
+}
+        };
         var sorter = new TableRowSorter<>(tableModel);
         table.setRowSorter(sorter);
         var sortKeys = new ArrayList<RowSorter.SortKey>();
@@ -109,8 +125,7 @@ public final class DependenciesPanel extends JPanel {
         table.setDefaultRenderer(Long.class, new NumberRenderer());
 
         TableColumnModel columnModel = table.getColumnModel();
-        columnModel.getColumn(0).setPreferredWidth(120);
-        columnModel.getColumn(0).setMaxWidth(150);
+        columnModel.getColumn(0).setMaxWidth(columnModel.getColumn(0).getPreferredWidth());
         columnModel.getColumn(1).setPreferredWidth(200);
         columnModel.getColumn(2).setPreferredWidth(80);
         columnModel.getColumn(3).setPreferredWidth(100);
