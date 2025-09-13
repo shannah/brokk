@@ -8,7 +8,6 @@ import io.github.jbellis.brokk.gui.dialogs.AboutDialog;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeDialog;
 import io.github.jbellis.brokk.gui.dialogs.FeedbackDialog;
 import io.github.jbellis.brokk.gui.dialogs.FileSelectionDialog;
-import io.github.jbellis.brokk.gui.dialogs.ManageDependenciesDialog;
 import io.github.jbellis.brokk.gui.dialogs.PreviewImagePanel;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import java.awt.*;
@@ -280,11 +279,6 @@ public class MenuBar {
         // Tools menu
         var toolsMenu = new JMenu("Tools");
         toolsMenu.setEnabled(true);
-
-        var manageDependenciesItem = new JMenuItem("Manage Dependencies...");
-        manageDependenciesItem.addActionListener(
-                e -> SwingUtilities.invokeLater(() -> ManageDependenciesDialog.show(chrome)));
-        toolsMenu.add(manageDependenciesItem);
 
         var scanProjectItem = new JMenuItem("Scan Project");
         scanProjectItem.addActionListener(e -> runWithRefocus(chrome, () -> {
