@@ -115,20 +115,70 @@ public @Nullable String getToolTipText(java.awt.event.MouseEvent e) {
     return v != null ? v.toString() : null;
 }
         };
-        var sorter = new TableRowSorter<>(tableModel);
+        var sorter = new TableRowSorter<>(tableModel) {
+            @Override
+            public void toggleSortOrder(int column) {
+                var currentKeys = getSortKeys();
+                // If this column is already the primary sort column, use the default toggle behavior
+                if (!currentKeys.isEmpty() && currentKeys.get(0).getColumn() == column) {
+                    super.toggleSortOrder(column);
+                    return;
+                }
+                // For a newly-clicked column, default to DESC for LoC (model column 3), otherwise ASC.
+                var defaultOrder = (column == 3) ? SortOrder.DESCENDING : SortOrder.ASCENDING;
+                setSortKeys(List.of(new RowSorter.SortKey(column, defaultOrder)));
+            }
+        };
         table.setRowSorter(sorter);
         var sortKeys = new ArrayList<RowSorter.SortKey>();
         sortKeys.add(new RowSorter.SortKey(0, SortOrder.DESCENDING)); // Enabled first
+        // Then by LoC (model column 3) so the "LoC (Files)" header sorts by LoC when clicked.
+        sortKeys.add(new RowSorter.SortKey(3, SortOrder.DESCENDING));
         sortKeys.add(new RowSorter.SortKey(1, SortOrder.ASCENDING)); // Then by name
         sorter.setSortKeys(sortKeys);
 
         table.setDefaultRenderer(Long.class, new NumberRenderer());
 
         TableColumnModel columnModel = table.getColumnModel();
+        // Live checkbox column (keep narrow)
         columnModel.getColumn(0).setMaxWidth(columnModel.getColumn(0).getPreferredWidth());
+        // Name column width
         columnModel.getColumn(1).setPreferredWidth(200);
-        columnModel.getColumn(2).setPreferredWidth(80);
-        columnModel.getColumn(3).setPreferredWidth(100);
+
+        // Remove the separate "Files" column (model index 2) from the view so we can combine it with LoC.
+        // Locate the TableColumn whose modelIndex == 2 and remove it from the view-only column model.
+        for (int ci = columnModel.getColumnCount() - 1; ci >= 0; ci--) {
+            var tc = columnModel.getColumn(ci);
+            if (tc.getModelIndex() == 2) {
+                columnModel.removeColumn(tc);
+                break;
+            }
+        }
+
+        // Find the visible column that maps to model index 3 (LoC) and update its header and renderer
+        for (int ci = 0; ci < columnModel.getColumnCount(); ci++) {
+            var tc = columnModel.getColumn(ci);
+            if (tc.getModelIndex() == 3) {
+                tc.setHeaderValue("LoC (Files)");
+                tc.setPreferredWidth(100);
+                tc.setCellRenderer(new DefaultTableCellRenderer() {
+                    @Override
+                    public Component getTableCellRendererComponent(JTable table, Object value,
+                            boolean isSelected, boolean hasFocus, int row, int column) {
+                        setHorizontalAlignment(RIGHT);
+                        int modelRow = table.convertRowIndexToModel(row);
+                        var filesObj = tableModel.getValueAt(modelRow, 2);
+                        var locObj = tableModel.getValueAt(modelRow, 3);
+                        long files = filesObj instanceof Number numberFiles ? numberFiles.longValue() : 0L;
+                        long loc = locObj instanceof Number numberLoc ? numberLoc.longValue() : 0L;
+                        String text = String.format("%,d (%,d)", loc, files);
+                        return super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column);
+                    }
+                });
+                break;
+            }
+        }
+
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.getTableHeader().setReorderingAllowed(false);
 
