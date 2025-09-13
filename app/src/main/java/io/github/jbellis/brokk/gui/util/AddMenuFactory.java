@@ -93,8 +93,8 @@ public final class AddMenuFactory {
         if (includeImportDependency) {
             addSeparator(parent);
             JMenuItem dependencyItem = new JMenuItem("Import Dependency...");
-            dependencyItem.addActionListener(
-                    e -> ImportDependencyDialog.show((Chrome) wp.getContextManager().getIo()));
+            dependencyItem.addActionListener(e ->
+                    ImportDependencyDialog.show((Chrome) wp.getContextManager().getIo()));
             parent.add(dependencyItem);
         }
     }

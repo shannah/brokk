@@ -25,7 +25,6 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import org.jetbrains.annotations.Nullable;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
@@ -34,6 +33,7 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Reusable panel for viewing and managing project dependencies. This is a refactoring of the ManageDependenciesDialog
@@ -101,19 +101,19 @@ public final class DependenciesPanel extends JPanel {
 
         table = new JTable(tableModel) {
             @Override
-public @Nullable String getToolTipText(java.awt.event.MouseEvent e) {
-    var p = e.getPoint();
-    int row = rowAtPoint(p);
-    int col = columnAtPoint(p);
-    if (row == -1 || col == -1) return null;
-    int modelCol = convertColumnIndexToModel(col);
-    // Only provide tooltip for the "Name" column (model index 1)
-    if (modelCol != 1) return super.getToolTipText(e);
+            public @Nullable String getToolTipText(java.awt.event.MouseEvent e) {
+                var p = e.getPoint();
+                int row = rowAtPoint(p);
+                int col = columnAtPoint(p);
+                if (row == -1 || col == -1) return null;
+                int modelCol = convertColumnIndexToModel(col);
+                // Only provide tooltip for the "Name" column (model index 1)
+                if (modelCol != 1) return super.getToolTipText(e);
 
-    // Return the same content as shown in the table cell (the Name column)
-    Object v = getValueAt(row, col);
-    return v != null ? v.toString() : null;
-}
+                // Return the same content as shown in the table cell (the Name column)
+                Object v = getValueAt(row, col);
+                return v != null ? v.toString() : null;
+            }
         };
         var sorter = new TableRowSorter<>(tableModel) {
             @Override
@@ -163,8 +163,8 @@ public @Nullable String getToolTipText(java.awt.event.MouseEvent e) {
                 tc.setPreferredWidth(100);
                 tc.setCellRenderer(new DefaultTableCellRenderer() {
                     @Override
-                    public Component getTableCellRendererComponent(JTable table, Object value,
-                            boolean isSelected, boolean hasFocus, int row, int column) {
+                    public Component getTableCellRendererComponent(
+                            JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
                         setHorizontalAlignment(RIGHT);
                         int modelRow = table.convertRowIndexToModel(row);
                         var filesObj = tableModel.getValueAt(modelRow, 2);
