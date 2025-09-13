@@ -13,21 +13,32 @@ import io.github.jbellis.brokk.util.CloneOperationTracker;
 import io.github.jbellis.brokk.util.Decompiler;
 import io.github.jbellis.brokk.util.FileUtil;
 import java.awt.*;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.*;
 import java.nio.file.attribute.BasicFileAttributes;
 import java.util.List;
+import java.util.regex.Pattern;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.Future;
 import java.util.function.Predicate;
 import javax.swing.*;
+import javax.swing.table.DefaultTableModel;
+import javax.swing.table.TableRowSorter;
+import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.TableColumn;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;
 import javax.swing.event.DocumentListener;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import java.util.Map;
+import java.util.LinkedHashMap;
+import java.util.HashMap;
+import java.util.zip.ZipFile;
 import org.jetbrains.annotations.Nullable;
 
 public class ImportDependencyDialog {
@@ -92,6 +103,22 @@ public class ImportDependencyDialog {
 
         @Nullable
         private GitRepo.RemoteInfo remoteInfo;
+
+        // --- JAR-specific fields (search + table of known cached jars)
+        @Nullable
+        private JTextField jarSearchField;
+
+        @Nullable
+        private JTable jarTable;
+
+        @Nullable
+        private DefaultTableModel jarTableModel;
+
+        @Nullable
+        private TableRowSorter<DefaultTableModel> jarSorter;
+
+        @Nullable
+        private Map<String, Path> jarNameToPath;
 
         DialogHelper(Chrome chrome, @Nullable DependenciesPanel.DependencyLifecycleListener listener) {
             this.chrome = chrome;
@@ -195,6 +222,8 @@ public class ImportDependencyDialog {
             contentPanel.removeAll();
             if (currentSourceType == SourceType.GIT) {
                 contentPanel.add(createGitPanel(), BorderLayout.CENTER);
+            } else if (currentSourceType == SourceType.JAR) {
+                contentPanel.add(createJarSelectionPanel(), BorderLayout.CENTER);
             } else {
                 contentPanel.add(createFileSelectionPanel(), BorderLayout.CENTER);
             }
@@ -209,6 +238,7 @@ public class ImportDependencyDialog {
             validateGitRepoButton = new JButton("Load Tags & Branches");
             gitRefComboBox = new JComboBox<>();
             gitRefComboBox.setEnabled(false);
+            gitRefComboBox.addActionListener(e -> updateGitImportButtonState());
 
             GridBagConstraints gbc = new GridBagConstraints();
             gbc.insets = new Insets(2, 2, 2, 2);
@@ -394,6 +424,209 @@ public class ImportDependencyDialog {
                         }
                     });
             return currentFileSelectionPanel;
+        }
+
+        private JPanel createJarSelectionPanel() {
+            var panel = new JPanel(new BorderLayout(5, 5));
+
+            // Search bar with placeholder hint
+            jarSearchField = new JTextField();
+            jarSearchField.setColumns(30);
+            jarSearchField.setToolTipText("Type to filter JARs");
+            jarSearchField.putClientProperty("JTextField.placeholderText", "Search");
+            panel.add(jarSearchField, BorderLayout.NORTH);
+
+            // Table model and table
+            jarTableModel = new DefaultTableModel(new Object[] {"Name", "Files"}, 0) {
+                @Override
+                public boolean isCellEditable(int row, int column) {
+                    return false;
+                }
+
+                @Override
+                public Class<?> getColumnClass(int columnIndex) {
+                    return columnIndex == 1 ? Long.class : String.class;
+                }
+            };
+            jarTable = new JTable(jarTableModel);
+            jarTable.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
+
+            // Sorter + search filter
+            jarSorter = new TableRowSorter<>(jarTableModel);
+            jarTable.setRowSorter(jarSorter);
+            // Default sort by name (column 0) ascending
+            jarSorter.setSortKeys(List.of(new RowSorter.SortKey(0, SortOrder.ASCENDING)));
+
+            // Configure "Files" column max width early to avoid layout reflow when focused.
+            if (jarTable.getColumnModel().getColumnCount() > 1) {
+                TableColumn filesColumn = jarTable.getColumnModel().getColumn(1);
+                // Compute a conservative max width based on header preferred width
+                int headerWidth = jarTable.getTableHeader()
+                        .getDefaultRenderer()
+                        .getTableCellRendererComponent(jarTable, filesColumn.getHeaderValue(), false, false, -1, 1)
+                        .getPreferredSize().width;
+                filesColumn.setMaxWidth(headerWidth + 20);
+                // Right-align values initially to reserve space
+                var rightAlign = new DefaultTableCellRenderer();
+                rightAlign.setHorizontalAlignment(SwingConstants.RIGHT);
+                filesColumn.setCellRenderer(rightAlign);
+            }
+
+            // Seed with a placeholder row while loading
+            requireNonNull(jarTableModel).setRowCount(0);
+            requireNonNull(jarTableModel).addRow(new Object[] {"Loading...", null});
+            importButton.setEnabled(false);
+
+            requireNonNull(jarSearchField).getDocument().addDocumentListener(new SimpleDocumentListener() {
+                @Override
+                public void update(DocumentEvent e) {
+                    var text = requireNonNull(jarSearchField).getText().trim();
+                    if (text.isEmpty()) {
+                        requireNonNull(jarSorter).setRowFilter(null);
+                    } else {
+                        String expr = "(?i)" + Pattern.quote(text);
+                        requireNonNull(jarSorter).setRowFilter(RowFilter.regexFilter(expr));
+                    }
+                }
+            });
+
+            // Selection behavior to enable Import and set selected file
+            jarTable.getSelectionModel().addListSelectionListener(e -> {
+                if (e.getValueIsAdjusting()) return;
+                int viewRow = requireNonNull(jarTable).getSelectedRow();
+                if (viewRow >= 0 && jarNameToPath != null) {
+                    int modelRow = requireNonNull(jarTable).convertRowIndexToModel(viewRow);
+                    String jarName = (String) requireNonNull(jarTableModel).getValueAt(modelRow, 0);
+                    Path path = jarNameToPath.get(jarName);
+                    if (path != null) {
+                        selectedBrokkFileForImport = new io.github.jbellis.brokk.analyzer.ExternalFile(path);
+                        importButton.setEnabled(true);
+                    } else {
+                        selectedBrokkFileForImport = null;
+                        importButton.setEnabled(false);
+                    }
+                } else {
+                    selectedBrokkFileForImport = null;
+                    importButton.setEnabled(false);
+                }
+            });
+
+            // Double-click to import
+            jarTable.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mouseClicked(MouseEvent e) {
+                    if (e.getClickCount() == 2 && importButton.isEnabled()) {
+                        performImport();
+                    }
+                }
+            });
+
+            // Put table in scroll pane
+            var scroll = new JScrollPane(jarTable);
+            panel.add(scroll, BorderLayout.CENTER);
+
+            // Load candidates in background and populate table on EDT
+            chrome.getContextManager().submitBackgroundTask("Scanning for JAR files", () -> {
+                try {
+                    var paths = Language.JAVA.getDependencyCandidates(chrome.getProject());
+                    SwingUtilities.invokeLater(() -> populateJarTable(paths));
+                } catch (Exception ex) {
+                    logger.warn("Error scanning for JAR files", ex);
+                    SwingUtilities.invokeLater(() -> chrome.toolError(
+                            "Error scanning for JAR files: " + ex.getMessage(), "Scan Error"));
+                }
+                return null;
+            });
+
+            return panel;
+        }
+
+        private void populateJarTable(List<Path> paths) {
+            // Build and populate in background (dedupe + count), then update EDT
+            chrome.getContextManager().submitBackgroundTask("Preparing JAR list", () -> {
+                // Deduplicate by filename (keep first occurrence)
+                var byFilename = new LinkedHashMap<String, Path>();
+                for (var p : paths) {
+                    var filename = p.getFileName().toString();
+                    byFilename.putIfAbsent(filename, p);
+                }
+
+                // Map pretty display name -> path
+                var nameToPath = new LinkedHashMap<String, Path>();
+                for (var p : byFilename.values()) {
+                    nameToPath.put(prettyJarName(p), p);
+                }
+
+                // Count files for each JAR
+                var counts = new HashMap<String, Long>();
+                for (var entry : nameToPath.entrySet()) {
+                    counts.put(entry.getKey(), countJarFiles(entry.getValue()));
+                }
+
+                SwingUtilities.invokeLater(() -> {
+                    jarNameToPath = nameToPath;
+
+                    var model = requireNonNull(jarTableModel);
+                    model.setRowCount(0);
+                    for (var entry : nameToPath.entrySet()) {
+                        String name = entry.getKey();
+                        long files = counts.getOrDefault(name, 0L);
+                        model.addRow(new Object[] {name, files});
+                    }
+
+                    // Configure renderer for the "Files" column so counts show with commas
+                    // but sorting remains based on the underlying Long model values.
+                    var filesRenderer = new DefaultTableCellRenderer() {
+                        private final java.text.NumberFormat fmt = java.text.NumberFormat.getIntegerInstance();
+                        @Override
+                        protected void setValue(Object value) {
+                            if (value instanceof Number number) {
+                                setText(fmt.format(number.longValue()));
+                            } else {
+                                setText("");
+                            }
+                        }
+                    };
+                    filesRenderer.setHorizontalAlignment(SwingConstants.RIGHT);
+
+                    if (requireNonNull(jarTable).getColumnModel().getColumnCount() > 1) {
+                        TableColumn filesColumn = jarTable.getColumnModel().getColumn(1);
+                        filesColumn.setCellRenderer(filesRenderer);
+                        // Set max width to the preferred width now that content is known.
+                        int pref = filesColumn.getPreferredWidth();
+                        filesColumn.setMaxWidth(pref);
+                    }
+
+                    // Ensure sorter applies the default sort now that data is available
+                    if (jarSorter != null) {
+                        jarSorter.sort();
+                    }
+                    // Select first row if available to pre-enable import
+                    if (model.getRowCount() > 0) {
+                        requireNonNull(jarTable).setRowSelectionInterval(0, 0);
+                    }
+                });
+                return null;
+            });
+        }
+
+        private static String prettyJarName(Path jarPath) {
+            String fileName = jarPath.getFileName().toString();
+            int dot = fileName.toLowerCase(Locale.ROOT).lastIndexOf(".jar");
+            return (dot > 0) ? fileName.substring(0, dot) : fileName;
+        }
+
+        private static long countJarFiles(Path jarPath) {
+            try (var zip = new ZipFile(jarPath.toFile())) {
+                return zip.stream()
+                        .filter(e -> !e.isDirectory())
+                        .map(e -> e.getName().toLowerCase(Locale.ROOT))
+                        .filter(name -> name.endsWith(".class") || name.endsWith(".java"))
+                        .count();
+            } catch (IOException e) {
+                // On any error reading the jar, count as 0
+                return 0L;
+            }
         }
 
         private void onFspInputTextChange() {
