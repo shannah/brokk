@@ -2195,13 +2195,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Returns the currently selected Code model configuration from the model selector. Falls back to a reasonable
      * default if none is available.
      */
-    public Service.ModelConfig getCurrentCodeModelConfig() {
+    public Service.ModelConfig getSelectedModel() {
         try {
             return modelSelector.getModel();
         } catch (IllegalStateException e) {
             // Fallback to a basic default; Reasoning & Tier defaulted inside ModelConfig
             return new Service.ModelConfig(Service.GPT_5_MINI);
         }
+    }
+
+    /**
+     * Register a listener to be notified when the model selection in the InstructionsPanel changes. The listener
+     * receives the new Service.ModelConfig.
+     */
+    public void addModelSelectionListener(Consumer<Service.ModelConfig> listener) {
+        modelSelector.addSelectionListener(listener);
     }
 
     /** Returns cosine similarity of two equal-length vectors. */

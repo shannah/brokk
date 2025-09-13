@@ -697,6 +697,18 @@ public class WorkspacePanel extends JPanel {
 
         safeGetLabel(0).setText(EMPTY_CONTEXT);
         setWorkspaceEditable(true); // Set initial state
+
+        // Register a listener so WorkspacePanel updates cost estimates / table when the selected model changes.
+        try {
+            var ip = chrome.getInstructionsPanel();
+            ip.addModelSelectionListener(cfg -> SwingUtilities.invokeLater(() -> {
+                // Recompute the table contents and cost estimates for the currently selected context.
+                populateContextTable(contextManager.selectedContext());
+                refreshMenuState();
+            }));
+        } catch (Exception ex) {
+            logger.debug("Could not register model selection listener for WorkspacePanel", ex);
+        }
     }
 
     /** Convenience constructor – defaults to FULL popup menu */
@@ -1382,7 +1394,7 @@ public class WorkspacePanel extends JPanel {
         var costLabel = safeGetLabel(1);
 
         // Check for context size warnings against configured models
-        var models = contextManager.getService();
+        var service = contextManager.getService();
         var project = contextManager.getProject();
 
         Map<String, Integer> redWarningModels = new HashMap<>();
@@ -1399,14 +1411,14 @@ public class WorkspacePanel extends JPanel {
                 continue;
             }
             try {
-                var modelInstance = models.getModel(config);
+                var modelInstance = service.getModel(config);
                 // Skip if model is unavailable or a placeholder
                 if (modelInstance == null || modelInstance instanceof Service.UnavailableStreamingModel) {
                     logger.debug("Skipping unavailable model for context warning: {}", config.name());
                     continue;
                 }
 
-                int maxInputTokens = models.getMaxInputTokens(modelInstance);
+                int maxInputTokens = service.getMaxInputTokens(modelInstance);
                 if (maxInputTokens <= 0) {
                     logger.warn(
                             "Model {} has invalid maxInputTokens: {}. Skipping for context warning.",
@@ -1436,15 +1448,15 @@ public class WorkspacePanel extends JPanel {
 
         // Always set the standard summary text on innerLabel
         innerLabel.setForeground(UIManager.getColor("Label.foreground")); // Reset to default color
-        var costEstimates = calculateCostEstimates(approxTokens, models);
+        String costEstimate = calculateCostEstimate(approxTokens, service);
         innerLabel.setText("Total: %,d LOC, or about %,dk tokens.".formatted(totalLines, approxTokens / 1000));
         innerLabel.setToolTipText(null); // Clear tooltip
 
-        if (costEstimates.isEmpty()) {
+        if (costEstimate.isBlank()) {
             costLabel.setText(" ");
             costLabel.setVisible(false);
         } else {
-            costLabel.setText("Estimated cost/request is " + String.join(", ", costEstimates));
+            costLabel.setText("Estimated cost/request is " + costEstimate);
             costLabel.setVisible(true);
         }
 
@@ -2164,54 +2176,37 @@ public class WorkspacePanel extends JPanel {
         };
     }
 
-    /** Calculate cost estimates for the configured models. */
-    private List<String> calculateCostEstimates(int inputTokens, Service models) {
-        var costEstimates = new ArrayList<String>();
-        var seenModels = new HashSet<String>();
+    /** Calculate cost estimate for only the model currently selected in InstructionsPanel. */
+    private String calculateCostEstimate(int inputTokens, Service service) {
+        var instructionsPanel = chrome.getInstructionsPanel();
+        Service.ModelConfig config = instructionsPanel.getSelectedModel();
 
-        var project = contextManager.getProject();
-
-        // Get the three configured models in order: code, ask, architect
-        List<Service.ModelConfig> configsToCheck = List.of(
-                project.getCodeModelConfig(), project.getSearchModelConfig(), project.getArchitectModelConfig());
-
-        for (var config : configsToCheck) {
-            if (config.name().isBlank() || seenModels.contains(config.name())) {
-                continue; // Skip if model name is empty or already processed
-            }
-
-            try {
-                var model = models.getModel(config);
-                if (model instanceof Service.UnavailableStreamingModel) {
-                    continue; // Skip unavailable models
-                }
-
-                var pricing = models.getModelPricing(config.name());
-                if (pricing.bands().isEmpty()) {
-                    continue; // Skip if no pricing info available
-                }
-
-                // Calculate estimated cost: input tokens * input price + min(4k, input/2) * output price
-                long estimatedOutputTokens = Math.min(4000, inputTokens / 2);
-                if (models.isReasoning(config)) {
-                    estimatedOutputTokens += 1000;
-                }
-                double estimatedCost = pricing.estimateCost(inputTokens, 0, estimatedOutputTokens);
-
-                if (models.isFreeTier(config.name())) {
-                    costEstimates.add(String.format("%s: free", config.name()));
-                } else {
-                    costEstimates.add(String.format("%s: $%.2f", config.name(), estimatedCost));
-                }
-                seenModels.add(config.name());
-
-            } catch (Exception e) {
-                logger.debug("Error calculating cost estimate for model {}: {}", config.name(), e.getMessage());
-                // Continue to next model on error
-            }
+        if (config.name().isBlank()) {
+            return "";
         }
 
-        return costEstimates;
+        var model = service.getModel(config);
+        if (model instanceof Service.UnavailableStreamingModel) {
+            return "";
+        }
+
+        var pricing = service.getModelPricing(config.name());
+        if (pricing.bands().isEmpty()) {
+            return "";
+        }
+
+        // Calculate estimated cost: input tokens * input price + min(4k, input/2) * output price
+        long estimatedOutputTokens = Math.min(4000, inputTokens / 2);
+        if (service.isReasoning(config)) {
+            estimatedOutputTokens += 1000;
+        }
+        double estimatedCost = pricing.estimateCost(inputTokens, 0, estimatedOutputTokens);
+
+        if (service.isFreeTier(config.name())) {
+            return "$0.00 (Free Tier)";
+        } else {
+            return String.format("$%.2f", estimatedCost);
+        }
     }
 
     /**
