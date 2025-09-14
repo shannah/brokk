@@ -517,23 +517,19 @@ public final class MainProject extends AbstractProject {
      * selecting the most frequently occurring language. Falls back to Language.NONE if none detected.
      */
     private static Language detectLanguageForDependency(ProjectFile depDir) {
-        try (var walk = Files.walk(depDir.absPath())) {
-            var counts = walk
-                    .filter(Files::isRegularFile)
-                    .map(path -> com.google.common.io.Files.getFileExtension(path.toString()))
-                    .filter(ext -> !ext.isEmpty())
-                    .map(Language::fromExtension)
-                    .filter(lang -> lang != Language.NONE)
-                    .collect(Collectors.groupingBy(lang -> lang, Collectors.counting()));
+        var counts = new IProject.Dependency(depDir, Language.NONE)
+                .files()
+                .stream()
+                .map(pf -> com.google.common.io.Files.getFileExtension(pf.absPath().toString()))
+                .filter(ext -> !ext.isEmpty())
+                .map(Language::fromExtension)
+                .filter(lang -> lang != Language.NONE)
+                .collect(Collectors.groupingBy(lang -> lang, Collectors.counting()));
 
-            return counts.entrySet().stream()
-                    .max(Map.Entry.comparingByValue())
-                    .map(Map.Entry::getKey)
-                    .orElse(Language.NONE);
-        } catch (IOException e) {
-            logger.warn("Failed to detect language for dependency {}: {}", depDir, e.getMessage());
-            return Language.NONE;
-        }
+        return counts.entrySet().stream()
+                .max(Map.Entry.comparingByValue())
+                .map(Map.Entry::getKey)
+                .orElse(Language.NONE);
     }
 
     @Override

@@ -482,18 +482,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
 
         var allFiles = new HashSet<>(trackedFiles);
         for (var live : getLiveDependencies()) {
-            try (var pathStream = Files.walk(live.root().absPath())) {
-                pathStream
-                        .filter(Files::isRegularFile)
-                        .map(path -> {
-                            var relPath = masterRootPathForConfig.relativize(path);
-                            return new ProjectFile(masterRootPathForConfig, relPath);
-                        })
-                        .forEach(allFiles::add);
-            } catch (IOException e) {
-                logger.error("Error loading dependency files from {}: {}", dependenciesPath, e.getMessage());
-                return trackedFiles;
-            }
+            allFiles.addAll(live.files());
         }
 
         return allFiles;
