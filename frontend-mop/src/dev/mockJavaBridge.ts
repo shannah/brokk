@@ -9,7 +9,6 @@ export interface MockJavaBridge {
     lookupSymbolsAsync: (symbolNamesJson: string, seq: number, contextId: string) => void;
     jsLog: (level: string, message: string) => void;
     onSymbolClick: (symbolName: string, symbolExists: boolean, symbolFqn: string | null, x: number, y: number) => void;
-    onZoomChanged: (zoom: number) => void;
     _mockSymbolsSet: Set<string>;
 }
 
@@ -119,16 +118,6 @@ export function createMockJavaBridge(): MockJavaBridge {
         // Helper for debugging
         jsLog: function(level: string, message: string) {
             console.log(`[Mock JavaBridge ${level}] ${message}`);
-        },
-
-        // Receive zoom changes from frontend
-        onZoomChanged: function(zoom: number) {
-            console.log(`[Mock JavaBridge] Zoom changed: ${zoom}`);
-            try {
-                localStorage.setItem('brokk.zoom', String(zoom));
-            } catch (e) {
-                // ignore
-            }
         },
 
         // Mock symbol click implementation

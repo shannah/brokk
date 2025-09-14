@@ -143,7 +143,7 @@
         display: block;
         padding-left: 0.8em;
         padding-right: 0.8em;
-        font-size: 0.8em;
+        font-size: 0.8rem;
         line-height: 1.4;
     }
 
