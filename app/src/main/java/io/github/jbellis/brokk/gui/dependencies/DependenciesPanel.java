@@ -29,7 +29,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import javax.swing.*;
-import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.TableModelEvent;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -55,9 +54,7 @@ public final class DependenciesPanel extends JPanel {
     private final DefaultTableModel tableModel;
     private final JTable table;
     private final Map<String, ProjectFile> dependencyProjectFileMap = new HashMap<>();
-    private final JLabel totalsLabel;
     private final Set<ProjectFile> initialFiles;
-    private boolean isUpdatingTotals = false;
     private boolean isProgrammaticChange = false;
     private static final String LOADING = "Loading...";
 
@@ -124,7 +121,7 @@ public final class DependenciesPanel extends JPanel {
 
         var contentPanel = new JPanel(new BorderLayout());
 
-        Object[] columnNames = {"Live", "Name", "Files", "LoC"};
+        Object[] columnNames = {"Live", "Name", "Files"};
         tableModel = new DefaultTableModel(columnNames, 0) {
             @Override
             public Class<?> getColumnClass(int columnIndex) {
@@ -167,15 +164,15 @@ public final class DependenciesPanel extends JPanel {
                     return;
                 }
                 // For a newly-clicked column, default to DESC for LoC (model column 3), otherwise ASC.
-                var defaultOrder = (column == 3) ? SortOrder.DESCENDING : SortOrder.ASCENDING;
+                var defaultOrder = (column == 2) ? SortOrder.DESCENDING : SortOrder.ASCENDING;
                 setSortKeys(List.of(new RowSorter.SortKey(column, defaultOrder)));
             }
         };
         table.setRowSorter(sorter);
         var sortKeys = new ArrayList<RowSorter.SortKey>();
         sortKeys.add(new RowSorter.SortKey(0, SortOrder.DESCENDING)); // Enabled first
-        // Then by LoC (model column 3) so the "LoC (Files)" header sorts by LoC when clicked.
-        sortKeys.add(new RowSorter.SortKey(3, SortOrder.DESCENDING));
+        // Then by Files (model column 2).
+        sortKeys.add(new RowSorter.SortKey(2, SortOrder.DESCENDING));
         sortKeys.add(new RowSorter.SortKey(1, SortOrder.ASCENDING)); // Then by name
         sorter.setSortKeys(sortKeys);
 
@@ -190,39 +187,6 @@ public final class DependenciesPanel extends JPanel {
         // Name column width
         columnModel.getColumn(1).setPreferredWidth(200);
 
-        // Remove the separate "Files" column (model index 2) from the view so we can combine it with LoC.
-        // Locate the TableColumn whose modelIndex == 2 and remove it from the view-only column model.
-        for (int ci = columnModel.getColumnCount() - 1; ci >= 0; ci--) {
-            var tc = columnModel.getColumn(ci);
-            if (tc.getModelIndex() == 2) {
-                columnModel.removeColumn(tc);
-                break;
-            }
-        }
-
-        // Find the visible column that maps to model index 3 (LoC) and update its header and renderer
-        for (int ci = 0; ci < columnModel.getColumnCount(); ci++) {
-            var tc = columnModel.getColumn(ci);
-            if (tc.getModelIndex() == 3) {
-                tc.setHeaderValue("LoC (Files)");
-                tc.setPreferredWidth(100);
-                tc.setCellRenderer(new DefaultTableCellRenderer() {
-                    @Override
-                    public Component getTableCellRendererComponent(
-                            JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
-                        setHorizontalAlignment(RIGHT);
-                        int modelRow = table.convertRowIndexToModel(row);
-                        var filesObj = tableModel.getValueAt(modelRow, 2);
-                        var locObj = tableModel.getValueAt(modelRow, 3);
-                        long files = filesObj instanceof Number numberFiles ? numberFiles.longValue() : 0L;
-                        long loc = locObj instanceof Number numberLoc ? numberLoc.longValue() : 0L;
-                        String text = String.format("%,d (%,d)", loc, files);
-                        return super.getTableCellRendererComponent(table, text, isSelected, hasFocus, row, column);
-                    }
-                });
-                break;
-            }
-        }
 
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.getTableHeader().setReorderingAllowed(false);
@@ -241,15 +205,7 @@ public final class DependenciesPanel extends JPanel {
 
         contentPanel.add(scrollPane, BorderLayout.CENTER);
 
-        // --- Totals Panel (stacked) with Add/Remove on the right ---
-        var totalsPanel = new JPanel();
-        totalsPanel.setLayout(new BoxLayout(totalsPanel, BoxLayout.Y_AXIS));
-        totalsPanel.setBorder(new EmptyBorder(0, Constants.H_GAP, 0, Constants.H_GAP));
-        totalsLabel = new JLabel("Files/LoC in Code Intelligence: 0/0");
-        totalsPanel.add(totalsLabel);
-        totalsPanel.add(Box.createVerticalStrut(35));
-
-        // --- South Panel: Totals (left) and Buttons (right) ---
+        // --- South Panel: Buttons (right aligned) ---
         var southContainerPanel = new JPanel(new BorderLayout());
 
         // Add/Remove on the right
@@ -261,7 +217,6 @@ public final class DependenciesPanel extends JPanel {
         addRemovePanel.add(addButton);
         addRemovePanel.add(removeButton);
 
-        southContainerPanel.add(totalsPanel, BorderLayout.CENTER);
         southContainerPanel.add(addRemovePanel, BorderLayout.EAST);
         contentPanel.add(southContainerPanel, BorderLayout.SOUTH);
 
@@ -316,8 +271,6 @@ public final class DependenciesPanel extends JPanel {
             if (e.getFirstRow() == TableModelEvent.HEADER_ROW) return;
             if (isProgrammaticChange) return;
 
-            updateTotals();
-
             if (e.getColumn() == 0) {
                 int first = e.getFirstRow();
                 int last = e.getLastRow();
@@ -361,9 +314,7 @@ public final class DependenciesPanel extends JPanel {
     }
 
     private void addPendingDependencyRow(String name) {
-        if (isUpdatingTotals) return; // a bit of a hack to avoid flicker
-        tableModel.addRow(new Object[] {true, name, 0L, 0L});
-        updateTotals();
+        tableModel.addRow(new Object[] {true, name, 0L});
     }
 
     public void loadDependencies() {
@@ -379,13 +330,12 @@ public final class DependenciesPanel extends JPanel {
             String name = dep.getRelPath().getFileName().toString();
             dependencyProjectFileMap.put(name, dep);
             boolean isLive = liveDeps.stream().anyMatch(d -> d.root().equals(dep));
-            tableModel.addRow(new Object[] {isLive, name, 0L, 0L});
+            tableModel.addRow(new Object[] {isLive, name, 0L});
         }
         isProgrammaticChange = false;
-        updateTotals(); // Initial totals calculation
 
-        // count lines in background
-        new LineCountingWorker().execute();
+        // count files in background
+        new FileCountingWorker().execute();
     }
 
     public CompletableFuture<Void> saveChangesAsync() {
@@ -433,28 +383,8 @@ public final class DependenciesPanel extends JPanel {
         });
     }
 
-    /** Recalculate totals for enabled dependencies and update the total labels. */
-    private void updateTotals() {
-        if (isUpdatingTotals) return;
-        isUpdatingTotals = true;
-        try {
-            long totalFiles = 0;
-            long totalLoc = 0;
 
-            for (int i = 0; i < tableModel.getRowCount(); i++) {
-                if (!Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) continue;
-
-                totalFiles += (Long) tableModel.getValueAt(i, 2);
-                totalLoc += (Long) tableModel.getValueAt(i, 3);
-            }
-
-            totalsLabel.setText(String.format("Files/LoC in Code Intelligence: %,d/%,d", totalFiles, totalLoc));
-        } finally {
-            isUpdatingTotals = false;
-        }
-    }
-
-    private class LineCountingWorker extends SwingWorker<Void, Object[]> {
+    private class FileCountingWorker extends SwingWorker<Void, Object[]> {
         @Override
         protected Void doInBackground() {
             int rowCount = tableModel.getRowCount();
@@ -464,25 +394,10 @@ public final class DependenciesPanel extends JPanel {
                 requireNonNull(pf);
 
                 try (var pathStream = Files.walk(pf.absPath())) {
-                    // Collect all regular files first
-                    List<Path> files = pathStream.filter(Files::isRegularFile).toList();
-
-                    // count lines in parallel
-                    long fileCount = files.size();
-                    long lineCount = files.parallelStream()
-                            .mapToLong(p -> {
-                                try (var lines = Files.lines(p)) {
-                                    return lines.count();
-                                } catch (IOException | UncheckedIOException e) {
-                                    // Ignore unreadable/non-text files
-                                    return 0;
-                                }
-                            })
-                            .sum();
-                    publish(new Object[] {i, fileCount, lineCount});
+                    long fileCount = pathStream.filter(Files::isRegularFile).count();
+                    publish(new Object[] {i, fileCount});
                 } catch (IOException e) {
-                    // Could not walk the directory
-                    publish(new Object[] {i, 0L, 0L});
+                    publish(new Object[] {i, 0L});
                 }
             }
             return null;
@@ -495,14 +410,11 @@ public final class DependenciesPanel extends JPanel {
                 for (Object[] chunk : chunks) {
                     int row = (int) chunk[0];
                     long files = (long) chunk[1];
-                    long loc = (long) chunk[2];
                     tableModel.setValueAt(files, row, 2);
-                    tableModel.setValueAt(loc, row, 3);
                 }
             } finally {
                 isProgrammaticChange = false;
             }
-            updateTotals();
         }
     }
 
