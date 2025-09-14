@@ -73,6 +73,9 @@ public class ImportDependencyDialog {
         private ImportRustPanel rustPanel;
 
         @Nullable
+        private ImportPythonPanel pythonPanel;
+
+        @Nullable
         private JPanel gitPanel;
 
         @Nullable
@@ -114,7 +117,7 @@ public class ImportDependencyDialog {
             var mainPanel = new JPanel(new BorderLayout());
             mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-            // Tabs in order: Java / Rust / Repository / Local Directory
+            // Tabs in order: Java / Python / Rust / Repository / Local Directory
             if (chrome.getProject().getAnalyzerLanguages().contains(Language.JAVA)) {
                 javaPanel = new ImportJavaPanel(chrome);
                 javaPanel.setLifecycleListener(listener);
@@ -126,21 +129,36 @@ public class ImportDependencyDialog {
                         }
                     }
                 });
-                tabbedPane.addTab("Java", javaPanel);
+                tabbedPane.addTab("JAR", javaPanel);
             }
 
-            // Rust is always useful if Cargo is present; show tab unconditionally for simplicity
-            rustPanel = new ImportRustPanel(chrome);
-            rustPanel.setLifecycleListener(listener);
-            rustPanel.addSelectionListener(pkg -> updateImportButtonState());
-            rustPanel.addDoubleClickListener(() -> {
-                if (importButton.isEnabled() && tabbedPane.getSelectedComponent() == rustPanel) {
-                    if (requireNonNull(rustPanel).initiateImport()) {
-                        dialog.dispose();
+            if (chrome.getProject().getAnalyzerLanguages().contains(Language.PYTHON)) {
+                pythonPanel = new ImportPythonPanel(chrome);
+                pythonPanel.setLifecycleListener(listener);
+                pythonPanel.addSelectionListener(pkg -> updateImportButtonState());
+                pythonPanel.addDoubleClickListener(() -> {
+                    if (importButton.isEnabled() && tabbedPane.getSelectedComponent() == pythonPanel) {
+                        if (requireNonNull(pythonPanel).initiateImport()) {
+                            dialog.dispose();
+                        }
                     }
-                }
-            });
-            tabbedPane.addTab("Rust", rustPanel);
+                });
+                tabbedPane.addTab("VENV", pythonPanel);
+            }
+
+            if (chrome.getProject().getAnalyzerLanguages().contains(Language.RUST)) {
+                rustPanel = new ImportRustPanel(chrome);
+                rustPanel.setLifecycleListener(listener);
+                rustPanel.addSelectionListener(pkg -> updateImportButtonState());
+                rustPanel.addDoubleClickListener(() -> {
+                    if (importButton.isEnabled() && tabbedPane.getSelectedComponent() == rustPanel) {
+                        if (requireNonNull(rustPanel).initiateImport()) {
+                            dialog.dispose();
+                        }
+                    }
+                });
+                tabbedPane.addTab("Cargo", rustPanel);
+            }
 
             gitPanel = createGitPanel();
             tabbedPane.addTab("Repository", gitPanel);
@@ -159,6 +177,12 @@ public class ImportDependencyDialog {
                 var comp = tabbedPane.getSelectedComponent();
                 if (comp == javaPanel) {
                     if (requireNonNull(javaPanel).initiateImport()) {
+                        dialog.dispose();
+                    } else {
+                        importButton.setEnabled(true);
+                    }
+                } else if (comp == pythonPanel) {
+                    if (requireNonNull(pythonPanel).initiateImport()) {
                         dialog.dispose();
                     } else {
                         importButton.setEnabled(true);
@@ -350,6 +374,8 @@ public class ImportDependencyDialog {
             boolean enabled;
             if (comp == javaPanel) {
                 enabled = requireNonNull(javaPanel).getSelectedJar() != null;
+            } else if (comp == pythonPanel) {
+                enabled = requireNonNull(pythonPanel).getSelectedPackage() != null;
             } else if (comp == rustPanel) {
                 enabled = requireNonNull(rustPanel).getSelectedPackage() != null;
             } else if (comp == gitPanel) {

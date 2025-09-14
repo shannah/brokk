@@ -411,35 +411,20 @@ public interface Language {
 
         @Override
         public List<Path> getDependencyCandidates(IProject project) {
-            logger.debug("Scanning for Python dependency candidates in project: {}", project.getRoot());
-            List<Path> results = new ArrayList<>();
+            logger.debug("Scanning for Python virtual environments in project: {}", project.getRoot());
             List<Path> venvs = findVirtualEnvs(project.getRoot());
             if (venvs.isEmpty()) {
                 logger.debug("No virtual environments found for Python dependency scan.");
+                return List.of();
             }
 
-            venvs.stream()
+            List<Path> sitePackagesDirs = venvs.stream()
                     .map(this::sitePackagesDir)
-                    .filter(Files::isDirectory) // Filter out empty paths returned by sitePackagesDir if not found
-                    .forEach(dir -> {
-                        logger.debug("Scanning site-packages directory: {}", dir);
-                        try (DirectoryStream<Path> ds = Files.newDirectoryStream(dir)) {
-                            for (Path p : ds) {
-                                String name = p.getFileName().toString();
-                                if (name.endsWith(".dist-info") || name.endsWith(".egg-info") || name.startsWith("_")) {
-                                    continue;
-                                }
-                                if (Files.isDirectory(p)) {
-                                    logger.debug("Found Python dependency candidate: {}", p);
-                                    results.add(p);
-                                }
-                            }
-                        } catch (IOException e) {
-                            logger.warn("Error scanning site-packages directory {}: {}", dir, e.getMessage());
-                        }
-                    });
-            logger.debug("Found {} Python dependency candidates.", results.size());
-            return results;
+                    .filter(Files::isDirectory)
+                    .toList();
+
+            logger.debug("Found {} Python site-packages directories.", sitePackagesDirs.size());
+            return sitePackagesDirs;
         }
 
         @Override
