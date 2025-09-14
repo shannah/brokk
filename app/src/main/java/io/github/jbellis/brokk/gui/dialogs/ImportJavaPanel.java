@@ -4,6 +4,8 @@ import static java.util.Objects.requireNonNull;
 
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.dependencies.DependenciesPanel;
+import io.github.jbellis.brokk.util.Decompiler;
 import java.awt.BorderLayout;
 import java.io.IOException;
 import java.nio.file.Path;
@@ -35,8 +37,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-public class ImportJarPanel extends JPanel {
-    private static final Logger logger = LogManager.getLogger(ImportJarPanel.class);
+public class ImportJavaPanel extends JPanel {
+    private static final Logger logger = LogManager.getLogger(ImportJavaPanel.class);
 
     private final Chrome chrome;
 
@@ -48,12 +50,17 @@ public class ImportJarPanel extends JPanel {
     private Map<String, Path> nameToPath = Map.of();
     private final List<Consumer<@Nullable Path>> selectionListeners = new ArrayList<>();
     private @Nullable Runnable doubleClickListener;
+    private @Nullable DependenciesPanel.DependencyLifecycleListener lifecycleListener;
 
-    public ImportJarPanel(Chrome chrome) {
+    public ImportJavaPanel(Chrome chrome) {
         super(new BorderLayout(5, 5));
         this.chrome = chrome;
         initUi();
         loadJarCandidates();
+    }
+
+    public void setLifecycleListener(@Nullable DependenciesPanel.DependencyLifecycleListener lifecycleListener) {
+        this.lifecycleListener = lifecycleListener;
     }
 
     public void addSelectionListener(Consumer<@Nullable Path> listener) {
@@ -147,6 +154,29 @@ public class ImportJarPanel extends JPanel {
         var scroll = new JScrollPane(table);
         scroll.setBorder(BorderFactory.createEmptyBorder());
         add(scroll, BorderLayout.CENTER);
+    }
+
+    public boolean initiateImport() {
+        var sourcePath = getSelectedJar();
+        if (sourcePath == null) {
+            return false;
+        }
+
+        var depName = sourcePath.getFileName().toString();
+
+        @Nullable final DependenciesPanel.DependencyLifecycleListener currentListener = lifecycleListener;
+        if (currentListener != null) {
+            SwingUtilities.invokeLater(() -> currentListener.dependencyImportStarted(depName));
+        }
+
+        Decompiler.decompileJar(
+                chrome,
+                sourcePath,
+                chrome.getContextManager()::submitBackgroundTask,
+                () -> SwingUtilities.invokeLater(() -> {
+                    if (currentListener != null) currentListener.dependencyImportFinished(depName);
+                }));
+        return true;
     }
 
     private void loadJarCandidates() {

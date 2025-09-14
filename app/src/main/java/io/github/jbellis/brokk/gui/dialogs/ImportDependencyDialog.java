@@ -10,7 +10,6 @@ import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionPanel;
 import io.github.jbellis.brokk.gui.dependencies.DependenciesPanel;
 import io.github.jbellis.brokk.util.CloneOperationTracker;
-import io.github.jbellis.brokk.util.Decompiler;
 import io.github.jbellis.brokk.util.FileUtil;
 import java.awt.BorderLayout;
 import java.awt.FlowLayout;
@@ -68,7 +67,10 @@ public class ImportDependencyDialog {
 
         // Tabs
         @Nullable
-        private ImportJarPanel jarPanel;
+        private ImportJavaPanel javaPanel;
+
+        @Nullable
+        private ImportRustPanel rustPanel;
 
         @Nullable
         private JPanel gitPanel;
@@ -77,9 +79,6 @@ public class ImportDependencyDialog {
         private FileSelectionPanel dirSelectionPanel;
 
         // State for selections
-        @Nullable
-        private Path selectedJarPath;
-
         @Nullable
         private BrokkFile selectedDirectory;
 
@@ -115,20 +114,33 @@ public class ImportDependencyDialog {
             var mainPanel = new JPanel(new BorderLayout());
             mainPanel.setBorder(new EmptyBorder(10, 10, 10, 10));
 
-            // Tabs in order: JAR / Repository / Local Directory
+            // Tabs in order: Java / Rust / Repository / Local Directory
             if (chrome.getProject().getAnalyzerLanguages().contains(Language.JAVA)) {
-                jarPanel = new ImportJarPanel(chrome);
-                jarPanel.addSelectionListener(path -> {
-                    selectedJarPath = path;
-                    updateImportButtonState();
-                });
-                jarPanel.addDoubleClickListener(() -> {
-                    if (importButton.isEnabled() && tabbedPane.getSelectedIndex() == 0) {
-                        performJarImport();
+                javaPanel = new ImportJavaPanel(chrome);
+                javaPanel.setLifecycleListener(listener);
+                javaPanel.addSelectionListener(path -> updateImportButtonState());
+                javaPanel.addDoubleClickListener(() -> {
+                    if (importButton.isEnabled() && tabbedPane.getSelectedComponent() == javaPanel) {
+                        if (requireNonNull(javaPanel).initiateImport()) {
+                            dialog.dispose();
+                        }
                     }
                 });
-                tabbedPane.addTab("JAR", jarPanel);
+                tabbedPane.addTab("Java", javaPanel);
             }
+
+            // Rust is always useful if Cargo is present; show tab unconditionally for simplicity
+            rustPanel = new ImportRustPanel(chrome);
+            rustPanel.setLifecycleListener(listener);
+            rustPanel.addSelectionListener(pkg -> updateImportButtonState());
+            rustPanel.addDoubleClickListener(() -> {
+                if (importButton.isEnabled() && tabbedPane.getSelectedComponent() == rustPanel) {
+                    if (requireNonNull(rustPanel).initiateImport()) {
+                        dialog.dispose();
+                    }
+                }
+            });
+            tabbedPane.addTab("Rust", rustPanel);
 
             gitPanel = createGitPanel();
             tabbedPane.addTab("Repository", gitPanel);
@@ -143,10 +155,21 @@ public class ImportDependencyDialog {
             // Buttons
             importButton.setEnabled(false);
             importButton.addActionListener(e -> {
-                // If JAVA not supported, indices shift. So detect by component instance.
+                // Detect selected tab by component instance.
                 var comp = tabbedPane.getSelectedComponent();
-                if (comp == jarPanel) {
-                    performJarImport();
+                if (comp == javaPanel) {
+                    if (requireNonNull(javaPanel).initiateImport()) {
+                        dialog.dispose();
+                    } else {
+                        importButton.setEnabled(true);
+                    }
+                } else if (comp == rustPanel) {
+                    if (requireNonNull(rustPanel).initiateImport()) {
+                        dialog.dispose();
+                    } else {
+                        // keep dialog open so user can run cargo build and retry
+                        importButton.setEnabled(true);
+                    }
                 } else if (comp == gitPanel) {
                     performGitImport();
                 } else {
@@ -325,8 +348,10 @@ public class ImportDependencyDialog {
         private void updateImportButtonState() {
             var comp = tabbedPane.getSelectedComponent();
             boolean enabled;
-            if (comp == jarPanel) {
-                enabled = selectedJarPath != null;
+            if (comp == javaPanel) {
+                enabled = requireNonNull(javaPanel).getSelectedJar() != null;
+            } else if (comp == rustPanel) {
+                enabled = requireNonNull(rustPanel).getSelectedPackage() != null;
             } else if (comp == gitPanel) {
                 enabled = remoteInfo != null && requireNonNull(gitRefComboBox).getSelectedItem() != null;
             } else {
@@ -395,29 +420,6 @@ public class ImportDependencyDialog {
 
             combo.setEnabled(combo.getItemCount() > 0);
             if (combo.getItemCount() > 0) combo.setSelectedIndex(0);
-        }
-
-        private void performJarImport() {
-            if (selectedJarPath == null) {
-                importButton.setEnabled(true);
-                return;
-            }
-
-            var sourcePath = selectedJarPath;
-            var depName = sourcePath.getFileName().toString();
-
-            if (listener != null) {
-                SwingUtilities.invokeLater(() -> listener.dependencyImportStarted(depName));
-            }
-            dialog.dispose();
-
-            Decompiler.decompileJar(
-                    chrome,
-                    sourcePath,
-                    chrome.getContextManager()::submitBackgroundTask,
-                    () -> SwingUtilities.invokeLater(() -> {
-                        if (listener != null) listener.dependencyImportFinished(depName);
-                    }));
         }
 
         private void performDirectoryImport() {
