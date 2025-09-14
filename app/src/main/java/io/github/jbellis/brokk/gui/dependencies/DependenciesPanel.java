@@ -16,6 +16,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;
@@ -253,6 +255,18 @@ public final class DependenciesPanel extends JPanel {
             }
         });
 
+        table.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                showTablePopup(e);
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                showTablePopup(e);
+            }
+        });
+
         // Re-compute totals whenever data changes or check-boxes toggle.
         // Also persist changes when the enabled checkbox (column 0) is toggled.
         tableModel.addTableModelListener(e -> {
@@ -398,6 +412,59 @@ public final class DependenciesPanel extends JPanel {
             }
             // Totals will be updated by the TableModelListener
         }
+    }
+
+    private void showTablePopup(MouseEvent e) {
+        if (!e.isPopupTrigger()) {
+            return;
+        }
+        int viewRow = table.rowAtPoint(e.getPoint());
+        if (viewRow < 0) {
+            return;
+        }
+        int viewCol = table.columnAtPoint(e.getPoint());
+        if (viewCol < 0) {
+            return;
+        }
+
+        table.setRowSelectionInterval(viewRow, viewRow);
+        int modelRow = table.convertRowIndexToModel(viewRow);
+
+        boolean isLive = Boolean.TRUE.equals(tableModel.getValueAt(modelRow, 0));
+
+        var menu = new JPopupMenu();
+        var summarizeItem = new JMenuItem("Summarize All Files");
+        summarizeItem.setEnabled(isLive);
+        summarizeItem.addActionListener(ev -> summarizeDependencyForRow(modelRow));
+        menu.add(summarizeItem);
+        menu.show(e.getComponent(), e.getX(), e.getY());
+    }
+
+    private void summarizeDependencyForRow(int modelRow) {
+        Object nameObj = tableModel.getValueAt(modelRow, 1);
+        if (!(nameObj instanceof String depName)) {
+            return;
+        }
+        var pf = dependencyProjectFileMap.get(depName);
+        if (pf == null) {
+            return;
+        }
+        // Only allow summarizing for Live dependencies
+        if (!Boolean.TRUE.equals(tableModel.getValueAt(modelRow, 0))) {
+            return;
+        }
+
+        var project = chrome.getProject();
+        var depOpt = project.getLiveDependencies().stream().filter(d -> d.root().equals(pf)).findFirst();
+        if (depOpt.isEmpty()) {
+            return;
+        }
+        var dep = depOpt.get();
+
+        var cm = chrome.getContextManager();
+        cm.submitContextTask("Summarize files for " + depName, () -> {
+            cm.addSummaries(dep.files(), Set.of());
+        });
     }
 
     private void removeSelectedDependency() {
