@@ -513,18 +513,18 @@ public final class MainProject extends AbstractProject {
     }
 
     /**
-     * Detects the primary Language used by a dependency directory by scanning file extensions inside it and
-     * selecting the most frequently occurring language. Falls back to Language.NONE if none detected.
+     * Detects the primary Language used by a dependency directory by scanning file extensions inside it and selecting
+     * the most frequently occurring language. Falls back to Language.NONE if none detected.
      */
     private static Language detectLanguageForDependency(ProjectFile depDir) {
         var counts = new IProject.Dependency(depDir, Language.NONE)
-                .files()
-                .stream()
-                .map(pf -> com.google.common.io.Files.getFileExtension(pf.absPath().toString()))
-                .filter(ext -> !ext.isEmpty())
-                .map(Language::fromExtension)
-                .filter(lang -> lang != Language.NONE)
-                .collect(Collectors.groupingBy(lang -> lang, Collectors.counting()));
+                .files().stream()
+                        .map(pf -> com.google.common.io.Files.getFileExtension(
+                                pf.absPath().toString()))
+                        .filter(ext -> !ext.isEmpty())
+                        .map(Language::fromExtension)
+                        .filter(lang -> lang != Language.NONE)
+                        .collect(Collectors.groupingBy(lang -> lang, Collectors.counting()));
 
         return counts.entrySet().stream()
                 .max(Map.Entry.comparingByValue())

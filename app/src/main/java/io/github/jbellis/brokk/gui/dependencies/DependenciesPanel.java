@@ -19,7 +19,6 @@ import java.awt.Font;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -28,6 +27,7 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
 import javax.swing.*;
 import javax.swing.border.TitledBorder;
 import javax.swing.event.TableModelEvent;
@@ -36,7 +36,6 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
 import org.jetbrains.annotations.Nullable;
-import java.util.concurrent.CompletableFuture;
 
 /**
  * Reusable panel for viewing and managing project dependencies. This is a refactoring of the ManageDependenciesDialog
@@ -106,7 +105,7 @@ public final class DependenciesPanel extends JPanel {
             }
         }
     }
- 
+
     public DependenciesPanel(Chrome chrome) {
         super(new BorderLayout());
         setBorder(BorderFactory.createTitledBorder(
@@ -186,7 +185,6 @@ public final class DependenciesPanel extends JPanel {
         sorter.setComparator(0, (a, b) -> Boolean.compare(isTruthyLive(a), isTruthyLive(b)));
         // Name column width
         columnModel.getColumn(1).setPreferredWidth(200);
-
 
         table.setSelectionMode(ListSelectionModel.SINGLE_SELECTION);
         table.getTableHeader().setReorderingAllowed(false);
@@ -277,35 +275,35 @@ public final class DependenciesPanel extends JPanel {
                 for (int row = first; row <= last; row++) {
                     Object v = tableModel.getValueAt(row, 0);
                     if (v instanceof Boolean bool) {
-                String depName = (String) tableModel.getValueAt(row, 1);
-                boolean prev = !bool;
+                        String depName = (String) tableModel.getValueAt(row, 1);
+                        boolean prev = !bool;
 
-                // Show "Loading..." while saving the change only when enabling (checking).
-                if (bool) {
-                    isProgrammaticChange = true;
-                    tableModel.setValueAt(LOADING, row, 0);
-                    isProgrammaticChange = false;
-                }
-
-                final int rowIndex = row;
-                final boolean newVal = bool;
-                final boolean prevVal = prev;
-                saveChangesAsync(Map.of(depName, Boolean.valueOf(bool)))
-                        .whenComplete((r, ex) -> SwingUtilities.invokeLater(() -> {
+                        // Show "Loading..." while saving the change only when enabling (checking).
+                        if (bool) {
                             isProgrammaticChange = true;
-                            if (ex != null) {
-                                JOptionPane.showMessageDialog(
-                                        DependenciesPanel.this,
-                                        "Failed to save dependency changes:\n" + ex.getMessage(),
-                                        "Error Saving Dependencies",
-                                        JOptionPane.ERROR_MESSAGE);
-                                tableModel.setValueAt(prevVal, rowIndex, 0);
-                            } else {
-                                tableModel.setValueAt(newVal, rowIndex, 0);
-                            }
+                            tableModel.setValueAt(LOADING, row, 0);
                             isProgrammaticChange = false;
-                        }));
-            }
+                        }
+
+                        final int rowIndex = row;
+                        final boolean newVal = bool;
+                        final boolean prevVal = prev;
+                        saveChangesAsync(Map.of(depName, Boolean.valueOf(bool)))
+                                .whenComplete((r, ex) -> SwingUtilities.invokeLater(() -> {
+                                    isProgrammaticChange = true;
+                                    if (ex != null) {
+                                        JOptionPane.showMessageDialog(
+                                                DependenciesPanel.this,
+                                                "Failed to save dependency changes:\n" + ex.getMessage(),
+                                                "Error Saving Dependencies",
+                                                JOptionPane.ERROR_MESSAGE);
+                                        tableModel.setValueAt(prevVal, rowIndex, 0);
+                                    } else {
+                                        tableModel.setValueAt(newVal, rowIndex, 0);
+                                    }
+                                    isProgrammaticChange = false;
+                                }));
+                    }
                 }
             }
         });
@@ -383,7 +381,6 @@ public final class DependenciesPanel extends JPanel {
         });
     }
 
-
     private class FileCountingWorker extends SwingWorker<Void, Object[]> {
         @Override
         protected Void doInBackground() {
@@ -459,7 +456,9 @@ public final class DependenciesPanel extends JPanel {
         }
 
         var project = chrome.getProject();
-        var depOpt = project.getLiveDependencies().stream().filter(d -> d.root().equals(pf)).findFirst();
+        var depOpt = project.getLiveDependencies().stream()
+                .filter(d -> d.root().equals(pf))
+                .findFirst();
         if (depOpt.isEmpty()) {
             return;
         }

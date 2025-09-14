@@ -4,7 +4,6 @@ import com.jakewharton.disklrucache.DiskLruCache;
 import io.github.jbellis.brokk.MainProject.DataRetentionPolicy;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
-
 import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
