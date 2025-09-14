@@ -338,7 +338,7 @@ public abstract class CodePrompts {
 
         2. Explain the needed changes in a few short sentences.
 
-        3. Describe each change with a *SEARCH/REPLACE* block.
+        3. Give each change as a *SEARCH/REPLACE* block.
 
         All changes to files must use this *SEARCH/REPLACE* block format.
 
@@ -910,7 +910,7 @@ public abstract class CodePrompts {
 
         Every *SEARCH/REPLACE block* must use this format:
         1. The opening fence: ```
-        2. The *FULL* file path alone on a line, verbatim. No bold asterisks, no quotes around it, no escaping of characters, etc.
+        2. The *FULL* file path alone on a line, verbatim. No comment tokens, no bold asterisks, no quotes, no escaping of characters, etc.
         3. The start of search block: <<<<<<< SEARCH
         4. A contiguous chunk of lines to search for in the existing source code.%s
         5. The dividing line: =======
