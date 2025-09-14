@@ -1393,50 +1393,47 @@ public class WorkspacePanel extends JPanel {
         var innerLabel = safeGetLabel(0);
         var costLabel = safeGetLabel(1);
 
-        // Check for context size warnings against configured models
+        // Check for context size warning against the selected model only
         var service = contextManager.getService();
-        var project = contextManager.getProject();
+        var instructionsPanel = chrome.getInstructionsPanel();
+        Service.ModelConfig selectedConfig = instructionsPanel.getSelectedModel();
 
-        Map<String, Integer> redWarningModels = new HashMap<>();
-        Map<String, Integer> yellowWarningModels = new HashMap<>();
+        boolean showRedWarning = false;
+        boolean showYellowWarning = false;
+        int selectedModelMaxInputTokens = -1;
+        String selectedModelName = selectedConfig.name();
 
-        List<Service.ModelConfig> configuredModelChecks = List.of(
-                project.getArchitectModelConfig(),
-                project.getCodeModelConfig(),
-                project.getSearchModelConfig(),
-                project.getSearchModelConfig());
-
-        for (var config : configuredModelChecks) {
-            if (config.name().isBlank()) {
-                continue;
-            }
+        if (!selectedModelName.isBlank()) {
             try {
-                var modelInstance = service.getModel(config);
-                // Skip if model is unavailable or a placeholder
-                if (modelInstance == null || modelInstance instanceof Service.UnavailableStreamingModel) {
-                    logger.debug("Skipping unavailable model for context warning: {}", config.name());
-                    continue;
-                }
-
-                int maxInputTokens = service.getMaxInputTokens(modelInstance);
-                if (maxInputTokens <= 0) {
-                    logger.warn(
-                            "Model {} has invalid maxInputTokens: {}. Skipping for context warning.",
-                            config.name(),
-                            maxInputTokens);
-                    continue;
-                }
-
-                // Red warning: context > 90.9% of max (approxTokens > maxInputTokens / 1.1)
-                if (approxTokens > maxInputTokens / 1.1) {
-                    redWarningModels.put(config.name(), maxInputTokens);
-                }
-                // Yellow warning: context > 50% of max (approxTokens > maxInputTokens / 2.0)
-                else if (approxTokens > maxInputTokens / 2.0) {
-                    yellowWarningModels.put(config.name(), maxInputTokens);
+                var modelInstance = service.getModel(selectedConfig);
+                if (modelInstance == null) {
+                    logger.debug("Selected model unavailable for context warning: {}", selectedModelName);
+                } else if (modelInstance instanceof Service.UnavailableStreamingModel) {
+                    logger.debug("Selected model unavailable for context warning: {}", selectedModelName);
+                } else {
+                    selectedModelMaxInputTokens = service.getMaxInputTokens(modelInstance);
+                    if (selectedModelMaxInputTokens <= 0) {
+                        logger.warn(
+                                "Selected model {} has invalid maxInputTokens: {}",
+                                selectedModelName,
+                                selectedModelMaxInputTokens);
+                    } else {
+                        // Red warning: context > 90.9% of max (approxTokens > maxInputTokens / 1.1)
+                        if (approxTokens > selectedModelMaxInputTokens / 1.1) {
+                            showRedWarning = true;
+                        }
+                        // Yellow warning: context > 50% of max (approxTokens > maxInputTokens / 2.0)
+                        else if (approxTokens > selectedModelMaxInputTokens / 2.0) {
+                            showYellowWarning = true;
+                        }
+                    }
                 }
             } catch (Exception e) {
-                logger.warn("Error processing model {} for context warning: {}", config.name(), e.getMessage(), e);
+                logger.warn(
+                        "Error processing selected model {} for context warning: {}",
+                        selectedModelName,
+                        e.getMessage(),
+                        e);
             }
         }
 
@@ -1463,24 +1460,18 @@ public class WorkspacePanel extends JPanel {
         // Remove any existing warning labels from the warningPanel
         warningPanel.removeAll();
 
-        if (!redWarningModels.isEmpty()) {
-            String modelListStr = redWarningModels.entrySet().stream()
-                    .map(entry -> String.format("%s (%,d)", entry.getKey(), entry.getValue()))
-                    .collect(Collectors.joining(", "));
+        if (showRedWarning) {
             String warningText = String.format(
-                    "Warning! Your Workspace (~%,d tokens) fills more than 90%% of the context window for the following models: %s. Performance will be degraded.",
-                    approxTokens, modelListStr);
+                    "Warning! Your Workspace (~%,d tokens) fills more than 90%% of the context window for the selected model: %s (%,d). Performance will be degraded.",
+                    approxTokens, selectedModelName, selectedModelMaxInputTokens);
 
             JTextArea warningArea = createWarningTextArea(warningText, Color.RED, warningTooltip);
             warningPanel.add(warningArea, BorderLayout.CENTER);
 
-        } else if (!yellowWarningModels.isEmpty()) {
-            String modelListStr = yellowWarningModels.entrySet().stream()
-                    .map(entry -> String.format("%s (%,d)", entry.getKey(), entry.getValue()))
-                    .collect(Collectors.joining(", "));
+        } else if (showYellowWarning) {
             String warningText = String.format(
-                    "Warning! Your Workspace (~%,d tokens) fills more than half of the context window for the following models: %s. Performance may be degraded.",
-                    approxTokens, modelListStr);
+                    "Warning! Your Workspace (~%,d tokens) fills more than half of the context window for the selected model: %s (%,d). Performance may be degraded.",
+                    approxTokens, selectedModelName, selectedModelMaxInputTokens);
 
             JTextArea warningArea = createWarningTextArea(
                     warningText, Color.YELLOW, warningTooltip); // Standard yellow might be hard to see on some themes
