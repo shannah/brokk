@@ -37,6 +37,7 @@ import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
 import org.jetbrains.annotations.Nullable;
+import java.util.concurrent.CompletableFuture;
 
 /**
  * Reusable panel for viewing and managing project dependencies. This is a refactoring of the ManageDependenciesDialog
@@ -57,6 +58,8 @@ public final class DependenciesPanel extends JPanel {
     private final JLabel totalsLabel;
     private final Set<ProjectFile> initialFiles;
     private boolean isUpdatingTotals = false;
+    private boolean isProgrammaticChange = false;
+    private static final String LOADING = "Loading...";
 
     private static class NumberRenderer extends DefaultTableCellRenderer {
         public NumberRenderer() {
@@ -73,6 +76,40 @@ public final class DependenciesPanel extends JPanel {
         }
     }
 
+    private static boolean isTruthyLive(Object v) {
+        return v instanceof Boolean b ? b : (v instanceof String s && LOADING.equals(s));
+    }
+
+    private static class LiveCellRenderer extends DefaultTableCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(
+                JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            if (value instanceof Boolean b) {
+                var cb = new JCheckBox();
+                cb.setSelected(b);
+                cb.setHorizontalAlignment(CENTER);
+                cb.setOpaque(true);
+                if (isSelected) {
+                    cb.setBackground(table.getSelectionBackground());
+                    cb.setForeground(table.getSelectionForeground());
+                } else {
+                    cb.setBackground(table.getBackground());
+                    cb.setForeground(table.getForeground());
+                }
+                return cb;
+            } else {
+                var lbl = new JLabel(LOADING);
+                lbl.setHorizontalAlignment(CENTER);
+                lbl.setOpaque(isSelected);
+                if (isSelected) {
+                    lbl.setBackground(table.getSelectionBackground());
+                    lbl.setForeground(table.getSelectionForeground());
+                }
+                return lbl;
+            }
+        }
+    }
+ 
     public DependenciesPanel(Chrome chrome) {
         super(new BorderLayout());
         setBorder(BorderFactory.createTitledBorder(
@@ -98,7 +135,9 @@ public final class DependenciesPanel extends JPanel {
 
             @Override
             public boolean isCellEditable(int row, int column) {
-                return column == 0;
+                if (column != 0) return false;
+                Object v = getValueAt(row, 0);
+                return v instanceof Boolean;
             }
         };
 
@@ -145,6 +184,9 @@ public final class DependenciesPanel extends JPanel {
         TableColumnModel columnModel = table.getColumnModel();
         // Live checkbox column (keep narrow)
         columnModel.getColumn(0).setMaxWidth(columnModel.getColumn(0).getPreferredWidth());
+        columnModel.getColumn(0).setCellRenderer(new LiveCellRenderer());
+        // Ensure sorting treats "Loading..." as enabled for grouping purposes
+        sorter.setComparator(0, (a, b) -> Boolean.compare(isTruthyLive(a), isTruthyLive(b)));
         // Name column width
         columnModel.getColumn(1).setPreferredWidth(200);
 
@@ -240,7 +282,7 @@ public final class DependenciesPanel extends JPanel {
                 public void dependencyImportFinished(String name) {
                     loadDependencies();
                     // Persist changes after a dependency import completes.
-                    saveChanges();
+                    saveChangesAsync();
                 }
             };
             ImportDependencyDialog.show(chrome, listener);
@@ -272,12 +314,46 @@ public final class DependenciesPanel extends JPanel {
         tableModel.addTableModelListener(e -> {
             // Ignore header/structure change events
             if (e.getFirstRow() == TableModelEvent.HEADER_ROW) return;
+            if (isProgrammaticChange) return;
 
             updateTotals();
 
-            // If the change was specifically to the "Enabled" column, persist immediately.
             if (e.getColumn() == 0) {
-                saveChanges();
+                int first = e.getFirstRow();
+                int last = e.getLastRow();
+                for (int row = first; row <= last; row++) {
+                    Object v = tableModel.getValueAt(row, 0);
+                    if (v instanceof Boolean bool) {
+                String depName = (String) tableModel.getValueAt(row, 1);
+                boolean prev = !bool;
+
+                // Show "Loading..." while saving the change only when enabling (checking).
+                if (bool) {
+                    isProgrammaticChange = true;
+                    tableModel.setValueAt(LOADING, row, 0);
+                    isProgrammaticChange = false;
+                }
+
+                final int rowIndex = row;
+                final boolean newVal = bool;
+                final boolean prevVal = prev;
+                saveChangesAsync(Map.of(depName, Boolean.valueOf(bool)))
+                        .whenComplete((r, ex) -> SwingUtilities.invokeLater(() -> {
+                            isProgrammaticChange = true;
+                            if (ex != null) {
+                                JOptionPane.showMessageDialog(
+                                        DependenciesPanel.this,
+                                        "Failed to save dependency changes:\n" + ex.getMessage(),
+                                        "Error Saving Dependencies",
+                                        JOptionPane.ERROR_MESSAGE);
+                                tableModel.setValueAt(prevVal, rowIndex, 0);
+                            } else {
+                                tableModel.setValueAt(newVal, rowIndex, 0);
+                            }
+                            isProgrammaticChange = false;
+                        }));
+            }
+                }
             }
         });
 
@@ -291,6 +367,7 @@ public final class DependenciesPanel extends JPanel {
     }
 
     public void loadDependencies() {
+        isProgrammaticChange = true;
         tableModel.setRowCount(0);
         dependencyProjectFileMap.clear();
 
@@ -304,46 +381,56 @@ public final class DependenciesPanel extends JPanel {
             boolean isLive = liveDeps.stream().anyMatch(d -> d.root().equals(dep));
             tableModel.addRow(new Object[] {isLive, name, 0L, 0L});
         }
+        isProgrammaticChange = false;
         updateTotals(); // Initial totals calculation
 
         // count lines in background
         new LineCountingWorker().execute();
     }
 
-    public void saveChanges() {
+    public CompletableFuture<Void> saveChangesAsync() {
+        return saveChangesAsync(Map.of());
+    }
+
+    private CompletableFuture<Void> saveChangesAsync(Map<String, Boolean> overridesByName) {
+        // Snapshot the desired live set on the EDT to avoid accessing Swing model off-thread
         var newLiveDependencyTopLevelDirs = new HashSet<Path>();
         for (int i = 0; i < tableModel.getRowCount(); i++) {
-            if (Boolean.TRUE.equals(tableModel.getValueAt(i, 0))) {
-                String name = (String) tableModel.getValueAt(i, 1);
-                var pf = dependencyProjectFileMap.get(name);
-                if (pf != null) {
-                    // We need the top-level directory of the dependency, not its full relative path
-                    // which is like .brokk/dependencies/dep-name. We want just the dep-name part as Path.
-                    var depTopLevelDir = chrome.getProject()
-                            .getMasterRootPathForConfig()
-                            .resolve(".brokk")
-                            .resolve("dependencies")
-                            .resolve(pf.getRelPath().getFileName());
-                    newLiveDependencyTopLevelDirs.add(depTopLevelDir);
-                }
+            String name = (String) tableModel.getValueAt(i, 1);
+            boolean isLive = overridesByName.getOrDefault(name, Boolean.TRUE.equals(tableModel.getValueAt(i, 0)));
+            if (!isLive) continue;
+
+            var pf = dependencyProjectFileMap.get(name);
+            if (pf != null) {
+                var depTopLevelDir = chrome.getProject()
+                        .getMasterRootPathForConfig()
+                        .resolve(".brokk")
+                        .resolve("dependencies")
+                        .resolve(pf.getRelPath().getFileName());
+                newLiveDependencyTopLevelDirs.add(depTopLevelDir);
             }
         }
-        chrome.getProject().saveLiveDependencies(newLiveDependencyTopLevelDirs);
 
-        var newFiles = chrome.getProject().getAllFiles();
+        var cm = chrome.getContextManager();
+        return cm.submitBackgroundTask("Save dependency configuration", () -> {
+            var project = chrome.getProject();
+            project.saveLiveDependencies(newLiveDependencyTopLevelDirs);
 
-        var addedFiles = new HashSet<>(newFiles);
-        addedFiles.removeAll(initialFiles);
+            var newFiles = project.getAllFiles();
 
-        var removedFiles = new HashSet<>(initialFiles);
-        removedFiles.removeAll(newFiles);
+            var addedFiles = new HashSet<>(newFiles);
+            addedFiles.removeAll(initialFiles);
 
-        var changedFiles = new HashSet<>(addedFiles);
-        changedFiles.addAll(removedFiles);
+            var removedFiles = new HashSet<>(initialFiles);
+            removedFiles.removeAll(newFiles);
 
-        if (!changedFiles.isEmpty()) {
-            chrome.getContextManager().getAnalyzerWrapper().updateFiles(changedFiles);
-        }
+            var changedFiles = new HashSet<>(addedFiles);
+            changedFiles.addAll(removedFiles);
+
+            if (!changedFiles.isEmpty()) {
+                cm.getAnalyzerWrapper().updateFiles(changedFiles);
+            }
+        });
     }
 
     /** Recalculate totals for enabled dependencies and update the total labels. */
@@ -403,14 +490,19 @@ public final class DependenciesPanel extends JPanel {
 
         @Override
         protected void process(List<Object[]> chunks) {
-            for (Object[] chunk : chunks) {
-                int row = (int) chunk[0];
-                long files = (long) chunk[1];
-                long loc = (long) chunk[2];
-                tableModel.setValueAt(files, row, 2);
-                tableModel.setValueAt(loc, row, 3);
+            isProgrammaticChange = true;
+            try {
+                for (Object[] chunk : chunks) {
+                    int row = (int) chunk[0];
+                    long files = (long) chunk[1];
+                    long loc = (long) chunk[2];
+                    tableModel.setValueAt(files, row, 2);
+                    tableModel.setValueAt(loc, row, 3);
+                }
+            } finally {
+                isProgrammaticChange = false;
             }
-            // Totals will be updated by the TableModelListener
+            updateTotals();
         }
     }
 
@@ -489,7 +581,7 @@ public final class DependenciesPanel extends JPanel {
                     Decompiler.deleteDirectoryRecursive(pf.absPath());
                     loadDependencies();
                     // Persist changes after successful deletion and reload.
-                    saveChanges();
+                    saveChangesAsync();
                 } catch (IOException ex) {
                     JOptionPane.showMessageDialog(
                             this,

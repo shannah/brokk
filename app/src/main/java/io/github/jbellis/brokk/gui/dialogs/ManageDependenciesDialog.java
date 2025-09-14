@@ -40,7 +40,7 @@ public class ManageDependenciesDialog extends JDialog {
         getRootPane().setDefaultButton(okButton);
 
         okButton.addActionListener(e -> {
-            dependenciesPanel.saveChanges();
+            dependenciesPanel.saveChangesAsync();
             dispose();
         });
         cancelButton.addActionListener(e -> dispose());
