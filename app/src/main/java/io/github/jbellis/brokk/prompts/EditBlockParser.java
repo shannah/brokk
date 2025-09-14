@@ -83,7 +83,6 @@ public class EditBlockParser {
         while (i < lines.length) {
             var trimmed = lines[i].trim();
 
-            // ----------------------------------------------------------
             // 1) Block variant with code fence:
             //     ```
             //     [optional <filename>]
@@ -93,11 +92,6 @@ public class EditBlockParser {
             //        ...
             //     >>>>>>> REPLACE
             //     ```
-            //
-            // The old code required a filename line and checked only lines[i+2] for SEARCH,
-            // which meant the "currentFilename" assigned in this branch was effectively ignored
-            // for fenced blocks *without* an explicit filename. We now handle both forms.
-            // ----------------------------------------------------------
             if (isFence(trimmed)) {
                 var searchAtNext = (i + 1 < lines.length) && isSearch(lines[i + 1]);
                 var searchAtNextNext = (i + 2 < lines.length) && isSearch(lines[i + 2]);
@@ -112,7 +106,7 @@ public class EditBlockParser {
 
                     if (searchAtNext) {
                         // No explicit filename line
-                        blockFilename = findFileNameNearby(lines, i + 1, projectFiles, currentFilename);
+                        blockFilename = findFilenameNearby(lines, i + 1, projectFiles, currentFilename);
                         searchIndex = i + 1;
                     } else {
                         // There is a middle line; treat it as a filename if we can parse it.
@@ -120,7 +114,7 @@ public class EditBlockParser {
                         var candidatePath = stripFilename(filenameLine);
                         blockFilename = (candidatePath != null && !candidatePath.isBlank())
                                 ? candidatePath
-                                : findFileNameNearby(lines, i + 2, projectFiles, currentFilename);
+                                : findFilenameNearby(lines, i + 2, projectFiles, currentFilename);
                         searchIndex = i + 2;
                     }
 
@@ -156,13 +150,11 @@ public class EditBlockParser {
                 // If it's a fence but not our edit block, fall through to plain accumulation below.
             }
 
-            // ----------------------------------------------------------
             // 2) Fence-less variant starting directly with "<<<<<<< SEARCH"
-            // ----------------------------------------------------------
             if (isSearch(trimmed)) {
                 flushPlain(blocks, plain);
 
-                currentFilename = findFileNameNearby(lines, i, projectFiles, currentFilename);
+                currentFilename = findFilenameNearby(lines, i, projectFiles, currentFilename);
 
                 // first line after "<<<<<<< SEARCH"
                 i++;
@@ -191,9 +183,7 @@ public class EditBlockParser {
                 continue;
             }
 
-            // ----------------------------------------------------------
             // 3) Not part of an edit block — accumulate plain text
-            // ----------------------------------------------------------
             plain.append(lines[i]);
             if (i < lines.length - 1) {
                 plain.append("\n");

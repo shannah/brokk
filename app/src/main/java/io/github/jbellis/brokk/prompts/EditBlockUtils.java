@@ -8,6 +8,7 @@ import java.util.List;
 import java.util.Set;
 import java.util.regex.Pattern;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
 
 /** Shared utilities for parsing edit blocks. Used by both the prompt parser and the flexmark markdown parser. */
 public final class EditBlockUtils {
@@ -103,8 +104,9 @@ public final class EditBlockUtils {
      * @param currentPath fallback filename if nothing better is found
      * @return best filename guess based on context
      */
+    @VisibleForTesting
     @Nullable
-    public static String findFileNameNearby(
+    static String findFilenameNearby(
             String[] lines, int headIndex, Set<ProjectFile> projectFiles, @Nullable String currentPath) {
         // Guard against empty arrays
         if (lines.length == 0 || headIndex < 0) {
