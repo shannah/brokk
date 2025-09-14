@@ -216,9 +216,9 @@ public class MergeAgent {
                     }
 
                     // Update merged test sources for files that no longer have conflict markers
-                    var text = cfc.file().read();
-                    if (!containsConflictMarkers(text)) {
-                        mergedTestSources.put(cfc.file(), text);
+                    var textOpt = cfc.file().read();
+                    if (textOpt.isPresent() && !containsConflictMarkers(textOpt.get())) {
+                        mergedTestSources.put(cfc.file(), textOpt.get());
                     } else {
                         logger.warn("Test file {} still contains conflict markers after merge attempt", cfc.file());
                     }

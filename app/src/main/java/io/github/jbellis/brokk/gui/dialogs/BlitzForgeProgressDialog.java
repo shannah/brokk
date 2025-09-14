@@ -357,19 +357,16 @@ public class BlitzForgeProgressDialog extends JDialog {
                             completionService.submit(new TokenAwareCallable() {
                                 @Override
                                 public int tokens() {
-                                    int tokens = 0;
-                                    try {
-                                        var readOnly = new ArrayList<ChatMessage>();
-                                        if (includeWorkspace) {
-                                            readOnly.addAll(
-                                                    CodePrompts.instance.getWorkspaceContentsMessages(frozenContext));
-                                            readOnly.addAll(CodePrompts.instance.getHistoryMessages(frozenContext));
-                                        }
-                                        tokens = Messages.getApproximateTokens(readOnly)
-                                                + Messages.getApproximateTokens(file.read());
-                                    } catch (Exception e) {
-                                        logger.debug("Token estimation failed for {} – {}", file, e.toString());
+                                    int tokens;
+                                    var readOnly = new ArrayList<ChatMessage>();
+                                    if (includeWorkspace) {
+                                        readOnly.addAll(
+                                                CodePrompts.instance.getWorkspaceContentsMessages(frozenContext));
+                                        readOnly.addAll(CodePrompts.instance.getHistoryMessages(frozenContext));
                                     }
+                                    tokens = Messages.getApproximateTokens(readOnly)
+                                            + Messages.getApproximateTokens(
+                                                    file.read().orElse(""));
                                     return tokens;
                                 }
 

@@ -192,10 +192,9 @@ public abstract class CodePrompts {
         messages.add(new SystemMessage(systemPrompt));
 
         messages.addAll(readOnlyMessages);
-
-        try {
-            String editableText =
-                    """
+        var content = file.read().orElseThrow();
+        String editableText =
+                """
                                   <workspace_editable>
                                   You are editing A SINGLE FILE in this Workspace.
                                   This represents the current state of the file.
@@ -205,13 +204,10 @@ public abstract class CodePrompts {
                                   </file>
                                   </workspace_editable>
                                   """
-                            .stripIndent()
-                            .formatted(file.toString(), file.read());
-            var editableUserMessage = new UserMessage(editableText);
-            messages.addAll(List.of(editableUserMessage, new AiMessage("Thank you for the editable context.")));
-        } catch (IOException e) {
-            throw new UncheckedIOException(e);
-        }
+                        .stripIndent()
+                        .formatted(file.toString(), content);
+        var editableUserMessage = new UserMessage(editableText);
+        messages.addAll(List.of(editableUserMessage, new AiMessage("Thank you for the editable context.")));
 
         messages.addAll(exampleMessages(flags));
         messages.addAll(taskMessages);
@@ -240,19 +236,14 @@ public abstract class CodePrompts {
 
         messages.addAll(readOnlyMessages);
 
-        String fileContent = null;
-        try {
-            fileContent =
-                    """
-                              <file path="%s">
-                              %s
-                              </file>
-                              """
-                            .stripIndent()
-                            .formatted(file.toString(), file.read());
-        } catch (IOException e) {
-            throw new RuntimeException(e);
-        }
+        String fileContent =
+                """
+                          <file path="%s">
+                          %s
+                          </file>
+                          """
+                        .stripIndent()
+                        .formatted(file.toString(), file.read().orElseThrow());
         messages.add(new UserMessage(fileContent));
         messages.add(new AiMessage("Thank you for the file."));
 
@@ -489,102 +480,6 @@ public abstract class CodePrompts {
                """
                 .formatted(instructions, fileDetails, successNote)
                 .stripIndent();
-    }
-
-    /**
-     * Collects messages for a full-file replacement request, typically used as a fallback when standard SEARCH/REPLACE
-     * fails repeatedly. Includes system intro, history, workspace, target file content, and the goal. Asks for the
-     * *entire* new file content back.
-     *
-     * @param cm ContextManager to access history, workspace, style guide.
-     * @param targetFile The file whose content needs full replacement.
-     * @param goal The user's original goal or reason for the replacement (e.g., build error).
-     * @param taskMessages
-     * @return List of ChatMessages ready for the LLM.
-     */
-    public List<ChatMessage> collectFullFileReplacementMessages(
-            IContextManager cm,
-            ProjectFile targetFile,
-            List<EditBlock.FailedBlock> failures,
-            String goal,
-            List<ChatMessage> taskMessages) {
-        var messages = new ArrayList<ChatMessage>();
-
-        // 1. System Intro + Style Guide
-        messages.add(systemMessage(cm, LAZY_REMINDER));
-        // 2. No examples provided for full-file replacement
-
-        // 3. History Messages (provides conversational context)
-        messages.addAll(getHistoryMessages(cm.liveContext()));
-
-        // 4. Workspace
-        messages.addAll(getWorkspaceContentsMessages(cm.liveContext()));
-
-        // 5. task-messages-so-far
-        messages.addAll(taskMessages);
-
-        // 5. Target File Content + Goal + Failed Blocks
-        String currentContent;
-        try {
-            currentContent = targetFile.read();
-        } catch (IOException e) {
-            throw new UncheckedIOException("Failed to read target file for full replacement prompt: " + targetFile, e);
-        }
-
-        var failedBlocksText = failures.stream()
-                .map(f -> {
-                    var commentaryText = f.commentary().isBlank()
-                            ? ""
-                            : """
-                            <commentary>
-                            %s
-                            </commentary>
-                            """
-                                    .formatted(f.commentary());
-                    return """
-                            <failed_block reason="%s">
-                            <block>
-                            %s
-                            </block>
-                            %s
-                            </failed_block>
-                            """
-                            .formatted(f.reason(), f.block().toString(), commentaryText);
-                })
-                .collect(Collectors.joining("\n"));
-
-        var userMessage =
-                """
-            You are now performing a full-file replacement because previous edits failed.
-
-            Remember that this was the original goal:
-            <goal>
-            %s
-            </goal>
-
-            Here is the current content of the file:
-            <file source="%s">
-            %s
-            </file>
-
-            Here are the specific edit blocks that failed to apply:
-            <failed_blocks>
-            %s
-            </failed_blocks>
-
-            Review the conversation history, workspace contents, the current source code, and the failed edit blocks.
-            Figure out what changes we are trying to make to implement the goal,
-            then provide the *complete and updated* new content for the entire file,
-            fenced with triple backticks. Omit language identifiers or other markdown options.
-            Think about your answer before starting to edit.
-            You MUST include the backtick fences, even if the correct content is an empty file.
-            DO NOT modify the file except for the changes pertaining to the goal!
-            DO NOT use the SEARCH/REPLACE format you see earlier -- that didn't work!
-            """
-                        .formatted(goal, targetFile, currentContent, failedBlocksText);
-        messages.add(new UserMessage(userMessage));
-
-        return messages;
     }
 
     /**

@@ -251,24 +251,16 @@ public class CodeAgent {
                         .liveContext()
                         .editableFiles()
                         .flatMap(cf -> cf.files().stream())
-                        .anyMatch(f -> {
-                            try {
-                                return f.read().contains("BRK_CONFLICT_BEGIN");
-                            } catch (IOException e) {
-                                return false;
-                            }
-                        })
+                        .anyMatch(f -> f.read()
+                                .map(s -> s.contains("BRK_CONFLICT_BEGIN"))
+                                .orElse(false))
                 && contextManager
                         .liveContext()
                         .editableFiles()
                         .flatMap(cf -> cf.files().stream())
-                        .anyMatch(f -> {
-                            try {
-                                return f.read().contains("BRK_CONFLICT_END");
-                            } catch (IOException e) {
-                                return false;
-                            }
-                        });
+                        .anyMatch(f -> f.read()
+                                .map(s -> s.contains("BRK_CONFLICT_END"))
+                                .orElse(false));
         var instructionsFlags = hasMergeMarkers
                 ? EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS)
                 : Set.<CodePrompts.InstructionsFlags>of();
@@ -296,13 +288,7 @@ public class CodeAgent {
         var coder = contextManager.getLlm(model, "Code (single-file): " + instructions, true);
         coder.setOutput(io);
 
-        EditBlockParser parser;
-        try {
-            file.read();
-            parser = EditBlockParser.instance;
-        } catch (IOException e) {
-            parser = EditBlockParser.instance;
-        }
+        EditBlockParser parser = EditBlockParser.instance;
 
         UserMessage initialRequest = CodePrompts.instance.codeRequest(
                 instructions, CodePrompts.instance.codeReminder(contextManager.getService(), model), parser, flags);
@@ -544,12 +530,7 @@ public class CodeAgent {
         // directly
         var relatedCode = contextManager.liveContext().buildAutoContext(5);
 
-        String fileContents;
-        try {
-            fileContents = file.read();
-        } catch (java.io.IOException e) {
-            throw new java.io.UncheckedIOException(e);
-        }
+        String fileContents = file.read().orElse("");
 
         var styleGuide = contextManager.getProject().getStyleGuide();
 
@@ -1150,12 +1131,7 @@ public class CodeAgent {
             for (var file : sorted) {
                 String original = originals.getOrDefault(file, "");
                 String revised;
-                try {
-                    revised = file.read();
-                } catch (IOException ioe) {
-                    logger.warn("Unable to read file {} to generate summary diff; skipping", file, ioe);
-                    continue;
-                }
+                revised = file.read().orElse("");
 
                 if (Objects.equals(original, revised)) {
                     continue; // No effective change

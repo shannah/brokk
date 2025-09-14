@@ -1833,37 +1833,31 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     // Use project root for relative path display if possible
                     var relativePath =
                             project.getRoot().relativize(file.absPath()).toString();
-                    try {
-                        chunk = "<file path=\"%s\">\n%s\n</file>\n".formatted(relativePath, file.read());
-                        // Calculate tokens and check limits *inside* the try block, only if read succeeds
-                        var chunkTokens = Messages.getApproximateTokens(chunk);
-                        if (tokens > 0 && tokens + chunkTokens > MAX_STYLE_TOKENS) { // Check if adding exceeds limit
-                            logger.debug(
-                                    "Style guide context limit ({}) reached after {} tokens.",
-                                    MAX_STYLE_TOKENS,
-                                    tokens);
-                            break; // Exit the loop if limit reached
-                        }
-                        if (chunkTokens > MAX_STYLE_TOKENS) { // Skip single large files
-                            logger.debug(
-                                    "Skipping large file {} ({} tokens) for style guide context.",
-                                    relativePath,
-                                    chunkTokens);
-                            continue; // Skip to next file
-                        }
-                        // Append chunk if within limits
-                        codeForLLM.append(chunk);
-                        tokens += chunkTokens;
-                        logger.trace(
-                                "Added {} ({} tokens, total {}) to style guide context",
-                                relativePath,
-                                chunkTokens,
-                                tokens);
-                    } catch (IOException e) {
-                        logger.error("Failed to read {}: {}", relativePath, e.getMessage());
-                        // Skip this file on error
-                        // continue; // This continue is redundant
+                    var contentOpt = file.read();
+                    if (contentOpt.isEmpty()) {
+                        logger.debug("Skipping unreadable file {} for style guide", relativePath);
+                        continue;
                     }
+                    chunk = "<file path=\"%s\">\n%s\n</file>\n".formatted(relativePath, contentOpt.get());
+                    // Calculate tokens and check limits
+                    var chunkTokens = Messages.getApproximateTokens(chunk);
+                    if (tokens > 0 && tokens + chunkTokens > MAX_STYLE_TOKENS) { // Check if adding exceeds limit
+                        logger.debug(
+                                "Style guide context limit ({}) reached after {} tokens.", MAX_STYLE_TOKENS, tokens);
+                        break; // Exit the loop if limit reached
+                    }
+                    if (chunkTokens > MAX_STYLE_TOKENS) { // Skip single large files
+                        logger.debug(
+                                "Skipping large file {} ({} tokens) for style guide context.",
+                                relativePath,
+                                chunkTokens);
+                        continue; // Skip to next file
+                    }
+                    // Append chunk if within limits
+                    codeForLLM.append(chunk);
+                    tokens += chunkTokens;
+                    logger.trace(
+                            "Added {} ({} tokens, total {}) to style guide context", relativePath, chunkTokens, tokens);
                 }
 
                 if (codeForLLM.isEmpty()) {

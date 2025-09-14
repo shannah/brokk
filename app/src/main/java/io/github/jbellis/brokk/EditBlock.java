@@ -142,7 +142,7 @@ public class EditBlock {
             try {
                 // Save original content before attempting change
                 if (!changedFiles.containsKey(file)) {
-                    changedFiles.put(file, file.exists() ? file.read() : "");
+                    changedFiles.put(file, file.exists() ? file.read().orElse("") : "");
                 }
 
                 // Perform the replacement
@@ -294,7 +294,7 @@ public class EditBlock {
     public static void replaceInFile(
             ProjectFile file, String beforeText, String afterText, IContextManager contextManager)
             throws IOException, NoMatchException, AmbiguousMatchException, GitAPIException {
-        String original = file.exists() ? file.read() : "";
+        String original = file.exists() ? file.read().orElse("") : "";
         String updated = replaceMostSimilarChunk(original, beforeText, afterText);
 
         if (isDeletion(original, updated)) {

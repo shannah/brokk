@@ -647,12 +647,11 @@ public abstract class TreeSitterAnalyzer
         // For classes, expect one primary definition range.
         var range = ranges.getFirst();
 
-        String src;
-        try {
-            src = cu.source().read();
-        } catch (IOException e) {
+        var srcOpt = cu.source().read();
+        if (srcOpt.isEmpty()) {
             return Optional.empty();
         }
+        String src = srcOpt.get();
 
         var extractedSource = ASTTraversalUtils.safeSubstringFromByteOffsets(src, range.startByte(), range.endByte());
 
@@ -674,13 +673,12 @@ public abstract class TreeSitterAnalyzer
                         return Optional.empty();
                     }
 
-                    String fileContent;
-                    try {
-                        fileContent = cu.source().read();
-                    } catch (IOException e) {
-                        log.warn("Could not read source for CU {} (fqName {}): {}", cu, fqName, e.getMessage());
+                    var fileContentOpt = cu.source().read();
+                    if (fileContentOpt.isEmpty()) {
+                        log.warn("Could not read source for CU {} (fqName {}): {}", cu, fqName, "unreadable");
                         return Optional.empty();
                     }
+                    String fileContent = fileContentOpt.get();
 
                     List<String> individualMethodSources = new ArrayList<>();
                     for (Range range : rangesForOverloads) {

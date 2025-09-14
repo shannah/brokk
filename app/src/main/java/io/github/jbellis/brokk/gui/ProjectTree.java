@@ -367,14 +367,12 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                             project.hasGit() ? project.getRepo().getTrackedFiles() : java.util.Set.<ProjectFile>of();
                     var deletedInfos = filesToDelete.stream()
                             .map(pf -> {
-                                try {
-                                    var content = pf.exists() ? pf.read() : "";
-                                    boolean wasTracked = project.hasGit() && trackedSet.contains(pf);
-                                    return new ContextHistory.DeletedFile(pf, content, wasTracked);
-                                } catch (Exception ex) {
-                                    logger.error("Failed to read file before deletion: " + pf, ex);
+                                var content = pf.exists() ? pf.read().orElse(null) : null;
+                                if (content == null) {
                                     return null;
                                 }
+                                boolean wasTracked = project.hasGit() && trackedSet.contains(pf);
+                                return new ContextHistory.DeletedFile(pf, content, wasTracked);
                             })
                             .filter(Objects::nonNull)
                             .toList();

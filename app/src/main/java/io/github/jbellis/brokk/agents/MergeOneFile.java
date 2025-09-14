@@ -215,29 +215,22 @@ public final class MergeOneFile {
                         }
                     }
 
-                    try {
-                        var text = file.read();
-                        if (!containsConflictMarkers(text)) {
-                            // Attempt to stage the resolved file so successful CodeAgent edits are added to the index.
-                            try {
-                                repo.add(List.of(file));
-                                io.llmOutput("Conflicts resolved for " + file + " (staged)", ChatMessageType.AI);
-                            } catch (GitAPIException e) {
-                                logger.warn(
-                                        "Failed to add {} to index after CodeAgent success: {}", file, e.getMessage());
-                                io.systemOutput("Warning: failed to git add " + file + ": " + e.getMessage());
-                                io.llmOutput("Conflicts resolved for " + file, ChatMessageType.AI);
-                            }
-                            return new Outcome(Status.RESOLVED, null);
-                        } else {
-                            var details = formatFailure(file, exec.resultText());
-                            io.llmOutput("CodeAgent failed to resolve conflicts for " + file, ChatMessageType.AI);
-                            return new Outcome(Status.UNRESOLVED, details);
+                    var textOpt = file.read();
+                    if (textOpt.isPresent() && !containsConflictMarkers(textOpt.get())) {
+                        // Attempt to stage the resolved file so successful CodeAgent edits are added to the index.
+                        try {
+                            repo.add(List.of(file));
+                            io.llmOutput("Conflicts resolved for " + file + " (staged)", ChatMessageType.AI);
+                        } catch (GitAPIException e) {
+                            logger.warn("Failed to add {} to index after CodeAgent success: {}", file, e.getMessage());
+                            io.systemOutput("Warning: failed to git add " + file + ": " + e.getMessage());
+                            io.llmOutput("Conflicts resolved for " + file, ChatMessageType.AI);
                         }
-                    } catch (IOException e) {
-                        logger.warn("Failed to re-read file {} after CodeAgent call: {}", file, e.toString());
+                        return new Outcome(Status.RESOLVED, null);
+                    } else {
                         var details = formatFailure(file, exec.resultText());
-                        return new Outcome(Status.IO_ERROR, details);
+                        io.llmOutput("CodeAgent failed to resolve conflicts for " + file, ChatMessageType.AI);
+                        return new Outcome(Status.UNRESOLVED, details);
                     }
                 }
                 if (abortRequested) {
@@ -411,13 +404,12 @@ public final class MergeOneFile {
     }
 
     private String readFileAsCodeBlock(ProjectFile file) {
-        try {
-            var ext = file.extension();
-            var text = file.read();
-            return "```" + ext + "\n" + text + "\n```";
-        } catch (IOException e) {
-            return "```text\n<unable to read " + file + ": " + e.getMessage() + ">\n```";
+        var ext = file.extension();
+        var text = file.read().orElse(null);
+        if (text == null) {
+            return "```text\n<unable to read " + file + ">\n```";
         }
+        return "```" + ext + "\n" + text + "\n```";
     }
 
     private String buildRelevantTestsSection(ProjectFile targetFile) throws InterruptedException {

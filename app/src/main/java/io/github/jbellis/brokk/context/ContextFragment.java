@@ -240,11 +240,7 @@ public interface ContextFragment {
 
         @Override
         default String text() throws UncheckedIOException {
-            try {
-                return file().read();
-            } catch (IOException e) {
-                return ""; // let freeze() clean it out later
-            }
+            return file().read().orElse("");
         }
 
         @Override

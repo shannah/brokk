@@ -1245,30 +1245,20 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     public void previewFile(ProjectFile pf) {
         assert SwingUtilities.isEventDispatchThread() : "Preview must be initiated on EDT";
 
-        try {
-            // 1. Read file content
-            var content = pf.read();
+        // 1. Read file content
+        var content = pf.read().orElse("");
 
-            // 2. Deduce syntax style
-            var syntax = pf.getSyntaxStyle();
+        // 2. Deduce syntax style
+        var syntax = pf.getSyntaxStyle();
 
-            // 3. Build the PTP
-            // 3. Build the PTP
-            // Pass null for the fragment when previewing a file directly.
-            // The fragment is primarily relevant when opened from the context table.
-            var panel =
-                    new PreviewTextPanel(contextManager, pf, content, syntax, themeManager, null); // Pass null fragment
+        // 3. Build the PTP
+        // 3. Build the PTP
+        // Pass null for the fragment when previewing a file directly.
+        // The fragment is primarily relevant when opened from the context table.
+        var panel = new PreviewTextPanel(contextManager, pf, content, syntax, themeManager, null); // Pass null fragment
 
-            // 4. Show in frame using toString for the title
-            showPreviewFrame(contextManager, "Preview: " + pf, panel);
-
-        } catch (IOException ex) {
-            toolError("Error reading file for preview: " + ex.getMessage());
-            logger.error("Error reading file {} for preview", pf.absPath(), ex);
-        } catch (Exception ex) {
-            toolError("Error opening file preview: " + ex.getMessage());
-            logger.error("Unexpected error opening preview for file {}", pf.absPath(), ex);
-        }
+        // 4. Show in frame using toString for the title
+        showPreviewFrame(contextManager, "Preview: " + pf, panel);
     }
 
     /**
@@ -1375,19 +1365,14 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                     } else if (brokkFile instanceof ExternalFile externalFile) {
                         // External file on disk – read it live.
                         Runnable task = () -> {
-                            try {
-                                var panel = new PreviewTextPanel(
-                                        contextManager,
-                                        null,
-                                        externalFile.read(),
-                                        externalFile.getSyntaxStyle(),
-                                        themeManager,
-                                        workingFragment);
-                                showPreviewFrame(contextManager, "Preview: " + externalFile, panel);
-                            } catch (IOException ex) {
-                                toolError("Error reading external file: " + ex.getMessage());
-                                logger.error("Error reading external file {}", externalFile.absPath(), ex);
-                            }
+                            var panel = new PreviewTextPanel(
+                                    contextManager,
+                                    null,
+                                    externalFile.read().orElse(""),
+                                    externalFile.getSyntaxStyle(),
+                                    themeManager,
+                                    workingFragment);
+                            showPreviewFrame(contextManager, "Preview: " + externalFile, panel);
                         };
                         if (!SwingUtilities.isEventDispatchThread()) {
                             SwingUtilities.invokeLater(task);
