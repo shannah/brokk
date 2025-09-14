@@ -345,4 +345,10 @@ public interface IProject extends AutoCloseable {
             }
         }
     }
+
+    /**
+ * Represents a decompiled dependency included in the project's code intelligence,
+ * pairing its top-level root directory with the detected primary Language.
+ */
+    record Dependency(ProjectFile root, Language language) {}
 }

@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.gui.dependencies;
 
 import static java.util.Objects.requireNonNull;
 
+import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.BorderUtils;
 import io.github.jbellis.brokk.gui.Chrome;
@@ -281,12 +282,12 @@ public final class DependenciesPanel extends JPanel {
 
         var project = chrome.getProject();
         var allDeps = project.getAllOnDiskDependencies();
-        Set<ProjectFile> liveDeps = new HashSet<>(project.getLiveDependencies());
+        Set<IProject.Dependency> liveDeps = new HashSet<>(project.getLiveDependencies());
 
         for (var dep : allDeps) {
             String name = dep.getRelPath().getFileName().toString();
             dependencyProjectFileMap.put(name, dep);
-            boolean isLive = liveDeps.contains(dep);
+            boolean isLive = liveDeps.stream().anyMatch(d -> d.root().equals(dep));
             tableModel.addRow(new Object[] {isLive, name, 0L, 0L});
         }
         updateTotals(); // Initial totals calculation

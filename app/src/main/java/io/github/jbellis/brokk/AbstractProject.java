@@ -128,7 +128,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
         }
     }
 
-    public abstract Set<ProjectFile> getLiveDependencies();
+    public abstract Set<Dependency> getLiveDependencies();
 
     public abstract void saveLiveDependencies(Set<Path> dependencyTopLevelDirs);
 
@@ -482,7 +482,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
 
         var allFiles = new HashSet<>(trackedFiles);
         for (var live : getLiveDependencies()) {
-            try (var pathStream = Files.walk(live.absPath())) {
+            try (var pathStream = Files.walk(live.root().absPath())) {
                 pathStream
                         .filter(Files::isRegularFile)
                         .map(path -> {
@@ -523,7 +523,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
         }
 
         var liveDependencyPaths =
-                getLiveDependencies().stream().map(ProjectFile::absPath).collect(Collectors.toSet());
+                getLiveDependencies().stream().map(d -> d.root().absPath()).collect(Collectors.toSet());
 
         try (var pathStream = Files.list(dependenciesDir)) {
             pathStream

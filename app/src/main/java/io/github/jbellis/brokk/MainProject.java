@@ -512,6 +512,30 @@ public final class MainProject extends AbstractProject {
         }
     }
 
+    /**
+     * Detects the primary Language used by a dependency directory by scanning file extensions inside it and
+     * selecting the most frequently occurring language. Falls back to Language.NONE if none detected.
+     */
+    private static Language detectLanguageForDependency(ProjectFile depDir) {
+        try (var walk = Files.walk(depDir.absPath())) {
+            var counts = walk
+                    .filter(Files::isRegularFile)
+                    .map(path -> com.google.common.io.Files.getFileExtension(path.toString()))
+                    .filter(ext -> !ext.isEmpty())
+                    .map(Language::fromExtension)
+                    .filter(lang -> lang != Language.NONE)
+                    .collect(Collectors.groupingBy(lang -> lang, Collectors.counting()));
+
+            return counts.entrySet().stream()
+                    .max(Map.Entry.comparingByValue())
+                    .map(Map.Entry::getKey)
+                    .orElse(Language.NONE);
+        } catch (IOException e) {
+            logger.warn("Failed to detect language for dependency {}: {}", depDir, e.getMessage());
+            return Language.NONE;
+        }
+    }
+
     @Override
     public Set<Language> getAnalyzerLanguages() {
         String langsProp = projectProps.getProperty(CODE_INTELLIGENCE_LANGUAGES_KEY);
@@ -943,33 +967,39 @@ public final class MainProject extends AbstractProject {
     }
 
     @Override
-    public Set<ProjectFile> getLiveDependencies() {
+    public Set<Dependency> getLiveDependencies() {
         var allDeps = getAllOnDiskDependencies();
         var liveDepsNames = workspaceProps.getProperty(LIVE_DEPENDENCIES_KEY);
+
+        Set<ProjectFile> selected;
         if (liveDepsNames == null) {
             // Property not set: default to all dependencies enabled
-            return allDeps;
-        }
-        if (liveDepsNames.isBlank()) {
+            selected = allDeps;
+        } else if (liveDepsNames.isBlank()) {
             // Property explicitly set but empty: user disabled all dependencies
             return Set.of();
+        } else {
+            var liveNamesSet = Arrays.stream(liveDepsNames.split(","))
+                    .map(String::trim)
+                    .filter(s -> !s.isEmpty())
+                    .collect(Collectors.toSet());
+
+            selected = allDeps.stream()
+                    .filter(dep -> {
+                        // .brokk/dependencies/dep-name/file.java -> path has 3+ parts
+                        if (dep.getRelPath().getNameCount() < 3) {
+                            return false;
+                        }
+                        // relPath is relative to masterRootPathForConfig, so .brokk is first component
+                        var depName = dep.getRelPath().getName(2).toString();
+                        return liveNamesSet.contains(depName);
+                    })
+                    .collect(Collectors.toSet());
         }
 
-        var liveNamesSet = Arrays.stream(liveDepsNames.split(","))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .collect(Collectors.toSet());
-
-        return allDeps.stream()
-                .filter(dep -> {
-                    // .brokk/dependencies/dep-name/file.java -> path has 3+ parts
-                    if (dep.getRelPath().getNameCount() < 3) {
-                        return false;
-                    }
-                    // relPath is relative to masterRootPathForConfig, so .brokk is first component
-                    var depName = dep.getRelPath().getName(2).toString();
-                    return liveNamesSet.contains(depName);
-                })
+        // Wrap with detected language for each dependency root directory
+        return selected.stream()
+                .map(dep -> new Dependency(dep, detectLanguageForDependency(dep)))
                 .collect(Collectors.toSet());
     }
 
