@@ -78,17 +78,13 @@ public final class EditBlockUtils {
     /**
      * Returns a cleaned candidate "filename" token from a single line.
      *
-     * Rules:
-     * - Trims leading/trailing whitespace.
-     * - If the line is exactly "...", or exactly "```", returns null.
-     * - Removes a trailing colon, a leading '#', a leading '//' (with optional space),
-     *   and surrounding backticks or asterisks.
-     * - Returns null if the result is empty after cleaning.
+     * <p>Rules: - Trims leading/trailing whitespace. - If the line is exactly "...", or exactly "```", returns null. -
+     * Removes a trailing colon, a leading '#', a leading '//' (with optional space), and surrounding backticks or
+     * asterisks. - Returns null if the result is empty after cleaning.
      *
-     * Notes:
-     * - For code-fence lines like "```path/to/file.java" or "```java", the leading backticks are stripped
-     *   and the remainder ("path/to/file.java" or "java") is returned.
-     * - The result is not validated as a real path; callers can use looksLikePath to make that determination.
+     * <p>Notes: - For code-fence lines like "```path/to/file.java" or "```java", the leading backticks are stripped and
+     * the remainder ("path/to/file.java" or "java") is returned. - The result is not validated as a real path; callers
+     * can use looksLikePath to make that determination.
      *
      * @param line line to process
      * @return cleaned token or null if nothing usable could be extracted
@@ -166,8 +162,7 @@ public final class EditBlockUtils {
 
         // (2b) Look for unique ProjectFile name occurrence in the RAW, unstripped context lines
         var rawMatches = rawContextLines.stream()
-                .flatMap(raw -> projectFiles.stream()
-                        .filter(f -> raw.contains(f.getFileName())))
+                .flatMap(raw -> projectFiles.stream().filter(f -> raw.contains(f.getFileName())))
                 .distinct()
                 .toList();
         if (rawMatches.size() == 1) {
