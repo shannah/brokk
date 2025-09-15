@@ -1,12 +1,15 @@
 package io.github.jbellis.brokk.analyzer;
 
 import io.github.jbellis.brokk.IProject;
+import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.dependencies.DependenciesPanel;
 import java.nio.file.Path;
 import java.util.Collections;
 import java.util.List;
 import java.util.Locale;
 import java.util.Objects;
 import java.util.stream.Collectors;
+import org.jetbrains.annotations.Nullable;
 
 public class Languages {
     public static final Language C_SHARP = new Language() {
@@ -84,6 +87,17 @@ public class Languages {
         @Override
         public List<Path> getDependencyCandidates(IProject project) {
             return NodeJsDependencyHelper.getDependencyCandidates(project);
+        }
+
+        @Override
+        public List<Language.DependencyCandidate> listDependencyPackages(IProject project) {
+            return NodeJsDependencyHelper.listDependencyPackages(project);
+        }
+
+        @Override
+        public boolean importDependency(
+                Chrome chrome, Language.DependencyCandidate pkg, @Nullable DependenciesPanel.DependencyLifecycleListener lifecycle) {
+            return NodeJsDependencyHelper.importDependency(chrome, pkg, lifecycle);
         }
 
         @Override
@@ -374,6 +388,17 @@ public class Languages {
         @Override
         public List<Path> getDependencyCandidates(IProject project) {
             return NodeJsDependencyHelper.getDependencyCandidates(project);
+        }
+
+        @Override
+        public List<Language.DependencyCandidate> listDependencyPackages(IProject project) {
+            return NodeJsDependencyHelper.listDependencyPackages(project);
+        }
+
+        @Override
+        public boolean importDependency(
+                Chrome chrome, Language.DependencyCandidate pkg, @Nullable DependenciesPanel.DependencyLifecycleListener lifecycle) {
+            return NodeJsDependencyHelper.importDependency(chrome, pkg, lifecycle);
         }
 
         @Override
