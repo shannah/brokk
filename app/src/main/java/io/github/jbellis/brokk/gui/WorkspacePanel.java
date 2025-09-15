@@ -1329,6 +1329,14 @@ public class WorkspacePanel extends JPanel {
         return castNonNull(v);
     }
 
+    /** Returns the set of selected project files that are part of the current context (editable or read-only). */
+    public Set<ProjectFile> getSelectedProjectFiles() {
+        return getSelectedFragments().stream()
+                .filter(f -> f.getType() == ContextFragment.FragmentType.PROJECT_PATH)
+                .flatMap(f -> f.files().stream())
+                .collect(Collectors.toSet());
+    }
+
     /** Populates the context table from a Context object. */
     public void populateContextTable(@Nullable Context ctx) {
         assert SwingUtilities.isEventDispatchThread() : "Not on EDT";
