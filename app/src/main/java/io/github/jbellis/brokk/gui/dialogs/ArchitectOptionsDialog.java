@@ -9,7 +9,7 @@ import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.analyzer.CallGraphProvider;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.UsagesProvider;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
@@ -56,7 +56,7 @@ public class ArchitectOptionsDialog {
 
     private static boolean isCodeIntelConfigured(IProject project) {
         var langs = project.getAnalyzerLanguages();
-        return !langs.isEmpty() && !(langs.size() == 1 && langs.contains(Language.NONE));
+        return !langs.isEmpty() && !(langs.size() == 1 && langs.contains(Languages.NONE));
     }
 
     /**
