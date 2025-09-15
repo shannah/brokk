@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.gui.components.BrowserLabel;
 import io.github.jbellis.brokk.gui.components.McpToolTable;
 import io.github.jbellis.brokk.gui.components.SpinnerIconUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
+import io.github.jbellis.brokk.gui.util.JDeploySettingsUtil;
 import io.github.jbellis.brokk.mcp.HttpMcpServer;
 import io.github.jbellis.brokk.mcp.McpConfig;
 import io.github.jbellis.brokk.mcp.McpServer;
@@ -774,7 +775,9 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         try {
             boolean automatic = memoryAutoRadio.isSelected();
             int mb = ((Number) memorySpinner.getValue()).intValue();
-            MainProject.setJvmMemorySettings(new MainProject.JvmMemorySettings(automatic, mb));
+            var jvmSettings = new MainProject.JvmMemorySettings(automatic, mb);
+            MainProject.setJvmMemorySettings(jvmSettings);
+            JDeploySettingsUtil.updateJvmMemorySettings(jvmSettings);
             logger.debug(
                     "Applied JVM memory settings: mode={}, mb={}",
                     automatic ? "auto" : "manual",
