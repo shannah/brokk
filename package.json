@@ -4,7 +4,8 @@
     "description": "AI for large codebases. Brokk is a tool that helps you understand and navigate large codebases using AI.",
     "main": "index.js",
     "preferGlobal": true,
-    "repository": "",
+    "homepage": "https://brokk.ai",
+    "repository": "https://github.com/BrokkAi/brokk",
     "version": "1.0.0",
     "jdeploy": {
         "jdk": false,
