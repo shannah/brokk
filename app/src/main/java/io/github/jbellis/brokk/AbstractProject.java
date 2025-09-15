@@ -4,6 +4,7 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
@@ -128,54 +129,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
         }
     }
 
-    // ------------------------------------------------------------------
-    // Blitz-History (parallel + post-processing instructions)
-    // ------------------------------------------------------------------
-    private static final String BLITZ_HISTORY_KEY = "blitzHistory";
-
-    public final void saveBlitzHistory(List<List<String>> historyItems, int maxItems) {
-        try {
-            var limited = historyItems.stream().limit(maxItems).toList();
-            String json = objectMapper.writeValueAsString(limited);
-            workspaceProps.setProperty(BLITZ_HISTORY_KEY, json);
-            saveWorkspaceProperties();
-        } catch (Exception e) {
-            logger.error("Error saving Blitz history: {}", e.getMessage());
-        }
-    }
-
-    @Override
-    public List<List<String>> loadBlitzHistory() {
-        try {
-            String json = workspaceProps.getProperty(BLITZ_HISTORY_KEY);
-            if (json != null && !json.isEmpty()) {
-                var tf = objectMapper.getTypeFactory();
-                var type = tf.constructCollectionType(List.class, tf.constructCollectionType(List.class, String.class));
-                return objectMapper.readValue(json, type);
-            }
-        } catch (Exception e) {
-            logger.error("Error loading Blitz history: {}", e.getMessage(), e);
-        }
-        return new ArrayList<>();
-    }
-
-    @Override
-    public List<List<String>> addToBlitzHistory(String parallel, String post, int maxItems) {
-        if (parallel.trim().isEmpty() && post.trim().isEmpty()) {
-            return loadBlitzHistory();
-        }
-        var history = new ArrayList<>(loadBlitzHistory());
-        history.removeIf(
-                p -> p.size() >= 2 && p.get(0).equals(parallel) && p.get(1).equals(post));
-        history.add(0, List.of(parallel, post));
-        if (history.size() > maxItems) {
-            history = new ArrayList<>(history.subList(0, maxItems));
-        }
-        saveBlitzHistory(history, maxItems);
-        return history;
-    }
-
-    public abstract Set<ProjectFile> getLiveDependencies();
+    public abstract Set<Dependency> getLiveDependencies();
 
     public abstract void saveLiveDependencies(Set<Path> dependencyTopLevelDirs);
 
@@ -417,7 +371,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
         var configured = workspaceProps.getProperty(PROP_BUILD_LANGUAGE);
         if (configured != null && !configured.isBlank()) {
             try {
-                return Language.valueOf(configured);
+                return Languages.valueOf(configured);
             } catch (IllegalArgumentException e) {
                 logger.warn("Invalid build language '{}' in workspace properties for {}", configured, root);
             }
@@ -472,17 +426,17 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
                     .map(pf -> com.google.common.io.Files.getFileExtension(
                             pf.absPath().toString()))
                     .filter(ext -> !ext.isEmpty())
-                    .map(Language::fromExtension)
-                    .filter(lang -> lang != Language.NONE)
+                    .map(Languages::fromExtension)
+                    .filter(lang -> lang != Languages.NONE)
                     .collect(Collectors.groupingBy(lang -> lang, Collectors.counting()));
 
             return counts.entrySet().stream()
                     .max(Map.Entry.comparingByValue())
                     .map(Map.Entry::getKey)
-                    .orElse(Language.NONE);
+                    .orElse(Languages.NONE);
         } catch (Exception e) {
             logger.warn("Failed to compute most common language for {}: {}", root, e.getMessage());
-            return Language.NONE;
+            return Languages.NONE;
         }
     }
 
@@ -529,18 +483,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
 
         var allFiles = new HashSet<>(trackedFiles);
         for (var live : getLiveDependencies()) {
-            try (var pathStream = Files.walk(live.absPath())) {
-                pathStream
-                        .filter(Files::isRegularFile)
-                        .map(path -> {
-                            var relPath = masterRootPathForConfig.relativize(path);
-                            return new ProjectFile(masterRootPathForConfig, relPath);
-                        })
-                        .forEach(allFiles::add);
-            } catch (IOException e) {
-                logger.error("Error loading dependency files from {}: {}", dependenciesPath, e.getMessage());
-                return trackedFiles;
-            }
+            allFiles.addAll(live.files());
         }
 
         return allFiles;
@@ -570,7 +513,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
         }
 
         var liveDependencyPaths =
-                getLiveDependencies().stream().map(ProjectFile::absPath).collect(Collectors.toSet());
+                getLiveDependencies().stream().map(d -> d.root().absPath()).collect(Collectors.toSet());
 
         try (var pathStream = Files.list(dependenciesDir)) {
             pathStream
