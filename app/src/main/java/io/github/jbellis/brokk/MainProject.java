@@ -1142,7 +1142,8 @@ public final class MainProject extends AbstractProject {
             props.setProperty(JVM_MEMORY_MB_KEY, Integer.toString(settings.manualMb()));
         }
         saveGlobalProperties(props);
-        logger.debug("Saved JVM memory settings: mode={}, mb={}",
+        logger.debug(
+                "Saved JVM memory settings: mode={}, mb={}",
                 settings.automatic() ? "auto" : "manual",
                 settings.automatic() ? "n/a" : settings.manualMb());
     }

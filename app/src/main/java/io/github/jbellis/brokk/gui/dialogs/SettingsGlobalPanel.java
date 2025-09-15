@@ -738,7 +738,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             boolean automatic = memoryAutoRadio.isSelected();
             int mb = ((Number) memorySpinner.getValue()).intValue();
             MainProject.setJvmMemorySettings(new MainProject.JvmMemorySettings(automatic, mb));
-            logger.debug("Applied JVM memory settings: mode={}, mb={}",
+            logger.debug(
+                    "Applied JVM memory settings: mode={}, mb={}",
                     automatic ? "auto" : "manual",
                     automatic ? "n/a" : mb);
         } catch (Exception e) {
@@ -836,7 +837,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         // Word wrap not applicable to settings global panel
         SwingUtilities.updateComponentTreeUI(this);
     }
-
 
     // --- Inner Classes for Quick Models Table (Copied from SettingsDialog) ---
     private static class FavoriteModelsTableModel extends AbstractTableModel {
