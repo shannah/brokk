@@ -96,8 +96,15 @@ public class Languages {
 
         @Override
         public boolean importDependency(
-                Chrome chrome, Language.DependencyCandidate pkg, @Nullable DependenciesPanel.DependencyLifecycleListener lifecycle) {
+                Chrome chrome,
+                Language.DependencyCandidate pkg,
+                @Nullable DependenciesPanel.DependencyLifecycleListener lifecycle) {
             return NodeJsDependencyHelper.importDependency(chrome, pkg, lifecycle);
+        }
+
+        @Override
+        public boolean supportesDependencyKinds() {
+            return NodeJsDependencyHelper.supportsDependencyKinds();
         }
 
         @Override
@@ -397,8 +404,15 @@ public class Languages {
 
         @Override
         public boolean importDependency(
-                Chrome chrome, Language.DependencyCandidate pkg, @Nullable DependenciesPanel.DependencyLifecycleListener lifecycle) {
+                Chrome chrome,
+                Language.DependencyCandidate pkg,
+                @Nullable DependenciesPanel.DependencyLifecycleListener lifecycle) {
             return NodeJsDependencyHelper.importDependency(chrome, pkg, lifecycle);
+        }
+
+        @Override
+        public boolean supportesDependencyKinds() {
+            return NodeJsDependencyHelper.supportsDependencyKinds();
         }
 
         @Override

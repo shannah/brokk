@@ -23,8 +23,7 @@ public class PythonLanguage implements Language {
     public static final Pattern PY_SITE_PKGS = Pattern.compile("^python\\d+\\.\\d+$");
     private final List<String> extensions = List.of("py");
 
-    PythonLanguage() {
-    }
+    PythonLanguage() {}
 
     @Override
     public List<String> getExtensions() {

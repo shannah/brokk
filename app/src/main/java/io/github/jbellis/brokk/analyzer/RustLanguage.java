@@ -22,8 +22,7 @@ import org.jetbrains.annotations.Nullable;
 public class RustLanguage implements Language {
     private final List<String> extensions = List.of("rs");
 
-    RustLanguage() {
-    }
+    RustLanguage() {}
 
     @Override
     public List<String> getExtensions() {
@@ -69,6 +68,11 @@ public class RustLanguage implements Language {
             logger.debug("cargo metadata failed for candidates: {}", e.toString());
             return List.of();
         }
+    }
+
+    @Override
+    public boolean supportesDependencyKinds() {
+        return true;
     }
 
     @Override

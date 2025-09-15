@@ -138,6 +138,21 @@ public class ImportLanguagePanel extends JPanel {
         scroll.setBorder(BorderFactory.createEmptyBorder());
         add(scroll, BorderLayout.CENTER);
 
+        // Hide "Kind" column if the language does not support dependency kinds
+        if (!language.supportesDependencyKinds()) {
+            var cm = table.getColumnModel();
+            var kindCol = cm.getColumn(1);
+            kindCol.setMinWidth(0);
+            kindCol.setMaxWidth(0);
+            kindCol.setPreferredWidth(0);
+
+            var headerCm = table.getTableHeader().getColumnModel();
+            var headerKindCol = headerCm.getColumn(1);
+            headerKindCol.setMinWidth(0);
+            headerKindCol.setMaxWidth(0);
+            headerKindCol.setPreferredWidth(0);
+        }
+
         // placeholder while loading
         model.setRowCount(0);
         model.addRow(new Object[] {"Loading...", null, null});
@@ -195,10 +210,40 @@ public class ImportLanguagePanel extends JPanel {
         }
 
         sorter.sort();
+        adjustFilesColumnWidth();
 
         if (model.getRowCount() > 0) {
             table.setRowSelectionInterval(0, 0);
         }
+    }
+
+    private void adjustFilesColumnWidth() {
+        assert SwingUtilities.isEventDispatchThread();
+
+        var cm = table.getColumnModel();
+        var column = cm.getColumn(2);
+
+        var headerRenderer = column.getHeaderRenderer();
+        if (headerRenderer == null) {
+            headerRenderer = table.getTableHeader().getDefaultRenderer();
+        }
+        var headerComp =
+                headerRenderer.getTableCellRendererComponent(table, column.getHeaderValue(), false, false, -1, 2);
+        int width = headerComp.getPreferredSize().width;
+
+        int rowCount = table.getRowCount();
+        for (int row = 0; row < rowCount; row++) {
+            var renderer = table.getCellRenderer(row, 2);
+            var comp = renderer.getTableCellRendererComponent(table, table.getValueAt(row, 2), false, false, row, 2);
+            int pref = comp.getPreferredSize().width;
+            if (pref > width) width = pref;
+        }
+
+        int margin = table.getIntercellSpacing().width;
+        width = width + margin * 2 + 8;
+
+        column.setPreferredWidth(width);
+        column.setMaxWidth(width);
     }
 
     private interface SimpleDocumentListener extends javax.swing.event.DocumentListener {

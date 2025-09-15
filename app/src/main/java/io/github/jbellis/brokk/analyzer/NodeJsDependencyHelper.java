@@ -15,7 +15,6 @@ import java.nio.file.FileVisitOption;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.EnumSet;
 import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Locale;
@@ -31,8 +30,8 @@ import org.jetbrains.annotations.Nullable;
  */
 public final class NodeJsDependencyHelper {
     private static final Logger logger = LogManager.getLogger(NodeJsDependencyHelper.class);
-    private static final ObjectMapper MAPPER = new ObjectMapper()
-            .configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
+    private static final ObjectMapper MAPPER =
+            new ObjectMapper().configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false);
 
     private NodeJsDependencyHelper() {
         // Utility class - prevent instantiation
@@ -85,9 +84,7 @@ public final class NodeJsDependencyHelper {
         return results;
     }
 
-    /**
-     * Build a list of dependency packages with display name, kind, and file counts for ILP.
-     */
+    /** Build a list of dependency packages with display name, kind, and file counts for ILP. */
     public static List<Language.DependencyCandidate> listDependencyPackages(IProject project) {
         var candidates = getDependencyCandidates(project);
         var pkgs = new ArrayList<Language.DependencyCandidate>();
@@ -101,7 +98,8 @@ public final class NodeJsDependencyHelper {
             var meta = readPackageJson(dir.resolve("package.json"));
             if (meta == null) continue;
 
-            var display = meta.name.isEmpty() ? dir.getFileName().toString()
+            var display = meta.name.isEmpty()
+                    ? dir.getFileName().toString()
                     : (meta.version.isEmpty() ? meta.name : meta.name + " " + meta.version);
 
             long files = countNodeFiles(dir);
@@ -180,7 +178,8 @@ public final class NodeJsDependencyHelper {
             var skipDirs = Set.of("node_modules", "dist", "build", "coverage", ".git");
             return stream.filter(Files::isRegularFile)
                     .filter(p -> {
-                        var rel = root.relativize(p).toString().replace('\\', '/').toLowerCase(Locale.ROOT);
+                        var rel =
+                                root.relativize(p).toString().replace('\\', '/').toLowerCase(Locale.ROOT);
                         for (var d : skipDirs) {
                             if (rel.startsWith(d + "/")) return false;
                         }
@@ -264,6 +263,10 @@ public final class NodeJsDependencyHelper {
         // Check if the path is node_modules or inside node_modules directly under project root
         Path nodeModulesPath = projectRoot.resolve("node_modules");
         return !normalizedPathToImport.startsWith(nodeModulesPath);
+    }
+
+    public static boolean supportsDependencyKinds() {
+        return true;
     }
 
     // ---- helpers ----

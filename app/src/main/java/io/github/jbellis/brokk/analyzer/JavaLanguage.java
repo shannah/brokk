@@ -20,8 +20,7 @@ import org.jetbrains.annotations.Nullable;
 public class JavaLanguage implements Language {
     private final List<String> extensions = List.of("java");
 
-    JavaLanguage() {
-    }
+    JavaLanguage() {}
 
     @Override
     public List<String> getExtensions() {

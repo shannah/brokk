@@ -61,6 +61,14 @@ public interface Language {
         return List.of();
     }
 
+    /**
+     * Whether this language supports classifying dependencies by kind (normal, build, dev, test, etc). If false, the
+     * Import panel will hide the "Kind" column for this language.
+     */
+    default boolean supportesDependencyKinds() {
+        return false;
+    }
+
     // --- Unified dependency discovery/import ---
 
     /**
@@ -189,6 +197,11 @@ public interface Language {
             return languages.stream()
                     .flatMap(l -> l.getDependencyCandidates(project).stream())
                     .toList();
+        }
+
+        @Override
+        public boolean supportesDependencyKinds() {
+            return languages.stream().anyMatch(Language::supportesDependencyKinds);
         }
 
         @Override
