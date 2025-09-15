@@ -51,8 +51,7 @@ public class OomShutdownHandler implements UncaughtExceptionHandler {
     public static void showRecoveryMessage() {
         try {
             SwingUtilities.invokeAndWait(() -> {
-                var message =
-                        "<html>"
+                var message = "<html>"
                         + "The application ran out of memory during the last session.<br>"
                         + "Any active projects have been cleared to prevent this from immediately reoccurring.<br><br>"
                         + "To adjust memory allocation:<br>"
@@ -61,18 +60,13 @@ public class OomShutdownHandler implements UncaughtExceptionHandler {
                         + "A restart is required for changes to take effect."
                         + "</html>";
 
-                JOptionPane.showMessageDialog(
-                        null,
-                        message,
-                        "Memory Error Recovery",
-                        JOptionPane.WARNING_MESSAGE);
+                JOptionPane.showMessageDialog(null, message, "Memory Error Recovery", JOptionPane.WARNING_MESSAGE);
             });
         } catch (InterruptedException | InvocationTargetException e) {
             logger.warn("Failed to synchronously show memory recovery message dialog.", e);
             Thread.currentThread().interrupt();
         }
     }
-
 
     /**
      * Helper to recursively check for OOM in the cause chain.
