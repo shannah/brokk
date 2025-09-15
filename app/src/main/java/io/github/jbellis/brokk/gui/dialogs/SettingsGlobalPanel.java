@@ -588,6 +588,36 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
     }
 
     public void loadSettings() {
+        // General Tab - JVM Memory
+        try {
+            var mem = MainProject.getJvmMemorySettings();
+            if (mem.automatic()) {
+                memoryAutoRadio.setSelected(true);
+                memorySpinner.setEnabled(false);
+            } else {
+                memoryManualRadio.setSelected(true);
+                memorySpinner.setEnabled(true);
+                try {
+                    int v = mem.manualMb();
+                    SpinnerNumberModel model = (SpinnerNumberModel) memorySpinner.getModel();
+                    int min = ((Number) model.getMinimum()).intValue();
+                    int max = ((Number) model.getMaximum()).intValue();
+                    if (v < min) v = min;
+                    if (v > max) v = max;
+                    int step = model.getStepSize().intValue();
+                    if (step > 0) {
+                        int rem = v % step;
+                        if (rem != 0) v = v - rem + (rem >= step / 2 ? step : 0);
+                    }
+                    memorySpinner.setValue(v);
+                } catch (Exception ignore) {
+                    // leave spinner as-is
+                }
+            }
+        } catch (Exception ignore) {
+            // Use defaults if there is any problem reading settings
+        }
+
         // Service Tab
         brokkKeyField.setText(MainProject.getBrokkKey());
         refreshBalanceDisplay();
@@ -703,6 +733,18 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             }
         }
 
+        // General Tab - JVM Memory
+        try {
+            boolean automatic = memoryAutoRadio.isSelected();
+            int mb = ((Number) memorySpinner.getValue()).intValue();
+            MainProject.setJvmMemorySettings(new MainProject.JvmMemorySettings(automatic, mb));
+            logger.debug("Applied JVM memory settings: mode={}, mb={}",
+                    automatic ? "auto" : "manual",
+                    automatic ? "n/a" : mb);
+        } catch (Exception e) {
+            logger.warn("Failed to persist JVM memory settings", e);
+        }
+
         // Appearance Tab
         boolean newIsDark = darkThemeRadio.isSelected();
         boolean newWrapMode = wordWrapCheckbox.isSelected();
@@ -794,6 +836,7 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         // Word wrap not applicable to settings global panel
         SwingUtilities.updateComponentTreeUI(this);
     }
+
 
     // --- Inner Classes for Quick Models Table (Copied from SettingsDialog) ---
     private static class FavoriteModelsTableModel extends AbstractTableModel {
