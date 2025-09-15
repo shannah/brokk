@@ -607,7 +607,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         for (McpServer server : mcpConfig.servers()) {
             mcpServersListModel.addElement(server);
         }
-
     }
 
     public boolean applySettings() {

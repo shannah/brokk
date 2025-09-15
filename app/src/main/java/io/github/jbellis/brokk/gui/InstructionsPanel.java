@@ -248,7 +248,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }
                 }));
 
-        planOptionsLink = new JButton("Plan Options") {
+        planOptionsLink = new MaterialButton("Plan Options") {
             private static final long serialVersionUID = 1L;
             // Animation state
             private float hoverAlpha = 0f;
