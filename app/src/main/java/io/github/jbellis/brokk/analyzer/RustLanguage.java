@@ -22,6 +22,9 @@ import org.jetbrains.annotations.Nullable;
 public class RustLanguage implements Language {
     private final List<String> extensions = List.of("rs");
 
+    RustLanguage() {
+    }
+
     @Override
     public List<String> getExtensions() {
         return extensions;
