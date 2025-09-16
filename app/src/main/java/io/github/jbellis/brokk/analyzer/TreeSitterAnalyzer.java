@@ -249,9 +249,9 @@ public abstract class TreeSitterAnalyzer
                         return false;
                     }
 
-                    // Check extension
-                    var pathStr = filePath.toString();
-                    return validExtensions.stream().anyMatch(pathStr::endsWith);
+                    // Check extension using proper file extension matching
+                    var extension = pf.extension();
+                    return validExtensions.contains(extension);
                 })
                 .parallel()
                 .forEach(pf -> {
@@ -527,6 +527,11 @@ public abstract class TreeSitterAnalyzer
 
     @Override
     public Map<CodeUnit, String> getSkeletons(ProjectFile file) {
+        // Only process files relevant to this analyzer's language
+        if (!isRelevantFile(file)) {
+            return Map.of();
+        }
+
         List<CodeUnit> topCUs = topLevelDeclarations.getOrDefault(file, List.of());
         if (topCUs.isEmpty()) return Map.of();
 
@@ -546,6 +551,11 @@ public abstract class TreeSitterAnalyzer
 
     @Override
     public Set<CodeUnit> getDeclarationsInFile(ProjectFile file) {
+        // Only process files relevant to this analyzer's language
+        if (!isRelevantFile(file)) {
+            return Set.of();
+        }
+
         List<CodeUnit> topCUs = topLevelDeclarations.getOrDefault(file, List.of());
         if (topCUs.isEmpty()) return Set.of();
 
@@ -2112,6 +2122,29 @@ public abstract class TreeSitterAnalyzer
         return withReadLock(() -> childrenByParent.getOrDefault(cu, List.of()));
     }
 
+    /* ---------- file filtering helpers ---------- */
+
+    /**
+     * Checks if a file is relevant to this analyzer based on its language extensions.
+     *
+     * @param file the file to check
+     * @return true if the file extension matches this analyzer's language extensions
+     */
+    private boolean isRelevantFile(ProjectFile file) {
+        var languageExtensions = this.language.getExtensions();
+        return languageExtensions.contains(file.extension());
+    }
+
+    /**
+     * Filters a set of files to only include those relevant to this analyzer.
+     *
+     * @param files the files to filter
+     * @return a new set containing only files with extensions matching this analyzer's language
+     */
+    private Set<ProjectFile> filterRelevantFiles(Set<ProjectFile> files) {
+        return files.stream().filter(this::isRelevantFile).collect(Collectors.toSet());
+    }
+
     /* ---------- incremental updates ---------- */
 
     @Override
@@ -2120,10 +2153,17 @@ public abstract class TreeSitterAnalyzer
             return this;
         }
 
+        // Filter files by language extensions - only process files this analyzer can understand
+        var relevantFiles = filterRelevantFiles(changedFiles);
+
+        if (relevantFiles.isEmpty()) {
+            return this; // No relevant files to process
+        }
+
         var writeLock = stateRwLock.writeLock();
         writeLock.lock();
         try {
-            for (var file : changedFiles) {
+            for (var file : relevantFiles) {
                 // -------- cleanup ----------
                 parsedTreeCache.remove(file);
                 topLevelDeclarations.remove(file);
