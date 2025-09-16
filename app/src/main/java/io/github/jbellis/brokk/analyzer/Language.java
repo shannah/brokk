@@ -71,10 +71,8 @@ public interface Language {
     }
 
     /**
-     * Indicates the level of dependency import support:
-     * - NONE: no import support
-     * - BASIC: import supported but without dependency kind classification
-     * - FINE_GRAINED: import supported with accurate dependency kinds classification
+     * Indicates the level of dependency import support: - NONE: no import support - BASIC: import supported but without
+     * dependency kind classification - FINE_GRAINED: import supported with accurate dependency kinds classification
      */
     default ImportSupport getDependencyImportSupport() {
         return ImportSupport.NONE;
