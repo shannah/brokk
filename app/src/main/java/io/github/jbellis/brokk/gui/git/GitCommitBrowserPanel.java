@@ -547,7 +547,8 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
 
         var firstCommitInfo = (ICommitInfo) commitsTableModel.getValueAt(selectedRows[0], COL_COMMIT_OBJ);
         boolean isStash = firstCommitInfo.stashIndex().isPresent(); // boolean preferred by style guide
-        boolean hasWorkspaceSelections = !chrome.getContextPanel().getSelectedProjectFiles().isEmpty();
+        boolean hasWorkspaceSelections =
+                !chrome.getContextPanel().getSelectedProjectFiles().isEmpty();
 
         viewChangesItem.setEnabled(selectedRows.length == 1);
         compareAllToLocalItem.setEnabled(selectedRows.length == 1 && !isStash);
@@ -648,26 +649,24 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 return;
             }
 
-            contextManager.submitUserTask(
-                    "Capturing workspace selections at " + shortId,
-                    () -> {
-                        int success = 0;
-                        for (var pf : selectedFiles) {
-                            try {
-                                final String content = getRepo().getFileContent(commitId, pf);
-                                var fragment = new ContextFragment.GitFileFragment(pf, shortId, content);
-                                contextManager.addReadOnlyFragmentAsync(fragment);
-                                success++;
-                            } catch (GitAPIException ex) {
-                                logger.warn("Error capturing {} at {}: {}", pf, commitId, ex.getMessage());
-                            }
-                        }
-                        final int captured = success;
-                        SwingUtil.runOnEdt(() -> {
-                            chrome.systemOutput("Captured " + captured + " file(s) at " + shortId + ".");
-                            chrome.updateWorkspace();
-                        });
-                    });
+            contextManager.submitUserTask("Capturing workspace selections at " + shortId, () -> {
+                int success = 0;
+                for (var pf : selectedFiles) {
+                    try {
+                        final String content = getRepo().getFileContent(commitId, pf);
+                        var fragment = new ContextFragment.GitFileFragment(pf, shortId, content);
+                        contextManager.addReadOnlyFragmentAsync(fragment);
+                        success++;
+                    } catch (GitAPIException ex) {
+                        logger.warn("Error capturing {} at {}: {}", pf, commitId, ex.getMessage());
+                    }
+                }
+                final int captured = success;
+                SwingUtil.runOnEdt(() -> {
+                    chrome.systemOutput("Captured " + captured + " file(s) at " + shortId + ".");
+                    chrome.updateWorkspace();
+                });
+            });
         });
 
         softResetItem.addActionListener(e -> {

@@ -484,9 +484,10 @@ public class MultiFileSelectionDialog extends JDialog {
                     logger.warn("Analyzer not ready for class completion, returning no completions");
                     return List.of();
                 }
-                availableCompletions = Completions.completeSymbols(pattern, analyzer, Completions.nameTypeForPattern(pattern)).stream()
-                        .filter(CodeUnit::isClass)
-                        .toList();
+                availableCompletions =
+                        Completions.completeSymbols(pattern, analyzer, Completions.nameTypeForPattern(pattern)).stream()
+                                .filter(CodeUnit::isClass)
+                                .toList();
             } catch (Exception e) {
                 logger.error("Error loading symbol completions", e);
                 return List.of();

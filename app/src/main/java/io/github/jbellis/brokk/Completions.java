@@ -25,7 +25,8 @@ public class Completions {
         // getAllDeclarations would not be correct here since it only lists top-level CodeUnits
         List<CodeUnit> candidates;
         try {
-            candidates = analyzer.autocompleteDefinitions(query).stream().limit(5000).toList();
+            candidates =
+                    analyzer.autocompleteDefinitions(query).stream().limit(5000).toList();
         } catch (Exception e) {
             // Handle analyzer exceptions (e.g., SchemaViolationException from JoernAnalyzer)
             logger.warn("Failed to search definitions for autocomplete: {}", e.getMessage());
@@ -39,11 +40,12 @@ public class Completions {
         record ScoredCU(CodeUnit cu, int score) {}
         return candidates.stream()
                 .map(cu -> {
-                    String valueToMatch = switch (nameType) {
-                        case SHORT_NAME -> cu.shortName();
-                        case FQ_NAME -> cu.fqName();
-                        case IDENTIFIER -> cu.identifier();
-                    };
+                    String valueToMatch =
+                            switch (nameType) {
+                                case SHORT_NAME -> cu.shortName();
+                                case FQ_NAME -> cu.fqName();
+                                case IDENTIFIER -> cu.identifier();
+                            };
                     int score = matcher.score(valueToMatch);
                     return new ScoredCU(cu, score);
                 })
@@ -192,19 +194,17 @@ public class Completions {
     }
 
     /**
-     * Infers the preferred name type for symbol matching from a user-entered pattern.
-     * If the pattern contains '.' or '$', prefer fully-qualified names; otherwise, identifiers.
+     * Infers the preferred name type for symbol matching from a user-entered pattern. If the pattern contains '.' or
+     * '$', prefer fully-qualified names; otherwise, identifiers.
      */
     public static CodeUnit.NameType nameTypeForPattern(String pattern) {
         var p = pattern;
-        return (p.indexOf('.') >= 0 || p.indexOf('$') >= 0)
-                ? CodeUnit.NameType.FQ_NAME
-                : CodeUnit.NameType.IDENTIFIER;
+        return (p.indexOf('.') >= 0 || p.indexOf('$') >= 0) ? CodeUnit.NameType.FQ_NAME : CodeUnit.NameType.IDENTIFIER;
     }
 
     /**
-     * Returns the appropriate name from the given CodeUnit based on the pattern,
-     * selecting fqName() when the pattern appears qualified, otherwise identifier().
+     * Returns the appropriate name from the given CodeUnit based on the pattern, selecting fqName() when the pattern
+     * appears qualified, otherwise identifier().
      */
     public static String nameForPattern(String pattern, CodeUnit cu) {
         return nameTypeForPattern(pattern) == CodeUnit.NameType.FQ_NAME ? cu.fqName() : cu.identifier();
