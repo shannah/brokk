@@ -8,10 +8,12 @@ import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.MainProject.DataRetentionPolicy;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
 import io.github.jbellis.brokk.gui.dialogs.analyzer.AnalyzerSettingsPanel;
+import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.issues.FilterOptions;
 import io.github.jbellis.brokk.issues.IssuesProviderConfig;
 import io.github.jbellis.brokk.issues.JiraFilterOptions;
@@ -76,8 +78,8 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
     private DefaultListModel<String> excludedDirectoriesListModel = new DefaultListModel<>();
     private JList<String> excludedDirectoriesList = new JList<>(excludedDirectoriesListModel);
     private JScrollPane excludedScrollPane = new JScrollPane(excludedDirectoriesList);
-    private JButton addExcludedDirButton = new JButton("Add");
-    private JButton removeExcludedDirButton = new JButton("Remove");
+    private JButton addExcludedDirButton = new JButton(Icons.ADD);
+    private JButton removeExcludedDirButton = new JButton(Icons.REMOVE);
 
     private JTextField languagesDisplayField = new JTextField(20);
     private JButton editLanguagesButton = new JButton("Edit");
@@ -774,7 +776,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         primaryLanguageComboBox.addActionListener(e -> {
             var sel = (Language) primaryLanguageComboBox.getSelectedItem();
             updateJdkControlsVisibility(sel);
-            if (sel == Language.JAVA) {
+            if (sel == Languages.JAVA) {
                 populateJdkControlsFromProject();
             }
         });
@@ -1212,8 +1214,8 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
             String extension =
                     com.google.common.io.Files.getFileExtension(pf.absPath().toString());
             if (!extension.isEmpty()) {
-                var lang = io.github.jbellis.brokk.analyzer.Language.fromExtension(extension);
-                if (lang != io.github.jbellis.brokk.analyzer.Language.NONE) languagesInProject.add(lang);
+                var lang = Languages.fromExtension(extension);
+                if (lang != Languages.NONE) languagesInProject.add(lang);
             }
         }
 
@@ -1233,6 +1235,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
 
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         var okBtn = new JButton("OK");
+        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okBtn);
         var cancelBtn = new JButton("Cancel");
         buttonPanel.add(okBtn);
         buttonPanel.add(cancelBtn);
@@ -1347,7 +1350,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         var selectedLang = project.getBuildLanguage();
         primaryLanguageComboBox.setSelectedItem(selectedLang);
         updateJdkControlsVisibility(selectedLang);
-        if (selectedLang == Language.JAVA) {
+        if (selectedLang == Languages.JAVA) {
             populateJdkControlsFromProject();
         }
 
@@ -1460,7 +1463,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
         }
 
         // JDK Controls (only for Java)
-        if (selectedPrimaryLang == Language.JAVA) {
+        if (selectedPrimaryLang == Languages.JAVA) {
             if (setJavaHomeCheckbox.isSelected()) {
                 var sel = (JdkItem) jdkComboBox.getSelectedItem();
                 if (sel != null && !sel.path.isBlank()) {
@@ -1616,7 +1619,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
     }
 
     private void updateJdkControlsVisibility(@Nullable Language selected) {
-        boolean isJava = selected == Language.JAVA;
+        boolean isJava = selected == Languages.JAVA;
         setJavaHomeCheckbox.setVisible(isJava);
         jdkComboBox.setVisible(isJava);
     }
@@ -1641,8 +1644,8 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
             String extension =
                     com.google.common.io.Files.getFileExtension(pf.absPath().toString());
             if (!extension.isEmpty()) {
-                var lang = io.github.jbellis.brokk.analyzer.Language.fromExtension(extension);
-                if (lang != io.github.jbellis.brokk.analyzer.Language.NONE) {
+                var lang = Languages.fromExtension(extension);
+                if (lang != Languages.NONE) {
                     langs.add(lang);
                 }
             }

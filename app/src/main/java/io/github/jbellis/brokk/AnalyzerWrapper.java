@@ -112,7 +112,16 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
             refresh(() -> {
                 final var analyzer = requireNonNull(currentAnalyzer);
                 return analyzer.as(IncrementalUpdateProvider.class)
-                        .map(IncrementalUpdateProvider::update)
+                        .map(incAnalyzer -> {
+                            long startTime = System.currentTimeMillis();
+                            IAnalyzer result = incAnalyzer.update();
+                            long duration = System.currentTimeMillis() - startTime;
+                            logger.info(
+                                    "Library ingestion: {} analyzer refresh completed in {}ms",
+                                    getLanguageDescription(),
+                                    duration);
+                            return result;
+                        })
                         .orElse(analyzer);
             });
         }
@@ -145,7 +154,7 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
                     "Rebuilding analyzer due to changes in tracked files relevant to configured languages: {}",
                     relevantFiles.stream()
                             .filter(pf -> {
-                                Language lang = Language.fromExtension(pf.extension());
+                                Language lang = Languages.fromExtension(pf.extension());
                                 return projectLanguages.contains(lang);
                             })
                             .distinct()
@@ -154,7 +163,17 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
             refresh(() -> {
                 final var analyzer = requireNonNull(currentAnalyzer);
                 return analyzer.as(IncrementalUpdateProvider.class)
-                        .map(incAnalyzer -> incAnalyzer.update(relevantFiles))
+                        .map(incAnalyzer -> {
+                            long startTime = System.currentTimeMillis();
+                            IAnalyzer result = incAnalyzer.update(relevantFiles);
+                            long duration = System.currentTimeMillis() - startTime;
+                            logger.info(
+                                    "Library ingestion: {} analyzer processed {} files in {}ms",
+                                    getLanguageDescription(),
+                                    relevantFiles.size(),
+                                    duration);
+                            return result;
+                        })
                         .orElse(analyzer);
             });
         } else {
@@ -194,12 +213,12 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
         /* ── 0.  Decide which languages we are dealing with ─────────────────────────── */
         Language langHandle = getLanguageHandle();
         var projectLangs = project.getAnalyzerLanguages().stream()
-                .filter(l -> l != Language.NONE)
+                .filter(l -> l != Languages.NONE)
                 .map(Language::name)
                 .collect(Collectors.toList());
         logger.info("Setting up analyzer for languages: {} in directory: {}", projectLangs, project.getRoot());
         logger.debug("Loading/creating analyzer for languages: {}", langHandle);
-        if (langHandle == Language.NONE) {
+        if (langHandle == Languages.NONE) {
             logger.info("No languages configured, using disabled analyzer for: {}", project.getRoot());
             return new DisabledAnalyzer();
         }
@@ -228,11 +247,7 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
                     continue;
                 }
                 // Filter tracked files relevant to this language
-                List<ProjectFile> tracked = project.getAllFiles().stream()
-                        .filter(pf -> lang.getExtensions()
-                                .contains(com.google.common.io.Files.getFileExtension(
-                                        pf.absPath().toString())))
-                        .toList();
+                List<ProjectFile> tracked = project.getFiles(lang).stream().toList();
                 if (isStale(lang, storagePath, tracked)) // cache older than sources
                 needsRebuild = true;
             }
@@ -362,21 +377,41 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
                             dialog, or disable Code Intelligence by setting the language(s) to NONE.
                             """
                             .stripIndent()
-                            .formatted(langNames, totalDeclarations, durationMs, langExtensions, Language.NONE.name());
+                            .formatted(langNames, totalDeclarations, durationMs, langExtensions, Languages.NONE.name());
             listener.afterFirstBuild(msg);
             logger.info(msg);
         }
     }
 
+    public boolean providesInterproceduralAnalysis() {
+        return project.getAnalyzerLanguages().stream().anyMatch(Language::providesInterproceduralAnalysis);
+    }
+
+    public boolean providesSummaries() {
+        return project.getAnalyzerLanguages().stream().anyMatch(Language::providesSummaries);
+    }
+
+    public boolean providesSourceCode() {
+        return project.getAnalyzerLanguages().stream().anyMatch(Language::providesSourceCode);
+    }
+
     /** Convenience overload that infers the language set from {@link #project}. */
     private Language getLanguageHandle() {
         var projectLangs = project.getAnalyzerLanguages().stream()
-                .filter(l -> l != Language.NONE)
+                .filter(l -> l != Languages.NONE)
                 .collect(Collectors.toUnmodifiableSet());
         if (projectLangs.isEmpty()) {
-            return Language.NONE;
+            return Languages.NONE;
         }
         return (projectLangs.size() == 1) ? projectLangs.iterator().next() : new Language.MultiLanguage(projectLangs);
+    }
+
+    /** Get a human-readable description of the analyzer languages for logging. */
+    private String getLanguageDescription() {
+        return project.getAnalyzerLanguages().stream()
+                .filter(l -> l != Languages.NONE)
+                .map(Language::name)
+                .collect(Collectors.joining("/"));
     }
 
     /**
@@ -546,7 +581,17 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
         try {
             final var analyzer = future.get();
             currentAnalyzer = analyzer.as(IncrementalUpdateProvider.class)
-                    .map(incAnalyzer -> incAnalyzer.update(changedFiles))
+                    .map(incAnalyzer -> {
+                        long startTime = System.currentTimeMillis();
+                        IAnalyzer result = incAnalyzer.update(changedFiles);
+                        long duration = System.currentTimeMillis() - startTime;
+                        logger.info(
+                                "Library ingestion: {} analyzer processed {} files in {}ms",
+                                getLanguageDescription(),
+                                changedFiles.size(),
+                                duration);
+                        return result;
+                    })
                     .orElse(analyzer);
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException(e);

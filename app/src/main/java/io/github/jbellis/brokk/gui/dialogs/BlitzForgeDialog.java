@@ -8,11 +8,13 @@ import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.Language;
+import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionPanel;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog.ParallelOutputMode;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog.PostProcessingOption;
+import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.util.ScaledIcon;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Messages;
@@ -250,8 +252,10 @@ public class BlitzForgeDialog extends JDialog {
         // Left side: FileSelectionPanel with "Add Files" button underneath
         JPanel leftPanel = new JPanel(new BorderLayout(0, 5));
         leftPanel.add(fileSelectionPanel, BorderLayout.CENTER);
-        JButton addFilesButton = new JButton("Add Files");
+        JButton addFilesButton = new JButton();
+        addFilesButton.setToolTipText("Add Files");
         addFilesButton.addActionListener(e -> addSelectedFilesToTable());
+        addFilesButton.setIcon(Icons.ADD);
         JPanel addButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         addButtonPanel.add(addFilesButton);
         horizontalSplitPane.add(leftPanel);
@@ -308,8 +312,10 @@ public class BlitzForgeDialog extends JDialog {
 
         // The removeButtonPanel remains at BorderLayout.SOUTH
         JPanel removeButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton removeButton = new JButton("Remove Selected");
+        JButton removeButton = new JButton();
+        removeButton.setToolTipText("Remove Selected");
         removeButton.addActionListener(e -> removeSelectedFilesFromTable());
+        removeButton.setIcon(Icons.REMOVE);
         removeButtonPanel.add(removeButton);
         // Combine Add Files and Remove Selected on a single bottom row
         JPanel bottomButtonsPanel = new JPanel(new GridLayout(1, 2, H_GAP, 0));
@@ -976,6 +982,7 @@ public class BlitzForgeDialog extends JDialog {
         // Buttons Panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         JButton okButton = new JButton("OK");
+        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
         JButton cancelButton = new JButton("Cancel");
 
         okButton.addActionListener(e -> onOK());
@@ -1107,7 +1114,7 @@ public class BlitzForgeDialog extends JDialog {
                 String langSel = Objects.toString(languageComboBox.getSelectedItem(), ALL_LANGUAGES_OPTION);
                 if (!ALL_LANGUAGES_OPTION.equals(langSel)) {
                     files = files.filter(pf -> langSel.equals(
-                            Language.fromExtension(pf.extension()).toString()));
+                            Languages.fromExtension(pf.extension()).toString()));
                 }
                 return files.toList();
             }
@@ -1128,7 +1135,7 @@ public class BlitzForgeDialog extends JDialog {
                                 return true;
                             }
                             return langSel.equals(
-                                    Language.fromExtension(pf.extension()).toString());
+                                    Languages.fromExtension(pf.extension()).toString());
                         })
                         .toList();
             }
@@ -1150,7 +1157,7 @@ public class BlitzForgeDialog extends JDialog {
         String langSel = Objects.toString(languageComboBox.getSelectedItem(), ALL_LANGUAGES_OPTION);
         if (!ALL_LANGUAGES_OPTION.equals(langSel)) {
             files = files.filter(
-                    pf -> langSel.equals(Language.fromExtension(pf.extension()).toString()));
+                    pf -> langSel.equals(Languages.fromExtension(pf.extension()).toString()));
         }
         long count = files.count();
         selectedFilesCountLabel.setText(count + " file" + (count == 1 ? "" : "s") + " selected");
@@ -1276,7 +1283,8 @@ public class BlitzForgeDialog extends JDialog {
                     if (ALL_LANGUAGES_OPTION.equals(langSel)) {
                         return true;
                     }
-                    return langSel.equals(Language.fromExtension(pf.extension()).toString());
+                    return langSel.equals(
+                            Languages.fromExtension(pf.extension()).toString());
                 })
                 .sorted(Comparator.comparing(ProjectFile::toString))
                 .toList();
@@ -1334,7 +1342,7 @@ public class BlitzForgeDialog extends JDialog {
             String selectedLanguageString = (String) languageComboBox.getSelectedItem();
             if (selectedLanguageString != null && !ALL_LANGUAGES_OPTION.equals(selectedLanguageString)) {
                 filesToProcess = filesToProcess.filter(pf -> {
-                    Language lang = Language.fromExtension(pf.extension());
+                    Language lang = Languages.fromExtension(pf.extension());
                     return selectedLanguageString.equals(lang.toString());
                 });
             }
@@ -1368,7 +1376,7 @@ public class BlitzForgeDialog extends JDialog {
                             return true;
                         }
                         return langSel.equals(
-                                Language.fromExtension(pf.extension()).toString());
+                                Languages.fromExtension(pf.extension()).toString());
                     })
                     .toList();
 
