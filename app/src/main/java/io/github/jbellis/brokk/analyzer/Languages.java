@@ -133,8 +133,8 @@ public class Languages {
         }
 
         @Override
-        public boolean supportesDependencyKinds() {
-            return NodeJsDependencyHelper.supportsDependencyKinds();
+        public Language.ImportSupport getDependencyImportSupport() {
+            return Language.ImportSupport.FINE_GRAINED;
         }
 
         @Override
@@ -546,8 +546,8 @@ public class Languages {
         }
 
         @Override
-        public boolean supportesDependencyKinds() {
-            return NodeJsDependencyHelper.supportsDependencyKinds();
+        public Language.ImportSupport getDependencyImportSupport() {
+            return Language.ImportSupport.FINE_GRAINED;
         }
 
         @Override
