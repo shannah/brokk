@@ -13,7 +13,6 @@ import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
 import io.github.jbellis.brokk.gui.dialogs.analyzer.AnalyzerSettingsPanel;
-import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.issues.FilterOptions;
 import io.github.jbellis.brokk.issues.IssuesProviderConfig;
 import io.github.jbellis.brokk.issues.JiraFilterOptions;
@@ -78,8 +77,8 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
     private DefaultListModel<String> excludedDirectoriesListModel = new DefaultListModel<>();
     private JList<String> excludedDirectoriesList = new JList<>(excludedDirectoriesListModel);
     private JScrollPane excludedScrollPane = new JScrollPane(excludedDirectoriesList);
-    private JButton addExcludedDirButton = new JButton(Icons.ADD);
-    private JButton removeExcludedDirButton = new JButton(Icons.REMOVE);
+    private JButton addExcludedDirButton = new JButton("Add");
+    private JButton removeExcludedDirButton = new JButton("Remove");
 
     private JTextField languagesDisplayField = new JTextField(20);
     private JButton editLanguagesButton = new JButton("Edit");
@@ -1235,7 +1234,6 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
 
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         var okBtn = new JButton("OK");
-        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okBtn);
         var cancelBtn = new JButton("Cancel");
         buttonPanel.add(okBtn);
         buttonPanel.add(cancelBtn);

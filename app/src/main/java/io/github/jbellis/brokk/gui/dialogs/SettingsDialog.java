@@ -5,7 +5,6 @@ import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.MainProject.DataRetentionPolicy;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
-import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.ThemeAware;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -42,7 +41,6 @@ public class SettingsDialog extends JDialog implements ThemeAware {
 
         // Create buttons first, as they might be passed to panels
         okButton = new JButton("OK");
-        SwingUtil.applyPrimaryButtonStyle(okButton);
         cancelButton = new JButton("Cancel");
         applyButton = new JButton("Apply");
 
@@ -271,7 +269,6 @@ public class SettingsDialog extends JDialog implements ThemeAware {
         contentPanel.add(tempProjectPanelForRetention, BorderLayout.CENTER);
 
         var okButtonDialog = new JButton("OK");
-        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButtonDialog);
         var cancelButtonDialog = new JButton("Cancel");
         var buttonPanelDialog = new JPanel(new FlowLayout(FlowLayout.CENTER));
         buttonPanelDialog.add(okButtonDialog);

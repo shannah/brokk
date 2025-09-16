@@ -245,7 +245,6 @@ public class ArchitectOptionsDialog {
             // Buttons
             var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
             var okButton = new JButton("OK");
-            io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
             var cancelButton = new JButton("Cancel");
             buttonPanel.add(okButton);
             buttonPanel.add(cancelButton);

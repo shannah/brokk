@@ -22,7 +22,6 @@ import io.github.jbellis.brokk.gui.ThemeAware;
 import io.github.jbellis.brokk.gui.VoiceInputButton;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.search.RTextAreaSearchableComponent;
-import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import io.github.jbellis.brokk.gui.util.SourceCaptureUtil;
 import io.github.jbellis.brokk.util.Messages;
@@ -124,10 +123,9 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
 
         // Save button (conditionally added for ProjectFile)
         if (file != null) {
-            // Use the field saveButton directly (icon-only button with tooltip)
-            saveButton = new JButton(Icons.SAVE);
+            // Use the field saveButton directly
+            saveButton = new JButton("Save");
             saveButton.setEnabled(false); // Initially disabled
-            saveButton.setToolTipText("Save");
             saveButton.addActionListener(e -> {
                 performSave(saveButton); // Call the extracted save method, passing the button itself
             });
@@ -153,9 +151,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
             var text = (fragment != null && fragment.getType() == ContextFragment.FragmentType.GIT_FILE)
                     ? "Edit Current Version"
                     : "Edit File";
-            // Use icon for the edit action, preserve tooltip text for clarity
-            editButton = new JButton(Icons.EDIT_DOCUMENT);
-            editButton.setToolTipText(text);
+            editButton = new JButton(text);
             var finalEditButton = editButton; // Final reference for lambda
             if (contextManager.getEditableFiles().contains(file)) {
                 finalEditButton.setEnabled(false);

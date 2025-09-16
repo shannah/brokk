@@ -55,7 +55,6 @@ public class CommitDialog extends JDialog {
         JScrollPane scrollPane = new JScrollPane(commitMessageArea);
 
         commitButton = new JButton("Commit");
-        SwingUtil.applyPrimaryButtonStyle(commitButton);
         commitButton.setEnabled(false); // Initially disabled until message is ready or user types
         commitButton.addActionListener(e -> performCommit());
 

@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.gui.SwingUtil;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
@@ -52,7 +51,6 @@ public class FeedbackDialog extends JDialog {
         includeScreenshotCheckBox = new JCheckBox("Include screenshot");
 
         sendButton = new JButton("Send");
-        SwingUtil.applyPrimaryButtonStyle(sendButton);
         sendButton.setMnemonic(KeyEvent.VK_S);
         sendButton.addActionListener(e -> send());
 

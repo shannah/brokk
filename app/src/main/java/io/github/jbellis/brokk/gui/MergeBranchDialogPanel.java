@@ -37,7 +37,6 @@ public class MergeBranchDialogPanel extends JDialog {
         this.conflictStatusLabel = new JLabel(" ");
 
         okButton = new JButton("OK");
-        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
         initializeDialog();
     }
 
