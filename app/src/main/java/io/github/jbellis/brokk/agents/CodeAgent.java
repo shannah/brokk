@@ -69,14 +69,16 @@ public class CodeAgent {
         this.io = io;
     }
 
+    public enum Option {
+        PRESERVE_RAW_MESSAGES,
+        DEFER_BUILD
+    }
+
     /**
-     * Implementation of the LLM task that runs in a separate thread. Uses the provided model for the initial request
-     * and potentially switches for fixes.
-     *
      * @param userInput The user's goal/instructions.
      * @return A TaskResult containing the conversation history and original file contents
      */
-    public TaskResult runTask(String userInput, boolean forArchitect) {
+    public TaskResult runTask(String userInput, Set<Option> options) {
         var collectMetrics = "true".equalsIgnoreCase(System.getenv("BRK_CODEAGENT_METRICS"));
         @Nullable Metrics metrics = collectMetrics ? new Metrics() : null;
 
@@ -208,17 +210,19 @@ public class CodeAgent {
 
             // VERIFY PHASE runs the build
             assert es.pendingBlocks().isEmpty() : es;
-            var verifyOutcome = verifyPhase(cs, es, metrics);
-            if (verifyOutcome instanceof Step.Retry retryVerify) {
-                cs = retryVerify.cs();
-                es = retryVerify.es();
-                continue;
+            if (!options.contains(Option.DEFER_BUILD)) {
+                var verifyOutcome = verifyPhase(cs, es, metrics);
+                if (verifyOutcome instanceof Step.Retry retryVerify) {
+                    cs = retryVerify.cs();
+                    es = retryVerify.es();
+                    continue;
+                }
+                if (verifyOutcome instanceof Step.Fatal fatalVerify) {
+                    stopDetails = fatalVerify.stopDetails();
+                    break;
+                }
+                throw new IllegalStateException("verifyPhase returned unexpected Step type " + verifyOutcome);
             }
-            if (verifyOutcome instanceof Step.Fatal fatalVerify) {
-                stopDetails = fatalVerify.stopDetails();
-                break;
-            }
-            throw new IllegalStateException("verifyPhase returned unexpected Step type " + verifyOutcome);
         }
 
         // everyone reports their own reasons for stopping, except for interruptions
@@ -236,7 +240,7 @@ public class CodeAgent {
                 : userInput + " [" + stopDetails.reason().name() + "]";
         // architect auto-compresses the task entry so let's give it the full history to work with, quickModel is cheap
         // Prepare messages for TaskEntry log: filter raw messages and keep S/R blocks verbatim
-        var finalMessages = forArchitect
+        var finalMessages = options.contains(Option.PRESERVE_RAW_MESSAGES)
                 ? List.copyOf(io.getLlmRawMessages(false))
                 : prepareMessagesForTaskEntryLog(io.getLlmRawMessages(false));
         return new TaskResult(
@@ -267,18 +271,6 @@ public class CodeAgent {
         return instructionsFlags;
     }
 
-    /**
-     * Runs a “single-file edit” session in which the LLM is asked to modify exactly {@code file}. The method drives the
-     * same request / parse / apply FSM that {@link #runTask(String, boolean)} uses, but it stops after all
-     * SEARCH/REPLACE blocks have been applied (no build verification is performed).
-     *
-     * @param file the file to edit
-     * @param instructions user instructions describing the desired change
-     * @param readOnlyMessages conversation context that should be provided to the LLM as read-only (e.g., other related
-     *     files, build output, etc.)
-     * @param flags
-     * @return a {@link TaskResult} recording the conversation and the original contents of all files that were changed
-     */
     public TaskResult runSingleFileEdit(
             ProjectFile file,
             String instructions,
