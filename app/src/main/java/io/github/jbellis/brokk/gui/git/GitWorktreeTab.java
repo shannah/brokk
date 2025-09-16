@@ -8,6 +8,8 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.MergeBranchDialogPanel;
+import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.util.Icons;
 import java.awt.*;
 import java.awt.event.ItemEvent;
 import java.awt.event.WindowEvent;
@@ -210,17 +212,22 @@ public class GitWorktreeTab extends JPanel {
         JPanel buttonPanel = new JPanel();
         buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.X_AXIS));
 
-        // Initialize field buttons (their properties like text, tooltip, listener)
-        addButton = new JButton("+");
+        // Initialize field buttons (their properties like tooltip and listeners).
+        // Button text is intentionally omitted in favor of icons applied on the EDT.
+        addButton = new JButton();
+        addButton.setIcon(Icons.ADD);
+
         addButton.setToolTipText("Add new worktree");
         addButton.addActionListener(e -> addWorktree());
 
-        removeButton = new JButton("-");
+        removeButton = new JButton();
+        removeButton.setIcon(Icons.REMOVE);
         removeButton.setToolTipText("Remove selected worktree(s)");
         removeButton.setEnabled(false); // Initially disabled
         removeButton.addActionListener(e -> removeWorktree());
 
-        openButton = new JButton("Open");
+        openButton = new JButton();
+        openButton.setIcon(Icons.OPEN_IN_NEW_WINDOW);
         openButton.setToolTipText("Open selected worktree(s)");
         openButton.setEnabled(false); // Initially disabled
         openButton.addActionListener(e -> {
@@ -230,7 +237,8 @@ public class GitWorktreeTab extends JPanel {
             }
         });
 
-        refreshButton = new JButton("Refresh");
+        refreshButton = new JButton();
+        refreshButton.setIcon(Icons.REFRESH);
         refreshButton.setToolTipText("Refresh the list of worktrees");
         refreshButton.addActionListener(e -> refresh());
 
@@ -640,6 +648,8 @@ public class GitWorktreeTab extends JPanel {
                         new JOptionPane(panel, JOptionPane.PLAIN_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
                 JDialog dialog = optionPane.createDialog(GitWorktreeTab.this, "Add Worktree");
                 JButton okButton = new JButton(UIManager.getString("OptionPane.okButtonText"));
+                SwingUtil.applyPrimaryButtonStyle(okButton);
+
                 okButton.addActionListener(e -> {
                     optionPane.setValue(JOptionPane.OK_OPTION);
                     dialog.dispose();
