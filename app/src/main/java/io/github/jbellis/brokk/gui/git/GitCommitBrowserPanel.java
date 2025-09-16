@@ -13,6 +13,7 @@ import io.github.jbellis.brokk.git.ICommitInfo;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.TableUtils;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.dialogs.CreatePullRequestDialog;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
@@ -92,10 +93,10 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
     private JMenuItem cherryPickCommitItem;
     private JMenuItem captureWorkspaceSelectionsItem;
 
-    private JButton pullButton;
-    private JButton pushButton;
-    private JButton createPrButton;
-    private JButton viewDiffButton;
+    private MaterialButton pullButton;
+    private MaterialButton pushButton;
+    private MaterialButton createPrButton;
+    private MaterialButton viewDiffButton;
 
     @Nullable
     private String currentBranchOrContextName; // Used by push/pull actions
@@ -158,7 +159,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             commitSearchTextField = new JTextField();
             commitSearchInputPanel.add(commitSearchTextField, BorderLayout.CENTER);
 
-            JButton commitSearchButton = new JButton("Search");
+            MaterialButton commitSearchButton = new MaterialButton("Search");
             Runnable searchAction = () -> {
                 String query = commitSearchTextField.getText().trim();
                 if (!query.isEmpty()) {
@@ -182,17 +183,17 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
         commitsPanel.add(new JScrollPane(commitsTable), BorderLayout.CENTER);
 
         // Initialize buttons as they are class members and might be accessed by configureButton
-        pullButton = new JButton();
+        pullButton = new MaterialButton();
         pullButton.setIcon(Icons.DOWNLOAD);
         pullButton.setToolTipText("Pull changes from remote repository");
         pullButton.setEnabled(false);
 
-        pushButton = new JButton();
+        pushButton = new MaterialButton();
         pushButton.setIcon(Icons.PUBLISH);
         pushButton.setToolTipText("Push commits to remote repository");
         pushButton.setEnabled(false);
 
-        createPrButton = new JButton();
+        createPrButton = new MaterialButton();
         createPrButton.setIcon(Icons.ADD_DIAMOND);
         createPrButton.setToolTipText("Create a pull request for the current branch");
         createPrButton.setEnabled(false);
@@ -215,7 +216,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             CreatePullRequestDialog.show(chrome.getFrame(), chrome, contextManager, branch);
         });
 
-        viewDiffButton = new JButton();
+        viewDiffButton = new MaterialButton();
         viewDiffButton.setIcon(Icons.DIFFERENCE);
         viewDiffButton.setToolTipText("View changes in the selected commit");
         viewDiffButton.setEnabled(false); // Initially disabled, enabled by selection listener

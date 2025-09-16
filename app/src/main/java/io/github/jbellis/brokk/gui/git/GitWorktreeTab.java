@@ -8,6 +8,8 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.MergeBranchDialogPanel;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
+import io.github.jbellis.brokk.gui.util.Icons;
 import java.awt.*;
 import java.awt.event.ItemEvent;
 import java.awt.event.WindowEvent;
@@ -36,10 +38,10 @@ public class GitWorktreeTab extends JPanel {
 
     private JTable worktreeTable = new JTable();
     private DefaultTableModel worktreeTableModel = new DefaultTableModel();
-    private JButton addButton = new JButton();
-    private JButton removeButton = new JButton();
-    private JButton openButton = new JButton(); // Added
-    private JButton refreshButton = new JButton(); // Added
+    private MaterialButton addButton = new MaterialButton();
+    private MaterialButton removeButton = new MaterialButton();
+    private MaterialButton openButton = new MaterialButton(); // Added
+    private MaterialButton refreshButton = new MaterialButton(); // Added
 
     @org.jetbrains.annotations.Nullable
     private JButton mergeButton = null; // Added for worktree merge functionality
@@ -211,16 +213,19 @@ public class GitWorktreeTab extends JPanel {
         buttonPanel.setLayout(new BoxLayout(buttonPanel, BoxLayout.X_AXIS));
 
         // Initialize field buttons (their properties like text, tooltip, listener)
-        addButton = new JButton("+");
+        addButton = new MaterialButton();
+        addButton.setIcon(Icons.ADD);
         addButton.setToolTipText("Add new worktree");
         addButton.addActionListener(e -> addWorktree());
 
-        removeButton = new JButton("-");
+        removeButton = new MaterialButton();
+        removeButton.setIcon(Icons.REMOVE);
         removeButton.setToolTipText("Remove selected worktree(s)");
         removeButton.setEnabled(false); // Initially disabled
         removeButton.addActionListener(e -> removeWorktree());
 
-        openButton = new JButton("Open");
+        openButton = new MaterialButton();
+        openButton.setIcon(Icons.OPEN_NEW_WINDOW);
         openButton.setToolTipText("Open selected worktree(s)");
         openButton.setEnabled(false); // Initially disabled
         openButton.addActionListener(e -> {
@@ -230,7 +235,8 @@ public class GitWorktreeTab extends JPanel {
             }
         });
 
-        refreshButton = new JButton("Refresh");
+        refreshButton = new MaterialButton();
+        refreshButton.setIcon(Icons.REFRESH);
         refreshButton.setToolTipText("Refresh the list of worktrees");
         refreshButton.addActionListener(e -> refresh());
 
@@ -639,22 +645,22 @@ public class GitWorktreeTab extends JPanel {
                 JOptionPane optionPane =
                         new JOptionPane(panel, JOptionPane.PLAIN_MESSAGE, JOptionPane.OK_CANCEL_OPTION);
                 JDialog dialog = optionPane.createDialog(GitWorktreeTab.this, "Add Worktree");
-                JButton okButton = new JButton(UIManager.getString("OptionPane.okButtonText"));
+                MaterialButton okButton = new MaterialButton(UIManager.getString("OptionPane.okButtonText"));
                 okButton.addActionListener(e -> {
                     optionPane.setValue(JOptionPane.OK_OPTION);
                     dialog.dispose();
                 });
-                optionPane.setOptions(new Object[] {
-                    okButton,
-                    new JButton(UIManager.getString("OptionPane.cancelButtonText")) {
-                        {
-                            addActionListener(e -> {
-                                optionPane.setValue(JOptionPane.CANCEL_OPTION);
-                                dialog.dispose();
-                            });
-                        }
-                    }
+                // Style OK button as bright blue with white text
+                okButton.setBackground(new Color(0x1F6FEB));
+                okButton.setForeground(Color.WHITE);
+
+                MaterialButton cancelButton = new MaterialButton(UIManager.getString("OptionPane.cancelButtonText"));
+                cancelButton.addActionListener(e -> {
+                    optionPane.setValue(JOptionPane.CANCEL_OPTION);
+                    dialog.dispose();
                 });
+
+                optionPane.setOptions(new Object[] {okButton, cancelButton});
                 dialog.getRootPane().setDefaultButton(okButton);
                 newBranchNameField.requestFocusInWindow(); // Focus the new branch name field
                 dialog.setVisible(true);

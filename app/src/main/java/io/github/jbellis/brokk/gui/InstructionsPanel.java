@@ -95,6 +95,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                                    More tips are available in the Getting Started section in the Output panel above.
                                                    """;
 
+    private static final Color ACTION_GO_BLUE = new Color(0x1F6FEB);
+    private final Color defaultActionButtonBg;
+
     private final Chrome chrome;
     private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
@@ -376,6 +379,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButton.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         actionButton.setRolloverEnabled(true);
         actionButton.addActionListener(e -> onActionButtonPressed());
+
+        // Initialize default background color and set initial blue color
+        Color uiDefault = UIManager.getColor("Button.background");
+        this.defaultActionButtonBg = (uiDefault != null) ? uiDefault : actionButton.getBackground();
+        actionButton.setBackground(ACTION_GO_BLUE);
 
         modelSelector = new ModelSelector(chrome);
         modelSelector.selectConfig(chrome.getProject().getCodeModelConfig());
@@ -2013,9 +2021,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setText(null);
             actionButton.setEnabled(true);
             actionButton.setToolTipText("Cancel the current operation");
+            actionButton.setBackground(defaultActionButtonBg);
         } else {
             // If there is no running action, keep the action button enabled so the user can start an action.
             actionButton.setEnabled(true);
+            actionButton.setBackground(ACTION_GO_BLUE);
         }
     }
 
@@ -2053,10 +2063,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setIcon(Icons.STOP);
             actionButton.setText(null);
             actionButton.setToolTipText("Cancel the current operation");
+            actionButton.setBackground(defaultActionButtonBg);
         } else {
-            actionButton.setIcon(Icons.SEND);
+            actionButton.setIcon(Icons.ARROW_WARM_UP);
             actionButton.setText(null);
             actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
+            actionButton.setBackground(ACTION_GO_BLUE);
         }
         actionButton.setEnabled(true);
 
@@ -2128,6 +2140,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setText(null);
             actionButton.setToolTipText("Cancel the current operation");
             actionButton.setEnabled(true);
+            actionButton.setBackground(defaultActionButtonBg);
         });
         Thread watcher = new Thread(
                 () -> {
@@ -2143,7 +2156,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                             KeyStroke submitKs = KeyStroke.getKeyStroke(
                                     KeyEvent.VK_ENTER,
                                     Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
-                            actionButton.setIcon(Icons.SEND);
+                            actionButton.setIcon(Icons.ARROW_WARM_UP);
                             actionButton.setText(null);
                             actionButton.setToolTipText(
                                     "Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
