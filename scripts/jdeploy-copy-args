@@ -1,0 +1,75 @@
+#!/usr/bin/env sh
+set -eu
+
+# Wrapper script: choose the platform-specific copy script to run.
+# It locates the packaged scripts in the same directory as this wrapper
+# and executes either the POSIX or Windows variant as appropriate.
+
+SCRIPT_DIR="$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)"
+SH_SCRIPT="$SCRIPT_DIR/jdeploy-copy-args.sh"
+CMD_SCRIPT="$SCRIPT_DIR/jdeploy-copy-args.cmd"
+
+# Detect whether we should prefer running the Windows .cmd script.
+use_cmd=0
+if [ -n "${OSTYPE:-}" ]; then
+  case "$OSTYPE" in
+    msys*|cygwin*|win32*|win*) use_cmd=1 ;;
+    *) use_cmd=0 ;;
+  esac
+else
+  unameOut="$(uname -s 2>/dev/null || true)"
+  case "$unameOut" in
+    CYGWIN*|MINGW*|MSYS*|Windows_NT) use_cmd=1 ;;
+    *) use_cmd=0 ;;
+  esac
+fi
+
+# Helper to run a Windows .cmd file via cmd.exe (if available), converting
+# path to a Windows form when cygpath is available.
+run_cmd_script() {
+  if ! command -v cmd.exe >/dev/null 2>&1; then
+    # Fall back to attempting direct execution of the .cmd (may work in some environments)
+    "$CMD_SCRIPT"
+    return $?
+  fi
+
+  if command -v cygpath >/dev/null 2>&1; then
+    winpath="$(cygpath -w "$CMD_SCRIPT")"
+  else
+    winpath="$CMD_SCRIPT"
+  fi
+
+  # Use cmd.exe /c to execute the batch file. Wrap path in quotes.
+  cmd.exe /c "\"$winpath\""
+}
+
+# Execute the chosen script, with sensible fallbacks.
+if [ "$use_cmd" -eq 1 ]; then
+  if [ -f "$CMD_SCRIPT" ]; then
+    run_cmd_script
+    exit $?
+  fi
+
+  # If the .cmd does not exist, fall back to the POSIX script if present.
+  if [ -f "$SH_SCRIPT" ]; then
+    sh "$SH_SCRIPT"
+    exit $?
+  fi
+
+  echo "No copy script found (neither $SH_SCRIPT nor $CMD_SCRIPT). Nothing to do." >&2
+  exit 0
+else
+  if [ -f "$SH_SCRIPT" ]; then
+    sh "$SH_SCRIPT"
+    exit $?
+  fi
+
+  # If POSIX script missing, try Windows script via cmd.exe (useful in some mingw/msys setups)
+  if [ -f "$CMD_SCRIPT" ]; then
+    run_cmd_script
+    exit $?
+  fi
+
+  echo "No copy script found (neither $SH_SCRIPT nor $CMD_SCRIPT). Nothing to do." >&2
+  exit 0
+fi
