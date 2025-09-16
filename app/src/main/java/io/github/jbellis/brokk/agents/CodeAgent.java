@@ -30,6 +30,8 @@ import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.*;
+import java.util.function.BiFunction;
+import java.util.function.Supplier;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -74,11 +76,12 @@ public class CodeAgent {
         DEFER_BUILD
     }
 
-    /**
-     * @param userInput The user's goal/instructions.
-     * @return A TaskResult containing the conversation history and original file contents
-     */
-    public TaskResult runTask(String userInput, Set<Option> options) {
+    private TaskResult runTaskInternal(
+            String userInput,
+            Set<Option> options,
+            BiFunction<ConversationState, EditState, List<ChatMessage>> messagesSupplier,
+            Supplier<Set<CodePrompts.InstructionsFlags>> flagsSupplier) {
+
         var collectMetrics = "true".equalsIgnoreCase(System.getenv("BRK_CODEAGENT_METRICS"));
         @Nullable Metrics metrics = collectMetrics ? new Metrics() : null;
 
@@ -95,17 +98,18 @@ public class CodeAgent {
         int blocksAppliedWithoutBuild = 0;
 
         String buildError = "";
-        var blocks = new ArrayList<EditBlock.SearchReplaceBlock>(); // This will be part of WorkspaceState
+        var blocks = new ArrayList<EditBlock.SearchReplaceBlock>(); // This will be part of EditState
         Map<ProjectFile, String> originalFileContents = new HashMap<>();
 
         var msg = "Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput));
         io.systemOutput(msg);
-        TaskResult.StopDetails stopDetails = null;
 
+        TaskResult.StopDetails stopDetails = null;
         var parser = EditBlockParser.instance;
-        // We'll collect the conversation as ChatMessages to store in context history.
+
+        // Conversation bootstrap
         var taskMessages = new ArrayList<ChatMessage>();
-        var instructionsFlags = getInstructionsFlags();
+        var instructionsFlags = requireNonNull(flagsSupplier.get(), "flagsSupplier must not return null");
         UserMessage nextRequest = CodePrompts.instance.codeRequest(
                 userInput.trim(),
                 CodePrompts.instance.codeReminder(contextManager.getService(), model),
@@ -124,17 +128,10 @@ public class CodeAgent {
                 break;
             }
 
-            // Make the LLM request
+            // Build turn messages via supplier
             StreamingResult streamingResult;
             try {
-                var allMessagesForLlm = CodePrompts.instance.collectCodeMessages(
-                        contextManager,
-                        model,
-                        parser,
-                        cs.taskMessages(),
-                        requireNonNull(cs.nextRequest(), "nextRequest must be set before sending to LLM"),
-                        es.changedFiles(),
-                        Set.of());
+                var allMessagesForLlm = messagesSupplier.apply(cs, es);
                 var llmStartNanos = System.nanoTime();
                 streamingResult = coder.sendRequest(allMessagesForLlm, true);
                 if (metrics != null) {
@@ -147,7 +144,7 @@ public class CodeAgent {
                 continue; // let main loop interruption check handle
             }
 
-            // REQUEST PHASE handles the result of sendLlmRequest
+            // REQUEST
             var requestOutcome = requestPhase(cs, es, streamingResult, metrics);
             if (requestOutcome instanceof Step.Fatal fatalReq) {
                 stopDetails = fatalReq.stopDetails();
@@ -156,30 +153,22 @@ public class CodeAgent {
             cs = requestOutcome.cs();
             es = requestOutcome.es();
 
-            // PARSE PHASE parses edit blocks
-            var parseOutcome = parsePhase(
-                    cs,
-                    es,
-                    streamingResult.text(),
-                    streamingResult.isPartial(),
-                    parser,
-                    metrics); // Ensure parser is available
+            // PARSE
+            var parseOutcome = parsePhase(cs, es, streamingResult.text(), streamingResult.isPartial(), parser, metrics);
             if (parseOutcome instanceof Step.Fatal fatalParse) {
                 stopDetails = fatalParse.stopDetails();
                 break;
             }
             if (parseOutcome instanceof Step.Retry retryParse) {
-                if (metrics != null) {
-                    metrics.parseRetries++;
-                }
+                if (metrics != null) metrics.parseRetries++;
                 cs = retryParse.cs();
                 es = retryParse.es();
-                continue; // Restart main loop
+                continue;
             }
             cs = parseOutcome.cs();
             es = parseOutcome.es();
 
-            // APPLY PHASE applies blocks
+            // APPLY
             var applyOutcome = applyPhase(cs, es, parser, metrics);
             if (applyOutcome instanceof Step.Fatal fatalApply) {
                 stopDetails = fatalApply.stopDetails();
@@ -188,13 +177,13 @@ public class CodeAgent {
             if (applyOutcome instanceof Step.Retry retryApply) {
                 cs = retryApply.cs();
                 es = retryApply.es();
-                continue; // Restart main loop
+                continue;
             }
             cs = applyOutcome.cs();
             es = applyOutcome.es();
 
-            // After a successful apply, consider compacting the turn into a clean, synthetic summary.
-            // Only do this if the turn had more than a single user/AI pair; for simple one-shot turns,
+            // After a successful apply, compact the turn into a clean, synthetic summary
+            // if the turn had more than a single user/AI pair; for simple one-shot turns,
             // keep the original messages for clarity.
             if (es.blocksAppliedWithoutBuild() > 0) {
                 int msgsThisTurn = cs.taskMessages().size() - cs.turnStartIndex();
@@ -208,21 +197,29 @@ public class CodeAgent {
                 }
             }
 
-            // VERIFY PHASE runs the build
+            // VERIFY or finish if build is deferred
             assert es.pendingBlocks().isEmpty() : es;
-            if (!options.contains(Option.DEFER_BUILD)) {
-                var verifyOutcome = verifyPhase(cs, es, metrics);
-                if (verifyOutcome instanceof Step.Retry retryVerify) {
-                    cs = retryVerify.cs();
-                    es = retryVerify.es();
-                    continue;
-                }
-                if (verifyOutcome instanceof Step.Fatal fatalVerify) {
-                    stopDetails = fatalVerify.stopDetails();
-                    break;
-                }
-                throw new IllegalStateException("verifyPhase returned unexpected Step type " + verifyOutcome);
+
+            if (options.contains(Option.DEFER_BUILD)) {
+                reportComplete(
+                        es.blocksAppliedWithoutBuild() > 0
+                                ? "Edits applied. Build/check deferred."
+                                : "No edits to apply. Build/check deferred.");
+                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
+                break;
             }
+
+            var verifyOutcome = verifyPhase(cs, es, metrics);
+            if (verifyOutcome instanceof Step.Retry retryVerify) {
+                cs = retryVerify.cs();
+                es = retryVerify.es();
+                continue;
+            }
+            if (verifyOutcome instanceof Step.Fatal fatalVerify) {
+                stopDetails = fatalVerify.stopDetails();
+                break;
+            }
+            throw new IllegalStateException("verifyPhase returned unexpected Step type " + verifyOutcome);
         }
 
         // everyone reports their own reasons for stopping, except for interruptions
@@ -265,10 +262,30 @@ public class CodeAgent {
                         .anyMatch(f -> f.read()
                                 .map(s -> s.contains("BRK_CONFLICT_END"))
                                 .orElse(false));
-        var instructionsFlags = hasMergeMarkers
-                ? EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS)
-                : Set.<CodePrompts.InstructionsFlags>of();
-        return instructionsFlags;
+        return hasMergeMarkers ? EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS) : Set.of();
+    }
+
+    /** Multi-file mode: no singleFile, no extra read-only messages, flags auto-detected. */
+    public TaskResult runTask(String userInput, Set<Option> options) {
+        BiFunction<ConversationState, EditState, List<ChatMessage>> messagesSupplier = (cs, es) -> {
+            try {
+                return CodePrompts.instance.collectCodeMessages(
+                        contextManager,
+                        model,
+                        EditBlockParser.instance,
+                        cs.taskMessages(),
+                        requireNonNull(cs.nextRequest(), "nextRequest must be set before sending to LLM"),
+                        es.changedFiles(),
+                        Set.of());
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                throw new RuntimeException(e);
+            }
+        };
+
+        Supplier<Set<CodePrompts.InstructionsFlags>> flagsSupplier = this::getInstructionsFlags;
+
+        return runTaskInternal(userInput, options, messagesSupplier, flagsSupplier);
     }
 
     public TaskResult runSingleFileEdit(
@@ -276,108 +293,22 @@ public class CodeAgent {
             String instructions,
             List<ChatMessage> readOnlyMessages,
             Set<CodePrompts.InstructionsFlags> flags) {
-        // 0.  Setup: coder, parser, initial messages, and initial state
-        var coder = contextManager.getLlm(model, "Code (single-file): " + instructions, true);
-        coder.setOutput(io);
 
-        EditBlockParser parser = EditBlockParser.instance;
-
-        UserMessage initialRequest = CodePrompts.instance.codeRequest(
-                instructions, CodePrompts.instance.codeReminder(contextManager.getService(), model), parser, flags);
-
-        var conversationState = new ConversationState(new ArrayList<>(), initialRequest, 0);
-        var editState = new EditState(new ArrayList<>(), 0, 0, 0, 0, "", new HashSet<>(), new HashMap<>());
-
-        logger.debug("Code Agent engaged in single-file mode for %s: `%s…`"
-                .formatted(file.getFileName(), LogDescription.getShortDescription(instructions)));
-
-        TaskResult.StopDetails stopDetails;
-
-        // 1.  Main FSM loop (request → parse → apply)
-        while (true) {
-            // ----- 1-a.  Construct messages for this turn --------------------
-            List<ChatMessage> llmMessages = CodePrompts.instance.getSingleFileCodeMessages(
+        BiFunction<ConversationState, EditState, List<ChatMessage>> messagesSupplier = (cs, es) -> {
+            return CodePrompts.instance.getSingleFileCodeMessages(
                     contextManager.getProject().getStyleGuide(),
-                    parser,
+                    EditBlockParser.instance,
                     readOnlyMessages,
-                    conversationState.taskMessages(),
-                    requireNonNull(conversationState.nextRequest(), "nextRequest must be set before sending to LLM"),
+                    cs.taskMessages(),
+                    requireNonNull(cs.nextRequest(), "nextRequest must be set before sending to LLM"),
                     file,
                     flags);
+        };
 
-            // ----- 1-b.  Send to LLM -----------------------------------------
-            StreamingResult streamingResult;
-            try {
-                streamingResult = coder.sendRequest(llmMessages, true);
-            } catch (InterruptedException ie) {
-                Thread.currentThread().interrupt();
-                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED);
-                break;
-            }
+        Supplier<Set<CodePrompts.InstructionsFlags>> flagsSupplier = () -> flags;
 
-            // ----- 1-c.  REQUEST PHASE ---------------------------------------
-            var step = requestPhase(conversationState, editState, streamingResult, null);
-            if (step instanceof Step.Fatal(TaskResult.StopDetails details)) {
-                stopDetails = details;
-                break;
-            }
-            conversationState = step.cs();
-            editState = step.es();
-
-            // ----- 1-d.  PARSE PHASE -----------------------------------------
-            step = parsePhase(
-                    conversationState, editState, streamingResult.text(), streamingResult.isPartial(), parser, null);
-            if (step instanceof Step.Retry retry) {
-                conversationState = retry.cs();
-                editState = retry.es();
-                continue; // back to while-loop top
-            }
-            if (step instanceof Step.Fatal(TaskResult.StopDetails details)) {
-                stopDetails = details;
-                break;
-            }
-            conversationState = step.cs();
-            editState = step.es();
-
-            // ----- 1-e.  APPLY PHASE -----------------------------------------
-            step = applyPhase(conversationState, editState, parser, null);
-            if (step instanceof Step.Retry retry2) {
-                conversationState = retry2.cs();
-                editState = retry2.es();
-                continue;
-            }
-            if (step instanceof Step.Fatal fatal3) {
-                stopDetails = fatal3.stopDetails();
-                break;
-            }
-            conversationState = step.cs();
-            editState = step.es();
-
-            // ----- 1-f.  Termination checks ----------------------------------
-            if (editState.pendingBlocks().isEmpty()) {
-                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
-                break;
-            }
-
-            if (Thread.currentThread().isInterrupted()) {
-                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED);
-                break;
-            }
-        }
-
-        // 2.  Produce TaskResult
-        assert stopDetails != null;
-        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages(false));
-
-        String finalAction = (stopDetails.reason() == TaskResult.StopReason.SUCCESS)
-                ? instructions
-                : instructions + " [" + stopDetails.reason().name() + "]";
-
-        return new TaskResult(
-                "Code: " + finalAction,
-                new ContextFragment.TaskFragment(contextManager, finalMessages, instructions),
-                editState.changedFiles(),
-                stopDetails);
+        // Defer build for single-file edits as intended
+        return runTaskInternal(instructions, EnumSet.of(Option.DEFER_BUILD), messagesSupplier, flagsSupplier);
     }
 
     void report(String message) {
@@ -607,10 +538,6 @@ public class CodeAgent {
             super(stopDetails.reason().name() + ": " + stopDetails.explanation());
             this.stopDetails = stopDetails;
         }
-
-        public EditStopException(TaskResult.StopReason stopReason) {
-            this(new TaskResult.StopDetails(stopReason));
-        }
     }
 
     /**
@@ -771,7 +698,7 @@ public class CodeAgent {
             int succeededCount = attemptedBlockCount - failedBlocks.size();
             int newBlocksAppliedWithoutBuild = es.blocksAppliedWithoutBuild() + succeededCount;
 
-            // Update originalFileContents in the workspace state being built for the next step
+            // Update originalFileContents in the EditState being built for the next step
             Map<ProjectFile, String> nextOriginalFileContents = new HashMap<>(es.originalFileContents());
             editResult.originalContents().forEach(nextOriginalFileContents::putIfAbsent);
 
@@ -1052,7 +979,8 @@ public class CodeAgent {
             String lastBuildError,
             Set<ProjectFile> changedFiles,
             Map<ProjectFile, String> originalFileContents) {
-        /** Returns a new WorkspaceState with updated pending blocks and parse failures. */
+
+        /** Returns a new EditState with updated pending blocks and parse failures. */
         EditState withPendingBlocks(List<EditBlock.SearchReplaceBlock> newPendingBlocks, int newParseFailures) {
             return new EditState(
                     newPendingBlocks,
@@ -1066,8 +994,8 @@ public class CodeAgent {
         }
 
         /**
-         * Returns a new WorkspaceState after a build failure, updating the error message. Also resets the per-turn
-         * baseline (originalFileContents) for the next turn.
+         * Returns a new EditState after a build failure, updating the error message. Also resets the per-turn baseline
+         * (originalFileContents) for the next turn.
          */
         EditState afterBuildFailure(String newBuildError) {
             return new EditState(
@@ -1081,7 +1009,7 @@ public class CodeAgent {
                     new HashMap<>()); // Clear per-turn baseline
         }
 
-        /** Returns a new WorkspaceState after applying blocks, updating relevant fields. */
+        /** Returns a new EditState after applying blocks, updating relevant fields. */
         EditState afterApply(
                 List<EditBlock.SearchReplaceBlock> newPendingBlocks,
                 int newApplyFailures,
