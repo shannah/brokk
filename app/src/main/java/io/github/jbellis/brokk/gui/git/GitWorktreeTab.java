@@ -650,11 +650,9 @@ public class GitWorktreeTab extends JPanel {
                     optionPane.setValue(JOptionPane.OK_OPTION);
                     dialog.dispose();
                 });
-                // Style OK button as bright blue with white text
-                okButton.setBackground(new Color(0x1F6FEB));
-                okButton.setForeground(Color.WHITE);
+                io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
 
-                MaterialButton cancelButton = new MaterialButton(UIManager.getString("OptionPane.cancelButtonText"));
+                JButton cancelButton = new JButton(UIManager.getString("OptionPane.cancelButtonText"));
                 cancelButton.addActionListener(e -> {
                     optionPane.setValue(JOptionPane.CANCEL_OPTION);
                     dialog.dispose();

@@ -51,6 +51,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicLong;
 import java.util.function.Consumer;
+import java.util.function.Supplier;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.MatteBorder;
@@ -93,8 +94,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                                    More tips are available in the Getting Started section in the Output panel above.
                                                    """;
 
-    private static final Color ACTION_GO_BLUE = new Color(0x1F6FEB);
     private final Color defaultActionButtonBg;
+    private final Color secondaryActionButtonBg;
 
     private final Chrome chrome;
     private final JTextArea instructionsArea;
@@ -324,50 +325,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Initial checkbox visibility is handled by the optionsPanel (CardLayout) in buildBottomPanel().
 
+        this.defaultActionButtonBg = UIManager.getColor("Button.default.background");
+        // this is when the button is in the blocking state
+        this.secondaryActionButtonBg = UIManager.getColor("Button.background");
         // Single Action button (Go/Stop toggle) — rounded visual style via custom painting
-        actionButton = new JButton() {
-            private static final long serialVersionUID = 1L;
+        actionButton = new ThemeAwareRoundedButton(
+                () -> isActionRunning(), this.secondaryActionButtonBg, this.defaultActionButtonBg);
 
-            @Override
-            protected void paintComponent(Graphics g) {
-                // Paint rounded background
-                Graphics2D g2 = (Graphics2D) g.create();
-                try {
-                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    int arc = 12;
-                    Color bg = getBackground();
-                    if (!isEnabled()) {
-                        Color disabled = UIManager.getColor("Button.disabledBackground");
-                        if (disabled != null) bg = disabled;
-                    } else if (getModel().isPressed()) {
-                        bg = bg.darker();
-                    } else if (getModel().isRollover()) {
-                        bg = bg.brighter();
-                    }
-                    g2.setColor(bg);
-                    g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
-                } finally {
-                    g2.dispose();
-                }
-                // Let the button render its icon/text on top
-                super.paintComponent(g);
-            }
-
-            @Override
-            protected void paintBorder(Graphics g) {
-                Graphics2D g2 = (Graphics2D) g.create();
-                try {
-                    g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
-                    int arc = 12;
-                    Color borderColor = UIManager.getColor("Component.borderColor");
-                    if (borderColor == null) borderColor = Color.GRAY;
-                    g2.setColor(borderColor);
-                    g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
-                } finally {
-                    g2.dispose();
-                }
-            }
-        };
         KeyStroke submitKs = KeyStroke.getKeyStroke(
                 KeyEvent.VK_ENTER, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
         actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
@@ -377,11 +341,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButton.setBorder(BorderFactory.createEmptyBorder(0, 0, 0, 0));
         actionButton.setRolloverEnabled(true);
         actionButton.addActionListener(e -> onActionButtonPressed());
-
-        // Initialize default background color and set initial blue color
-        Color uiDefault = UIManager.getColor("Button.background");
-        this.defaultActionButtonBg = (uiDefault != null) ? uiDefault : actionButton.getBackground();
-        actionButton.setBackground(ACTION_GO_BLUE);
+        actionButton.setBackground(this.defaultActionButtonBg);
 
         modelSelector = new ModelSelector(chrome);
         modelSelector.selectConfig(chrome.getProject().getCodeModelConfig());
@@ -1963,11 +1923,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setText(null);
             actionButton.setEnabled(true);
             actionButton.setToolTipText("Cancel the current operation");
-            actionButton.setBackground(defaultActionButtonBg);
+            actionButton.setBackground(secondaryActionButtonBg);
         } else {
             // If there is no running action, keep the action button enabled so the user can start an action.
             actionButton.setEnabled(true);
-            actionButton.setBackground(ACTION_GO_BLUE);
+            actionButton.setBackground(defaultActionButtonBg);
         }
     }
 
@@ -2005,14 +1965,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setIcon(Icons.STOP);
             actionButton.setText(null);
             actionButton.setToolTipText("Cancel the current operation");
-            actionButton.setBackground(defaultActionButtonBg);
+            actionButton.setBackground(secondaryActionButtonBg);
         } else {
             actionButton.setIcon(Icons.ARROW_WARM_UP);
             actionButton.setText(null);
             actionButton.setToolTipText("Run the selected action" + " (" + formatKeyStroke(submitKs) + ")");
-            actionButton.setBackground(ACTION_GO_BLUE);
+            actionButton.setBackground(defaultActionButtonBg);
         }
         actionButton.setEnabled(true);
+
+        // Ensure the action button is the root pane's default button so Enter triggers it by default.
+        // This mirrors the intended "default" behavior for the Go action.
+        var root = chrome.getFrame().getRootPane();
+        if (root != null) {
+            root.setDefaultButton(actionButton);
+        }
 
         // Ensure storedAction is consistent with current UI
         if (!modeSwitch.isSelected()) {
@@ -2248,6 +2215,87 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         return (float) (dot / denominator);
+    }
+
+    private static class ThemeAwareRoundedButton extends JButton implements ThemeAware {
+        private static final long serialVersionUID = 1L;
+        private final Supplier<Boolean> isActionRunning;
+        private final Color secondaryActionButtonBg;
+        private final Color defaultActionButtonBg;
+
+        public ThemeAwareRoundedButton(
+                Supplier<Boolean> isActionRunning, Color secondaryActionButtonBg, Color defaultActionButtonBg) {
+            super();
+            this.isActionRunning = isActionRunning;
+            this.secondaryActionButtonBg = secondaryActionButtonBg;
+            this.defaultActionButtonBg = defaultActionButtonBg;
+        }
+
+        @Override
+        protected void paintComponent(Graphics g) {
+            // Paint rounded background (same behavior as previous anonymous class)
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int arc = 12;
+                Color bg = getBackground();
+                if (!isEnabled()) {
+                    Color disabled = UIManager.getColor("Button.disabledBackground");
+                    if (disabled != null) bg = disabled;
+                } else if (getModel().isPressed()) {
+                    bg = bg.darker();
+                } else if (getModel().isRollover()) {
+                    bg = bg.brighter();
+                }
+                g2.setColor(bg);
+                g2.fillRoundRect(0, 0, getWidth(), getHeight(), arc, arc);
+            } finally {
+                g2.dispose();
+            }
+            super.paintComponent(g);
+        }
+
+        @Override
+        protected void paintBorder(Graphics g) {
+            Graphics2D g2 = (Graphics2D) g.create();
+            try {
+                g2.setRenderingHint(RenderingHints.KEY_ANTIALIASING, RenderingHints.VALUE_ANTIALIAS_ON);
+                int arc = 12;
+                Color borderColor = UIManager.getColor("Component.borderColor");
+                if (borderColor == null) borderColor = Color.GRAY;
+                g2.setColor(borderColor);
+                g2.drawRoundRect(0, 0, getWidth() - 1, getHeight() - 1, arc, arc);
+            } finally {
+                g2.dispose();
+            }
+        }
+
+        @Override
+        public void applyTheme(GuiTheme guiTheme, boolean wordWrap) {
+            if (this.isActionRunning.get()) {
+                setBackground(this.secondaryActionButtonBg);
+            } else {
+                setBackground(this.defaultActionButtonBg);
+            }
+            // Mark for any global reapply mechanism
+            // putClientProperty("brokk.primaryButton", true);
+
+            // Update visuals
+            // revalidate();
+            // repaint();
+        }
+
+        /**
+         * Backwards-compatible single-argument applyTheme method.
+         *
+         * <p>Some ThemeAware interface variants (depending on codebase versions) declare a single-argument
+         * applyTheme(GuiTheme). Provide this overload so the class fulfills that contract as well.
+         */
+        @Override
+        public void applyTheme(GuiTheme guiTheme) {
+            // Delegate to the two-argument variant with a sensible default for wordWrap.
+            applyTheme(guiTheme, false);
+        }
     }
 
     private final class AtTriggerFilter extends DocumentFilter {

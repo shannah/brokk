@@ -16,6 +16,8 @@ import java.awt.Component;
 import java.awt.Dimension;
 import java.awt.FlowLayout;
 import java.awt.Font;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.io.IOException;
@@ -36,6 +38,8 @@ import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableColumnModel;
 import javax.swing.table.TableRowSorter;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -50,6 +54,8 @@ public final class DependenciesPanel extends JPanel {
         void dependencyImportFinished(String name);
     }
 
+    private static final Logger logger = LogManager.getLogger(DependenciesPanel.class);
+
     private final Chrome chrome;
     private final DefaultTableModel tableModel;
     private final JTable table;
@@ -57,6 +63,11 @@ public final class DependenciesPanel extends JPanel {
     private final Set<ProjectFile> initialFiles;
     private boolean isProgrammaticChange = false;
     private static final String LOADING = "Loading...";
+
+    // UI pieces used to align the bottom area with WorkspacePanel
+    private JPanel southContainerPanel;
+    private JPanel addRemovePanel;
+    private JPanel bottomSpacer;
 
     private static class NumberRenderer extends DefaultTableCellRenderer {
         public NumberRenderer() {
@@ -205,10 +216,10 @@ public final class DependenciesPanel extends JPanel {
         contentPanel.add(scrollPane, BorderLayout.CENTER);
 
         // --- South Panel: Buttons (right aligned) ---
-        var southContainerPanel = new JPanel(new BorderLayout());
+        southContainerPanel = new JPanel(new BorderLayout());
 
         // Add/Remove on the right
-        var addRemovePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, Constants.H_GAP, 0));
+        addRemovePanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, Constants.H_GAP, 0));
         var addButton = new MaterialButton();
         addButton.setIcon(Icons.ADD);
         var removeButton = new MaterialButton();
@@ -217,6 +228,12 @@ public final class DependenciesPanel extends JPanel {
         addRemovePanel.add(removeButton);
 
         southContainerPanel.add(addRemovePanel, BorderLayout.EAST);
+
+        // Spacer to align with the workspace bottom summary area (kept invisible)
+        bottomSpacer = new JPanel();
+        bottomSpacer.setOpaque(false);
+        southContainerPanel.add(bottomSpacer, BorderLayout.SOUTH);
+
         contentPanel.add(southContainerPanel, BorderLayout.SOUTH);
 
         // Let the surrounding split pane control the overall height.
@@ -314,6 +331,34 @@ public final class DependenciesPanel extends JPanel {
     public void addNotify() {
         super.addNotify();
         loadDependenciesAsync();
+
+        // Ensure spacer size is set after initial layout
+        SwingUtilities.invokeLater(this::updateBottomSpacer);
+
+        // Update spacer when the Workspace layout changes
+        var workspacePanel = chrome.getContextPanel();
+        if (workspacePanel != null) {
+            workspacePanel.addComponentListener(new ComponentAdapter() {
+                @Override
+                public void componentResized(ComponentEvent e) {
+                    updateBottomSpacer();
+                }
+
+                @Override
+                public void componentShown(ComponentEvent e) {
+                    updateBottomSpacer();
+                }
+            });
+
+            // Listen for explicit bottom-controls height changes from WorkspacePanel
+            workspacePanel.addBottomControlsListener(
+                    new io.github.jbellis.brokk.gui.WorkspacePanel.BottomControlsListener() {
+                        @Override
+                        public void bottomControlsHeightChanged(int newHeight) {
+                            updateBottomSpacer();
+                        }
+                    });
+        }
     }
 
     private void addPendingDependencyRow(String name) {
@@ -448,6 +493,25 @@ public final class DependenciesPanel extends JPanel {
             } finally {
                 isProgrammaticChange = false;
             }
+        }
+    }
+
+    private void updateBottomSpacer() {
+        try {
+            var wp = chrome.getContextPanel();
+            int target = (wp != null) ? wp.getBottomControlsPreferredHeight() : 0;
+            int controls = (addRemovePanel != null) ? addRemovePanel.getPreferredSize().height : 0;
+            int filler = Math.max(0, target - controls);
+            if (bottomSpacer != null) {
+                bottomSpacer.setPreferredSize(new Dimension(0, filler));
+                bottomSpacer.setMinimumSize(new Dimension(0, filler));
+            }
+            if (southContainerPanel != null) {
+                southContainerPanel.revalidate();
+                southContainerPanel.repaint();
+            }
+        } catch (Exception e) {
+            logger.debug("Error updating dependencies bottom spacer", e);
         }
     }
 

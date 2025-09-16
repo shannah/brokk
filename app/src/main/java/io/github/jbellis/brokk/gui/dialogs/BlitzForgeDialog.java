@@ -983,11 +983,10 @@ public class BlitzForgeDialog extends JDialog {
         // Buttons Panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         var okButton = new MaterialButton("OK");
-        var cancelButton = new MaterialButton("Cancel");
+        var cancelButton = new JButton("Cancel");
 
         // Style OK button as primary action (bright blue with white text)
-        okButton.setBackground(new Color(0x1F6FEB));
-        okButton.setForeground(Color.WHITE);
+        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
 
         okButton.addActionListener(e -> onOK());
         cancelButton.addActionListener(e -> setVisible(false));
