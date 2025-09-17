@@ -8,6 +8,7 @@ import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Objects;
+import java.util.Optional;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -57,15 +58,31 @@ public class JDeploySettingsUtil {
             return;
         }
 
-        var brokkDir = Path.of(home, ".brokk");
+        var jdeployDir = Path.of(home, ".jdeploy", "gh-packages");
         try {
-            Files.createDirectories(brokkDir);
+            Files.createDirectories(jdeployDir);
         } catch (IOException e) {
-            logger.warn("Failed to create user .brokk directory {}: {}", brokkDir, e.getMessage());
+            logger.warn("Failed to create user .jdeploy directory {}: {}", jdeployDir, e.getMessage());
             return;
         }
 
-        var userArgfile = brokkDir.resolve(ARGFILE_NAME);
+        Optional<Path> maybeAppDir;
+        try (var childStream = Files.list(jdeployDir)) {
+            maybeAppDir = childStream
+                    .filter(Files::isDirectory)
+                    .filter(dir -> dir.getFileName().toString().endsWith(".brokk"))
+                    .findFirst();
+            if (maybeAppDir.isEmpty())
+                throw new RuntimeException(
+                        "Unable to find Brokk JDeploy directory! Brokk must not be running via JDeploy.");
+        } catch (Exception e) {
+            logger.error(
+                    "Exception encountered while determining application directory! Memory settings will not be persisted.");
+            return;
+        }
+        final Path appDir = maybeAppDir.get();
+
+        var userArgfile = appDir.resolve(ARGFILE_NAME);
         List<String> existingLines = new ArrayList<>();
         if (Files.exists(userArgfile)) {
             try {
