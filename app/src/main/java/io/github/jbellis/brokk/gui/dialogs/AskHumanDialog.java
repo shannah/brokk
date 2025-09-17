@@ -59,7 +59,6 @@ public final class AskHumanDialog {
                     final String[] resultHolder = {null}; // To store the answer from listeners
 
                     var okButton = new JButton("OK");
-                    io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
                     var cancelButton = new JButton("Cancel");
 
                     // Disable OK button initially

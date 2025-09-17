@@ -398,9 +398,11 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // Create a right-hand Dependencies drawer beside the Workspace
         workspaceDependenciesSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
         DependenciesDrawerPanel dependenciesDrawerPanel = new DependenciesDrawerPanel(this, workspaceDependenciesSplit);
-        workspaceDependenciesSplit.setResizeWeight(1.0); // Give priority to workspace on resize
+        workspaceDependenciesSplit.setResizeWeight(0.67); // Give more space to workspace by default
         workspaceDependenciesSplit.setLeftComponent(workspacePanel);
         workspaceDependenciesSplit.setRightComponent(dependenciesDrawerPanel);
+        // Open dependencies drawer before first layout to avoid initial motion
+        dependenciesDrawerPanel.openInitially();
 
         workspaceTopContainer = new JPanel(new BorderLayout());
         workspaceTopContainer.add(workspaceDependenciesSplit, BorderLayout.CENTER);
@@ -1789,6 +1791,10 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     public HistoryOutputPanel getHistoryOutputPanel() {
         return historyOutputPanel;
+    }
+
+    public TerminalDrawerPanel getTerminalDrawer() {
+        return terminalDrawer;
     }
 
     public Action getGlobalUndoAction() {

@@ -656,6 +656,7 @@ public class WorkspacePanel extends JPanel {
 
     private final PopupMenuMode popupMenuMode;
     private JPanel locSummaryPanel;
+    private JPanel summaryWithAdd;
     private JPanel warningPanel; // Panel for warning messages
     private JPanel analyzerRebuildPanel;
     private @Nullable JLabel analyzerRebuildSpinner;
@@ -669,6 +670,9 @@ public class WorkspacePanel extends JPanel {
 
     @Nullable
     private JMenuItem dropAllMenuItem = null;
+
+    // Observers for bottom-controls height changes
+    private final List<BottomControlsListener> bottomControlsListeners = new ArrayList<>();
 
     // Buttons
     // Table popup menu (when no row is selected)
@@ -1139,7 +1143,7 @@ public class WorkspacePanel extends JPanel {
         locSummaryPanel.setBorder(BorderFactory.createEmptyBorder());
 
         // Container to hold the summary labels and the add button
-        var summaryWithAdd = new JPanel(new BorderLayout());
+        summaryWithAdd = new JPanel(new BorderLayout());
         summaryWithAdd.setOpaque(false);
         summaryWithAdd.add(locSummaryPanel, BorderLayout.CENTER);
 
@@ -1493,6 +1497,9 @@ public class WorkspacePanel extends JPanel {
 
         revalidate();
         repaint();
+
+        // Notify listeners that bottom controls height may have changed
+        fireBottomControlsHeightChanged();
     }
 
     /** Called by Chrome to refresh the table if context changes */
@@ -2177,6 +2184,49 @@ public class WorkspacePanel extends JPanel {
         };
     }
 
+    /**
+     * Return the combined preferred height of the bottom controls (summary, warnings, analyzer rebuild panel) so other
+     * panels can align to it.
+     */
+    public int getBottomControlsPreferredHeight() {
+        int h = 0;
+        // Use the overall summary container (includes the add-button wrapper).
+        h += summaryWithAdd.getPreferredSize().height;
+        // Only include warning and analyzer panels when they are visible.
+        if (warningPanel.isVisible()) {
+            h += warningPanel.getPreferredSize().height;
+        }
+        if (analyzerRebuildPanel.isVisible()) {
+            h += analyzerRebuildPanel.getPreferredSize().height;
+        }
+        return h;
+    }
+
+    // --- Bottom controls height observer API ---
+
+    public interface BottomControlsListener {
+        void bottomControlsHeightChanged(int newHeight);
+    }
+
+    public void addBottomControlsListener(BottomControlsListener l) {
+        bottomControlsListeners.add(l);
+    }
+
+    public void removeBottomControlsListener(BottomControlsListener l) {
+        bottomControlsListeners.remove(l);
+    }
+
+    private void fireBottomControlsHeightChanged() {
+        int h = getBottomControlsPreferredHeight();
+        for (var l : bottomControlsListeners) {
+            try {
+                l.bottomControlsHeightChanged(h);
+            } catch (Exception ignore) {
+                // Listener exceptions should not affect UI flow
+            }
+        }
+    }
+
     /** Calculate cost estimate for only the model currently selected in InstructionsPanel. */
     private String calculateCostEstimate(int inputTokens, Service service) {
         var instructionsPanel = chrome.getInstructionsPanel();
@@ -2272,6 +2322,9 @@ public class WorkspacePanel extends JPanel {
             analyzerRebuildPanel.setVisible(true);
             analyzerRebuildPanel.revalidate();
             analyzerRebuildPanel.repaint();
+
+            // Notify listeners about layout change
+            fireBottomControlsHeightChanged();
         });
     }
 
@@ -2281,6 +2334,9 @@ public class WorkspacePanel extends JPanel {
             analyzerRebuildPanel.setVisible(false);
             analyzerRebuildPanel.revalidate();
             analyzerRebuildPanel.repaint();
+
+            // Notify listeners about layout change
+            fireBottomControlsHeightChanged();
         });
     }
 

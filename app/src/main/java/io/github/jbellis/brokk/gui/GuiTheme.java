@@ -33,8 +33,6 @@ public class GuiTheme {
 
     // Track registered popup menus that need theme updates
     private final List<JPopupMenu> popupMenus = new ArrayList<>();
-    // Ensure global button styling listener is registered only once
-    private static volatile boolean buttonStylingRegistered = false;
 
     /**
      * Creates a new theme manager
@@ -69,16 +67,13 @@ public class GuiTheme {
 
             // Apply the theme to the Look and Feel
             if (isDark) {
-                com.formdev.flatlaf.FlatDarkLaf.setup();
+                com.formdev.flatlaf.FlatDarculaLaf.setup();
             } else {
-                com.formdev.flatlaf.FlatLightLaf.setup();
+                com.formdev.flatlaf.FlatIntelliJLaf.setup();
             }
 
             // Register custom icons for this theme
             registerCustomIcons(isDark);
-
-            // Register global button styling so plain JButtons receive MaterialButton-like defaults.
-            registerGlobalButtonStyling();
 
             // Apply theme to RSyntaxTextArea components
             applyThemeAsync(themeName, wordWrap);
@@ -103,6 +98,42 @@ public class GuiTheme {
         if (mainScrollPane != null) {
             mainScrollPane.revalidate();
         }
+
+        // Re-apply primary button styling for buttons that were explicitly styled earlier.
+        // We do this after updateComponentTreeUI so the components re-adopt UIManager colors.
+        SwingUtilities.invokeLater(() -> {
+            java.util.function.Consumer<Component> recurse = new java.util.function.Consumer<Component>() {
+                @Override
+                public void accept(Component c) {
+                    if (c instanceof javax.swing.AbstractButton b) {
+                        Object prop = b.getClientProperty("brokk.primaryButton");
+                        if (Boolean.TRUE.equals(prop)) {
+                            io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(b);
+                        }
+                    }
+                    if (c instanceof Container container) {
+                        for (Component child : container.getComponents()) {
+                            accept(child);
+                        }
+                    }
+                }
+            };
+
+            // Apply to the main frame content
+            recurse.accept(frame.getContentPane());
+
+            // Apply to any displayable dialogs (so buttons in dialogs also re-style)
+            for (Window w : Window.getWindows()) {
+                if (w instanceof JDialog d && d.isDisplayable()) {
+                    recurse.accept(d.getContentPane());
+                }
+            }
+
+            // Apply to tracked popup menus as well
+            for (JPopupMenu menu : popupMenus) {
+                recurse.accept(menu);
+            }
+        });
     }
 
     private static String getThemeName(boolean isDark) {
@@ -360,68 +391,5 @@ public class GuiTheme {
             icon = new ImageIcon(url);
         }
         UIManager.put(key, icon);
-    }
-
-    /**
-     * Ensure plain JButtons receive MaterialButton-like defaults: - set a conservative Button.foreground UIDefault -
-     * walk existing windows and apply SwingUtil.applyMaterialStyle to any JButton - register a single AWTEventListener
-     * to style buttons/components added later
-     *
-     * <p>This method is idempotent and safe to call multiple times (guarded by buttonStylingRegistered).
-     */
-    private void registerGlobalButtonStyling() {
-        // Run on EDT to mutate UI safely
-        if (!javax.swing.SwingUtilities.isEventDispatchThread()) {
-            javax.swing.SwingUtilities.invokeLater(this::registerGlobalButtonStyling);
-            return;
-        }
-
-        // 1) Conservative UIDefault so LAFs that honor Button.foreground pick a link-like color
-        java.awt.Color linkColor = javax.swing.UIManager.getColor("Label.linkForeground");
-        if (linkColor == null) linkColor = javax.swing.UIManager.getColor("Label.foreground");
-        if (linkColor == null) linkColor = java.awt.Color.BLUE;
-        javax.swing.UIManager.put("Button.foreground", linkColor);
-
-        // 2) Walk all existing windows and style any JButtons found
-        java.awt.Window[] windows = java.awt.Window.getWindows();
-        for (java.awt.Window w : windows) {
-            if (w != null && w.isDisplayable()) {
-                walkAndStyle(w);
-            }
-        }
-
-        // 3) Register a single AWTEventListener to style components added at runtime
-        synchronized (GuiTheme.class) {
-            if (buttonStylingRegistered) return;
-            java.awt.Toolkit.getDefaultToolkit()
-                    .addAWTEventListener(
-                            event -> {
-                                // We're only interested in container additions
-                                if (event instanceof java.awt.event.ContainerEvent ce
-                                        && ce.getID() == java.awt.event.ContainerEvent.COMPONENT_ADDED) {
-                                    java.awt.Component added = ce.getChild();
-                                    if (added != null) {
-                                        walkAndStyle(added);
-                                    }
-                                }
-                            },
-                            java.awt.AWTEvent.CONTAINER_EVENT_MASK);
-            buttonStylingRegistered = true;
-            logger.debug("Registered global button styling AWTEventListener");
-        }
-    }
-
-    /** Recursively style any JButton found in the component hierarchy rooted at c. */
-    private static void walkAndStyle(@org.jetbrains.annotations.Nullable java.awt.Component c) {
-        if (c == null) return;
-        if (c instanceof javax.swing.JButton jb) {
-            io.github.jbellis.brokk.gui.SwingUtil.applyMaterialStyle(jb);
-            return;
-        }
-        if (c instanceof java.awt.Container container) {
-            for (java.awt.Component child : container.getComponents()) {
-                walkAndStyle(child);
-            }
-        }
     }
 }

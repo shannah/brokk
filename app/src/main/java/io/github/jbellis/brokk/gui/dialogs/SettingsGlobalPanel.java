@@ -8,6 +8,7 @@ import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.SwingUtil.ThemedIcon;
 import io.github.jbellis.brokk.gui.ThemeAware;
 import io.github.jbellis.brokk.gui.components.BrowserLabel;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.components.McpToolTable;
 import io.github.jbellis.brokk.gui.components.SpinnerIconUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
@@ -564,10 +565,12 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         }
 
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.LEFT));
-        var addButton = new JButton();
+        var addButton = new MaterialButton();
         addButton.setIcon(Icons.ADD);
-        var removeButton = new JButton();
+        addButton.setToolTipText("Add favorite model");
+        var removeButton = new MaterialButton();
         removeButton.setIcon(Icons.REMOVE);
+        removeButton.setToolTipText("Remove selected favorite model");
         buttonPanel.add(addButton);
         buttonPanel.add(removeButton);
 

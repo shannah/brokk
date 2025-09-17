@@ -131,7 +131,6 @@ public class MultiFileSelectionDialog extends JDialog {
         // --- Buttons ---
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         okButton = new JButton("OK");
-        io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
         okButton.addActionListener(e -> doOk());
         cancelButton = new JButton("Cancel");
         cancelButton.addActionListener(e -> {

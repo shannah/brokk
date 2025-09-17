@@ -52,9 +52,10 @@ public class FeedbackDialog extends JDialog {
         includeScreenshotCheckBox = new JCheckBox("Include screenshot");
 
         sendButton = new JButton("Send");
-        SwingUtil.applyPrimaryButtonStyle(sendButton);
         sendButton.setMnemonic(KeyEvent.VK_S);
         sendButton.addActionListener(e -> send());
+        // Apply the theme-aware primary button styling so the Send button appears as the primary action
+        SwingUtil.applyPrimaryButtonStyle(sendButton);
 
         var cancelButton = new JButton("Cancel");
         cancelButton.setMnemonic(KeyEvent.VK_C);

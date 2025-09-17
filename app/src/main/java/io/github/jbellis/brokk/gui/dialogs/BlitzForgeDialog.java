@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.FileSelectionPanel;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog.ParallelOutputMode;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog.PostProcessingOption;
 import io.github.jbellis.brokk.gui.util.Icons;
@@ -252,10 +253,10 @@ public class BlitzForgeDialog extends JDialog {
         // Left side: FileSelectionPanel with "Add Files" button underneath
         JPanel leftPanel = new JPanel(new BorderLayout(0, 5));
         leftPanel.add(fileSelectionPanel, BorderLayout.CENTER);
-        JButton addFilesButton = new JButton();
+        MaterialButton addFilesButton = new MaterialButton();
+        addFilesButton.setIcon(Icons.ADD);
         addFilesButton.setToolTipText("Add Files");
         addFilesButton.addActionListener(e -> addSelectedFilesToTable());
-        addFilesButton.setIcon(Icons.ADD);
         JPanel addButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         addButtonPanel.add(addFilesButton);
         horizontalSplitPane.add(leftPanel);
@@ -312,10 +313,10 @@ public class BlitzForgeDialog extends JDialog {
 
         // The removeButtonPanel remains at BorderLayout.SOUTH
         JPanel removeButtonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton removeButton = new JButton();
+        MaterialButton removeButton = new MaterialButton();
+        removeButton.setIcon(Icons.REMOVE);
         removeButton.setToolTipText("Remove Selected");
         removeButton.addActionListener(e -> removeSelectedFilesFromTable());
-        removeButton.setIcon(Icons.REMOVE);
         removeButtonPanel.add(removeButton);
         // Combine Add Files and Remove Selected on a single bottom row
         JPanel bottomButtonsPanel = new JPanel(new GridLayout(1, 2, H_GAP, 0));
@@ -981,9 +982,11 @@ public class BlitzForgeDialog extends JDialog {
 
         // Buttons Panel
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        JButton okButton = new JButton("OK");
+        var okButton = new MaterialButton("OK");
+        var cancelButton = new JButton("Cancel");
+
+        // Style OK button as primary action (bright blue with white text)
         io.github.jbellis.brokk.gui.SwingUtil.applyPrimaryButtonStyle(okButton);
-        JButton cancelButton = new JButton("Cancel");
 
         okButton.addActionListener(e -> onOK());
         cancelButton.addActionListener(e -> setVisible(false));
