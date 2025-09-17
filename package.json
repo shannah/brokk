@@ -9,7 +9,7 @@
     "version": "1.0.0",
     "jdeploy": {
         "jdk": false,
-        "args": ["@{{ exe.path }}/jdeploy.args"],
+        "args": ["@jdeploy-bundle/jdeploy.args"],
         "files" : [{
             "dir": ".",
             "includes": "jdeploy.args"
