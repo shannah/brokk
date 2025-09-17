@@ -9,16 +9,11 @@
     "version": "1.0.0",
     "jdeploy": {
         "jdk": false,
-        "args": ["@{{ user.home }}/.brokk/jdeploy.args"],
+        "args": ["@{{ exe.path }}/jdeploy.args"],
         "files" : [{
             "dir": ".",
             "includes": "jdeploy.args"
-        },
-          {
-            "dir": "scripts",
-            "includes": "jdeploy-copy-args,jdeploy-copy-args.sh,jdeploy-copy-args.cmd"
-          }],
-        "postCopyScript": "./scripts/jdeploy-copy-args",
+        }],
         "publishTargets": [{
             "name": "github: brokk",
             "type": "GITHUB",
