@@ -229,7 +229,7 @@ public class SearchAgent {
                         You are the Search Agent.
                         Your job:
                           - find and organize code relevant to the user's question or implementation goal,
-                          - aggressively curate the Workspace so a Code Agent can implement next without confusion,
+                          - aggressively curate the Workspace so a Code Agent has all the needed resources to implement next without confusion,
                           - never write code yourself.
 
                         Critical rules:
