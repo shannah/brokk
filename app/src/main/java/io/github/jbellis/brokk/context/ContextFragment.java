@@ -94,11 +94,7 @@ public interface ContextFragment {
             return OUTPUT_TYPES.contains(this);
         }
 
-        /**
-         * This only signals POTENTIAL editability since for project files, their editability depends on whether they're
-         * stored in the editable or read only collection in Context.
-         */
-        public boolean isPotentiallyEditable() {
+        public boolean isEditable() {
             return EDITABLE_TYPES.contains(this);
         }
     }

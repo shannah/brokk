@@ -194,40 +194,17 @@ public class ContextSerializationTest {
     }
 
     private void assertContextsEqual(Context expected, Context actual) throws IOException, InterruptedException {
-        // Compare editable files
-        var expectedEditable = expected.editableFiles()
+        // Compare all fragments sorted by ID
+        var expectedFragments = expected.allFragments()
                 .sorted(java.util.Comparator.comparing(ContextFragment::id))
                 .toList();
-        var actualEditable = actual.editableFiles()
+        var actualFragments = actual.allFragments()
                 .sorted(java.util.Comparator.comparing(ContextFragment::id))
                 .toList();
-        assertEquals(expectedEditable.size(), actualEditable.size(), "Editable files count mismatch");
-        for (int i = 0; i < expectedEditable.size(); i++) {
-            assertContextFragmentsEqual(expectedEditable.get(i), actualEditable.get(i));
-        }
 
-        // Compare readonly files
-        var expectedReadonly = expected.readonlyFiles()
-                .sorted(java.util.Comparator.comparing(ContextFragment::id))
-                .toList();
-        var actualReadonly = actual.readonlyFiles()
-                .sorted(java.util.Comparator.comparing(ContextFragment::id))
-                .toList();
-        assertEquals(expectedReadonly.size(), actualReadonly.size(), "Readonly files count mismatch");
-        for (int i = 0; i < expectedReadonly.size(); i++) {
-            assertContextFragmentsEqual(expectedReadonly.get(i), actualReadonly.get(i));
-        }
-
-        // Compare virtual fragments
-        var expectedVirtuals = expected.virtualFragments()
-                .sorted(java.util.Comparator.comparing(ContextFragment::id))
-                .toList();
-        var actualVirtuals = actual.virtualFragments()
-                .sorted(java.util.Comparator.comparing(ContextFragment::id))
-                .toList();
-        assertEquals(expectedVirtuals.size(), actualVirtuals.size(), "Virtual fragments count mismatch");
-        for (int i = 0; i < expectedVirtuals.size(); i++) {
-            assertContextFragmentsEqual(expectedVirtuals.get(i), actualVirtuals.get(i));
+        assertEquals(expectedFragments.size(), actualFragments.size(), "Fragments count mismatch");
+        for (int i = 0; i < expectedFragments.size(); i++) {
+            assertContextFragmentsEqual(expectedFragments.get(i), actualFragments.get(i));
         }
 
         // Compare task history
@@ -579,7 +556,7 @@ public class ContextSerializationTest {
         // After freezeOnly(), liveProjectPathFragment is turned into a FrozenFragment.
         // Both contexts will reference the *same instance* of this FrozenFragment due to interning by content hash.
         var frozenPathFrag1 = loadedCtx1
-                .editableFiles()
+                .allFragments()
                 .filter(f -> f instanceof FrozenFragment
                         && ((FrozenFragment) f)
                                 .originalClassName()
@@ -589,7 +566,7 @@ public class ContextSerializationTest {
                 .orElseThrow(() -> new AssertionError("Frozen ProjectPathFragment not found in loadedCtx1"));
 
         var frozenPathFrag2 = loadedCtx2
-                .editableFiles()
+                .allFragments()
                 .filter(f -> f instanceof FrozenFragment
                         && ((FrozenFragment) f)
                                 .originalClassName()
@@ -692,7 +669,7 @@ public class ContextSerializationTest {
         // Verify specific GitFileFragment properties after general assertion
         Context loadedCtx = loadedHistory.getHistory().get(0);
         var loadedFragment = (ContextFragment.GitFileFragment) loadedCtx
-                .readonlyFiles()
+                .allFragments()
                 .filter(f -> f.getType() == ContextFragment.FragmentType.GIT_FILE)
                 .findFirst()
                 .orElseThrow();
@@ -721,7 +698,7 @@ public class ContextSerializationTest {
                 originalHistory.getHistory().get(0), loadedHistory.getHistory().get(0));
         Context loadedCtx = loadedHistory.getHistory().get(0);
         var loadedRawFragment = loadedCtx
-                .readonlyFiles()
+                .allFragments()
                 .filter(f -> f.getType()
                         == ContextFragment.FragmentType.EXTERNAL_PATH) // getType on FrozenFragment returns originalType
                 .findFirst()
@@ -755,7 +732,7 @@ public class ContextSerializationTest {
                 originalHistory.getHistory().get(0), loadedHistory.getHistory().get(0));
         Context loadedCtx = loadedHistory.getHistory().get(0);
         var loadedRawFragment = loadedCtx
-                .readonlyFiles()
+                .allFragments()
                 .filter(f -> f.getType()
                         == ContextFragment.FragmentType.IMAGE_FILE) // getType on FrozenFragment returns originalType
                 .findFirst()

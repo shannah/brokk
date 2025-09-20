@@ -49,11 +49,6 @@ public final class TestContextManager implements IContextManager {
         return new HashSet<>(editableFiles);
     }
 
-    @Override
-    public Set<BrokkFile> getReadonlyProjectFiles() {
-        return new HashSet<>(readonlyFiles);
-    }
-
     public void addEditableFile(ProjectFile file) {
         this.editableFiles.add(file);
         this.readonlyFiles.remove(file); // Cannot be both

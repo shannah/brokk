@@ -11,10 +11,7 @@ import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
-import io.github.jbellis.brokk.util.ImageUtil;
 import java.awt.*;
-import java.io.IOException;
-import java.io.UncheckedIOException;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
@@ -151,16 +148,16 @@ public abstract class CodePrompts {
         Context ctx = cm.liveContext();
 
         messages.add(systemMessage(cm, reminder));
+        // FIXME we're supposed to leave the unchanged files in their original position
         if (changedFiles.isEmpty()) {
             messages.addAll(getWorkspaceContentsMessages(ctx));
-        } else {
-            messages.addAll(getWorkspaceContentsMessages(getWorkspaceReadOnlyMessages(ctx), List.of()));
         }
+        messages.addAll(getWorkspaceContentsMessages(ctx));
         messages.addAll(exampleMessages(flags));
         messages.addAll(getHistoryMessages(ctx));
         messages.addAll(taskMessages);
         if (!changedFiles.isEmpty()) {
-            messages.addAll(getWorkspaceContentsMessages(List.of(), getWorkspaceEditableMessages(ctx)));
+            messages.addAll(getWorkspaceContentsMessages(ctx));
         }
         messages.add(request);
 
@@ -273,13 +270,9 @@ public abstract class CodePrompts {
     public static String formatWorkspaceToc(IContextManager cm) {
         var ctx = cm.topContext();
         var editableContents = ctx.getEditableToc();
-        var readOnlyContents = ctx.getReadOnlyToc();
         var workspaceBuilder = new StringBuilder();
         if (!editableContents.isBlank()) {
             workspaceBuilder.append("<editable-toc>\n%s\n</editable-toc>".formatted(editableContents));
-        }
-        if (!readOnlyContents.isBlank()) {
-            workspaceBuilder.append("<readonly-toc>\n%s\n</readonly-toc>".formatted(readOnlyContents));
         }
         return workspaceBuilder.toString();
     }
@@ -484,74 +477,6 @@ public abstract class CodePrompts {
     }
 
     /**
-     * Returns messages containing only the read-only workspace content (files, virtual fragments, etc.). Does not
-     * include editable content or related classes.
-     */
-    public final Collection<ChatMessage> getWorkspaceReadOnlyMessages(Context ctx) {
-        var allContents = new ArrayList<Content>();
-
-        // --- Process Read-Only Fragments from liveContext (Files, Virtual, AutoContext) ---
-        var readOnlyTextFragments = new StringBuilder();
-        var readOnlyImageFragments = new ArrayList<ImageContent>();
-        ctx.getReadOnlyFragments().forEach(fragment -> {
-            if (fragment.isText()) {
-                // Handle text-based fragments
-                String formatted = fragment.format(); // No analyzer
-                if (!formatted.isBlank()) {
-                    readOnlyTextFragments.append(formatted).append("\n\n");
-                }
-            } else if (fragment.getType() == ContextFragment.FragmentType.IMAGE_FILE
-                    || fragment.getType() == ContextFragment.FragmentType.PASTE_IMAGE) {
-                // Handle image fragments - explicitly check for known image fragment types
-                try {
-                    // Convert AWT Image to LangChain4j ImageContent
-                    var l4jImage = ImageUtil.toL4JImage(fragment.image());
-                    readOnlyImageFragments.add(ImageContent.from(l4jImage));
-                    // Add a placeholder in the text part for reference
-                    readOnlyTextFragments.append(fragment.format()).append("\n\n"); // No analyzer
-                } catch (IOException | UncheckedIOException e) {
-                    logger.error("Failed to process image fragment {} for LLM message", fragment.description(), e);
-                    // Add a placeholder indicating the error, do not call removeBadFragment from here
-                    readOnlyTextFragments.append(String.format(
-                            "[Error processing image: %s - %s]\n\n", fragment.description(), e.getMessage()));
-                }
-            } else {
-                // Handle non-text, non-image fragments (e.g., HistoryFragment, TaskFragment)
-                // Just add their formatted representation as text
-                String formatted = fragment.format(); // No analyzer
-                if (!formatted.isBlank()) {
-                    readOnlyTextFragments.append(formatted).append("\n\n");
-                }
-            }
-        });
-
-        if (readOnlyTextFragments.isEmpty() && readOnlyImageFragments.isEmpty()) {
-            return List.of();
-        }
-
-        // Add the combined text content for read-only items if any exists
-        String readOnlyText =
-                """
-                              <workspace_readonly>
-                              Here are the READ ONLY files and code fragments in your Workspace.
-                              Do not edit this code! Images will be included separately if present.
-
-                              %s
-                              </workspace_readonly>
-                              """
-                        .stripIndent()
-                        .formatted(readOnlyTextFragments.toString().trim());
-
-        // text and image content must be distinct
-        allContents.add(new TextContent(readOnlyText));
-        allContents.addAll(readOnlyImageFragments);
-
-        // Create the main UserMessage
-        var readOnlyUserMessage = UserMessage.from(allContents);
-        return List.of(readOnlyUserMessage, new AiMessage("Thank you for the read-only context."));
-    }
-
-    /**
      * Returns messages containing only the editable workspace content. Does not include read-only content or related
      * classes.
      */
@@ -596,52 +521,25 @@ public abstract class CodePrompts {
      *     empty if no content.
      */
     public final Collection<ChatMessage> getWorkspaceContentsMessages(Context ctx) {
-        var readOnlyMessages = getWorkspaceReadOnlyMessages(ctx);
         var editableMessages = getWorkspaceEditableMessages(ctx);
-
-        return getWorkspaceContentsMessages(readOnlyMessages, editableMessages);
-    }
-
-    private List<ChatMessage> getWorkspaceContentsMessages(
-            Collection<ChatMessage> readOnlyMessages, Collection<ChatMessage> editableMessages) {
         // If both are empty and no related classes requested, return empty
-        if (readOnlyMessages.isEmpty() && editableMessages.isEmpty()) {
+        if (editableMessages.isEmpty()) {
             return List.of();
         }
 
         var allContents = new ArrayList<Content>();
         var combinedText = new StringBuilder();
 
-        // Extract text and image content from read-only messages
-        if (!readOnlyMessages.isEmpty()) {
-            var readOnlyUserMessage = readOnlyMessages.stream()
-                    .filter(UserMessage.class::isInstance)
-                    .map(UserMessage.class::cast)
-                    .findFirst();
-            if (readOnlyUserMessage.isPresent()) {
-                var contents = readOnlyUserMessage.get().contents();
-                for (var content : contents) {
-                    if (content instanceof TextContent textContent) {
-                        combinedText.append(textContent.text()).append("\n\n");
-                    } else if (content instanceof ImageContent imageContent) {
-                        allContents.add(imageContent);
-                    }
-                }
-            }
-        }
-
         // Extract text from editable messages
-        if (!editableMessages.isEmpty()) {
-            var editableUserMessage = editableMessages.stream()
-                    .filter(UserMessage.class::isInstance)
-                    .map(UserMessage.class::cast)
-                    .findFirst();
-            if (editableUserMessage.isPresent()) {
-                var contents = editableUserMessage.get().contents();
-                for (var content : contents) {
-                    if (content instanceof TextContent textContent) {
-                        combinedText.append(textContent.text()).append("\n\n");
-                    }
+        var editableUserMessage = editableMessages.stream()
+                .filter(UserMessage.class::isInstance)
+                .map(UserMessage.class::cast)
+                .findFirst();
+        if (editableUserMessage.isPresent()) {
+            var contents = editableUserMessage.get().contents();
+            for (var content : contents) {
+                if (content instanceof TextContent textContent) {
+                    combinedText.append(textContent.text()).append("\n\n");
                 }
             }
         }

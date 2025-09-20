@@ -675,21 +675,6 @@ public class CodeAgent {
                 .filter(file -> !contextManager.getEditableFiles().contains(file))
                 .toList();
 
-        // Check for conflicts with read-only files
-        var readOnlyFiles = filesToAdd.stream()
-                .filter(file -> contextManager.getReadonlyProjectFiles().contains(file))
-                .toList();
-        if (!readOnlyFiles.isEmpty()) {
-            var msg =
-                    "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
-                            .formatted(readOnlyFiles.stream()
-                                    .map(ProjectFile::toString)
-                                    .collect(Collectors.joining(",")));
-            reportComplete(msg);
-            var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
-            throw new EditStopException(new TaskResult.StopDetails(TaskResult.StopReason.READ_ONLY_EDIT, filenames));
-        }
-
         EditBlock.EditResult editResult;
         try {
             editResult = EditBlock.apply(contextManager, io, blocksToApply);

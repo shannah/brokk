@@ -1400,15 +1400,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .collect(Collectors.toSet());
     }
 
-    @Override
-    public Set<BrokkFile> getReadonlyProjectFiles() {
-        return topContext()
-                .readonlyFiles()
-                .filter(pf -> pf instanceof ContextFragment.ProjectPathFragment)
-                .map(pf -> ((ContextFragment.ProjectPathFragment) pf).file())
-                .collect(Collectors.toSet());
-    }
-
     private void captureGitState(Context frozenContext) {
         if (!project.hasGit()) {
             return;
