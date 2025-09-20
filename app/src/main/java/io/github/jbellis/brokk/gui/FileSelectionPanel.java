@@ -72,12 +72,13 @@ public class FileSelectionPanel extends JPanel {
                 config.allowExternalFiles(),
                 config.multiSelect(),
                 config.includeProjectFilesInAutocomplete());
+        // Enable auto-activation on typing (letters) similar to ProjectFilesPanel
+        provider.setAutoActivationRules(true, null);
         var autoCompletion = new AutoCompletion(provider);
-        autoCompletion.setAutoActivationEnabled(false);
-        autoCompletion.setTriggerKey(KeyStroke.getKeyStroke(KeyEvent.VK_SPACE, InputEvent.CTRL_DOWN_MASK));
+        autoCompletion.setAutoActivationEnabled(true);
+        autoCompletion.setAutoActivationDelay(0); // show popup immediately
         autoCompletion.install(fileInputComponent);
-        AutoCompleteUtil.bindCtrlEnter(
-                autoCompletion, fileInputComponent); // Ctrl+Enter on input might imply confirmation
+        AutoCompleteUtil.bindCtrlEnter(autoCompletion, fileInputComponent); // Ctrl+Enter on input might imply confirmation
 
         // 3. FileTree
         tree = new FileSelectionTree(this.project, config.allowExternalFiles(), config.fileFilter());
