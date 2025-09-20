@@ -132,28 +132,27 @@ public class Decompiler {
 
         if (Files.exists(outputDir)) {
             var proceed = new AtomicBoolean(false);
-            var latch = new CountDownLatch(1);
-            SwingUtilities.invokeLater(() -> {
-                try {
-                    int choice = JOptionPane.showConfirmDialog(
-                            io.getFrame(),
-                            """
-                            This dependency appears to exist already.
-                            Output directory: %s
+                    var latch = new CountDownLatch(1);
+                    SwingUtilities.invokeLater(() -> {
+                        try {
+                            int choice = io.showConfirmDialog(
+                                    """
+                                    This dependency appears to exist already.
+                                    Output directory: %s
 
-                            Delete output directory and import again?
-                            (Choosing 'No' will leave the existing files unchanged.)
-                            """
-                                    .formatted(outputDir.toString()),
-                            "Dependency exists",
-                            JOptionPane.YES_NO_OPTION,
-                            JOptionPane.QUESTION_MESSAGE);
-                    proceed.set(choice == JOptionPane.YES_OPTION);
-                } finally {
-                    latch.countDown();
-                }
-            });
-            latch.await();
+                                    Delete output directory and import again?
+                                    (Choosing 'No' will leave the existing files unchanged.)
+                                    """
+                                            .formatted(outputDir.toString()),
+                                    "Dependency exists",
+                                    JOptionPane.YES_NO_OPTION,
+                                    JOptionPane.QUESTION_MESSAGE);
+                            proceed.set(choice == JOptionPane.YES_OPTION);
+                        } finally {
+                            latch.countDown();
+                        }
+                    });
+                    latch.await();
 
             if (proceed.get()) {
                 logger.debug("Removing old dependency contents at {}", outputDir);
