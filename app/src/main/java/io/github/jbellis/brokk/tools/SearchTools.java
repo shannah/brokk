@@ -6,6 +6,7 @@ import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.analyzer.*;
+import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.CommitInfo;
 import io.github.jbellis.brokk.git.GitRepo;
 import java.nio.file.Path;
@@ -420,31 +421,26 @@ public class SearchTools {
         }
 
         StringBuilder result = new StringBuilder();
-        Set<String> processedSources = new HashSet<>(); // Avoid duplicates if multiple names map to same source
+        Set<String> added = new HashSet<>();
 
-        for (String className : classNames) {
-            if (!className.isBlank()) {
-                getAnalyzer()
-                        .as(SourceCodeProvider.class)
-                        .flatMap(scp -> scp.getClassSource(className, true))
-                        .filter(source -> !source.isEmpty())
-                        .filter(processedSources::add)
-                        .ifPresent(classSource -> {
-                            if (!result.isEmpty()) {
-                                result.append("\n\n");
-                            }
-                            // Include filename from analyzer if possible
-                            String filename = getAnalyzer()
-                                    .getFileFor(className)
-                                    .map(ProjectFile::toString)
-                                    .orElse("unknown file");
-                            result.append("Source code of ")
-                                    .append(className)
-                                    .append(" (from ")
-                                    .append(filename)
-                                    .append("):\n\n")
-                                    .append(classSource);
-                        });
+        var analyzer = getAnalyzer();
+        for (String className : classNames.stream().distinct().toList()) {
+            if (className.isBlank()) {
+                continue;
+            }
+            var cuOpt = analyzer.getDefinition(className);
+            if (cuOpt.isPresent() && cuOpt.get().isClass()) {
+                var cu = cuOpt.get();
+                if (added.add(cu.fqName())) {
+                    var fragment = new ContextFragment.CodeFragment(contextManager, cu);
+                    var text = fragment.text();
+                    if (!text.isEmpty()) {
+                        if (!result.isEmpty()) {
+                            result.append("\n\n");
+                        }
+                        result.append(text);
+                    }
+                }
             }
         }
 
@@ -472,20 +468,24 @@ public class SearchTools {
         }
 
         StringBuilder result = new StringBuilder();
-        Set<String> processedMethodSources = new HashSet<>();
+        Set<String> added = new HashSet<>();
 
-        for (String methodName : methodNames) {
-            if (!methodName.isBlank()) {
-                var methodSourceOpt = ((SourceCodeProvider) getAnalyzer()).getMethodSource(methodName, true);
-                if (methodSourceOpt.isPresent()) {
-                    String methodSource = methodSourceOpt.get();
-                    if (!processedMethodSources.contains(methodSource)) {
-                        processedMethodSources.add(methodSource);
+        var analyzer = getAnalyzer();
+        for (String methodName : methodNames.stream().distinct().toList()) {
+            if (methodName.isBlank()) {
+                continue;
+            }
+            var cuOpt = analyzer.getDefinition(methodName);
+            if (cuOpt.isPresent() && cuOpt.get().isFunction()) {
+                var cu = cuOpt.get();
+                if (added.add(cu.fqName())) {
+                    var fragment = new ContextFragment.CodeFragment(contextManager, cu);
+                    var text = fragment.text();
+                    if (!text.isEmpty()) {
                         if (!result.isEmpty()) {
                             result.append("\n\n");
                         }
-                        result.append("// Source for ").append(methodName).append("\n");
-                        result.append(methodSource);
+                        result.append(text);
                     }
                 }
             }

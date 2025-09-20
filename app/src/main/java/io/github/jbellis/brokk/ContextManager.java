@@ -1390,57 +1390,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return llmTaskInProgress.get();
     }
 
-    /**
-     * @return a summary of each fragment in the workspace; for most fragment types this is just the description, but
-     *     for some (SearchFragment) it's the full text and for others (files, skeletons) it's the class summaries.
-     */
-    private String readOnlySummaryDescription(ContextFragment cf) {
-        if (cf.getType().isPathFragment()) {
-            return cf.files().stream().findFirst().map(BrokkFile::toString).orElseGet(() -> {
-                logger.warn("PathFragment type {} with no files: {}", cf.getType(), cf.description());
-                return "Error: PathFragment with no file";
-            });
-        }
-        // If not a PathFragment, it's a VirtualFragment
-        return "\"%s\"".formatted(cf.description());
-    }
-
-    private String editableSummaryDescription(ContextFragment cf) {
-        if (cf.getType().isPathFragment()) {
-            // This PathFragment is editable.
-            return cf.files().stream().findFirst().map(BrokkFile::toString).orElseGet(() -> {
-                logger.warn("Editable PathFragment type {} with no files: {}", cf.getType(), cf.description());
-                return "Error: Editable PathFragment with no file";
-            });
-        }
-
-        // Handle UsageFragment specially.
-        if (cf.getType() == ContextFragment.FragmentType.USAGE) {
-            var files = cf.files().stream().map(ProjectFile::toString).sorted().collect(Collectors.joining(", "));
-            return "[%s] (%s)".formatted(files, cf.description());
-        }
-
-        // Default for other editable VirtualFragments
-        return "\"%s\"".formatted(cf.description());
-    }
-
-    @Override
-    public String getReadOnlySummary() {
-        return topContext()
-                .getReadOnlyFragments()
-                .map(this::readOnlySummaryDescription)
-                .filter(st -> !st.isBlank())
-                .collect(Collectors.joining(", "));
-    }
-
-    @Override
-    public String getEditableSummary() {
-        return topContext()
-                .getEditableFragments()
-                .map(this::editableSummaryDescription)
-                .collect(Collectors.joining(", "));
-    }
-
     @Override
     public Set<ProjectFile> getEditableFiles() {
         return topContext()

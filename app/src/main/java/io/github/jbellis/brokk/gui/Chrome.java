@@ -1323,7 +1323,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             // If it is current *and* is a frozen PathFragment, unfreeze so we can work on
             // a true PathFragment instance (gives us access to BrokkFile, etc.).
             ContextFragment workingFragment;
-            if (isCurrentContext && fragment.getType().isPathFragment() && fragment instanceof FrozenFragment frozen) {
+            if (isCurrentContext && fragment.getType().isPath() && fragment instanceof FrozenFragment frozen) {
                 workingFragment = frozen.unfreeze(contextManager);
             } else {
                 workingFragment = fragment;
@@ -1333,7 +1333,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             var title = "Preview: " + workingFragment.description();
 
             // 2. Output-only fragments (Task / History / Search)
-            if (workingFragment.getType().isOutputFragment()) {
+            if (workingFragment.getType().isOutput()) {
                 var outputFragment = (ContextFragment.OutputFragment) workingFragment;
                 // var escapeHtml = outputFragment.isEscapeHtml();
                 var combinedMessages = new ArrayList<ChatMessage>();
@@ -1386,7 +1386,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             }
 
             // 5. Path fragments (files on disk) – live vs. snapshot decision
-            if (workingFragment.getType().isPathFragment()) {
+            if (workingFragment.getType().isPath()) {
                 // If we were able to unfreeze to a real PathFragment AND it belongs to the
                 // current context, show the live file so the user can edit/save.
                 if (isCurrentContext && workingFragment instanceof ContextFragment.PathFragment pf) {

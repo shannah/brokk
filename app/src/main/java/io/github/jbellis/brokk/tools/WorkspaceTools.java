@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.tools;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
-import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.Completions;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.agents.ContextAgent;
@@ -136,51 +135,46 @@ public class WorkspaceTools {
     }
 
     @Tool(
-            "Add classes to the Workspace by their fully qualified names. This maps class names to their containing files and adds those files for editing. Only call when you have identified specific class names.\")")
+            "Add classes to the Workspace by their fully qualified names. This adds read-only code fragments for those classes. Only call when you have identified specific class names.")
     public String addClassesToWorkspace(
             @P(
                             "List of fully qualified class names (e.g., ['com.example.MyClass', 'org.another.Util']). Must not be empty.")
                     List<String> classNames) {
+        assert getAnalyzer() instanceof SourceCodeProvider
+                : "Cannot add class sources: Code Intelligence is not available.";
         if (classNames.isEmpty()) {
             return "Class names list cannot be empty.";
         }
 
-        List<ProjectFile> filesToAdd = new ArrayList<>();
+        int addedCount = 0;
         List<String> classesNotFound = new ArrayList<>();
         var analyzer = getAnalyzer();
 
-        for (String className : classNames) {
+        for (String className : classNames.stream().distinct().toList()) {
             if (className.isBlank()) {
-                classesNotFound.add("<blank>"); // Indicate a bad entry in the input list
+                classesNotFound.add("<blank>");
                 continue;
             }
-            var fileOpt = analyzer.getFileFor(className); // Returns Optional now
-            if (fileOpt.isPresent()) { // Use isPresent() for Optional
-                filesToAdd.add(fileOpt.get());
+            var defOpt = analyzer.getDefinition(className);
+            if (defOpt.isPresent()) {
+                var fragment = new ContextFragment.CodeFragment(contextManager, defOpt.get());
+                contextManager.addVirtualFragment(fragment);
+                addedCount++;
             } else {
                 classesNotFound.add(className);
-                logger.warn("Could not find file for class: {}", className);
+                logger.warn("Could not find definition for class: {}", className);
             }
         }
 
-        if (filesToAdd.isEmpty()) {
-            return "Could not find files for any of the provided class names: " + classNames;
+        if (addedCount == 0) {
+            return "Could not find definitions for any of the provided class names: " + String.join(", ", classNames);
         }
 
-        // Remove duplicates before adding
-        var distinctFiles = filesToAdd.stream().distinct().toList();
-        contextManager.editFiles(distinctFiles);
-
-        String addedFileNames =
-                distinctFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
-        String resultMessage = "Added %s containing requested classes to the workspace".formatted(addedFileNames);
-
+        var resultMessage = "Added %d code fragment(s) for requested classes".formatted(addedCount);
         if (!classesNotFound.isEmpty()) {
-            resultMessage += ". Could not find files for the following classes: [%s]"
-                    .formatted(String.join(", ", classesNotFound));
+            resultMessage += ". Could not find definitions for: [%s]".formatted(String.join(", ", classesNotFound));
         }
-
-        return resultMessage;
+        return resultMessage + ".";
     }
 
     @Tool(
@@ -384,28 +378,34 @@ public class WorkspaceTools {
             return "Cannot add method sources: method names list is empty";
         }
 
-        var sourcesData = AnalyzerUtil.getMethodSources(getAnalyzer(), methodNames);
-        if (sourcesData.isEmpty()) {
+        int count = 0;
+        List<String> notFound = new ArrayList<>();
+
+        var analyzer = getAnalyzer();
+        for (String methodName : methodNames.stream().distinct().toList()) {
+            if (methodName.isBlank()) {
+                continue;
+            }
+            var cuOpt = analyzer.getDefinition(methodName);
+            if (cuOpt.isPresent() && cuOpt.get().isFunction()) {
+                var fragment = new ContextFragment.CodeFragment(contextManager, cuOpt.get());
+                contextManager.addVirtualFragment(fragment);
+                count++;
+            } else {
+                notFound.add(methodName);
+                logger.warn("Could not find method definition for: {}", methodName);
+            }
+        }
+
+        if (count == 0) {
             return "No sources found for methods: " + String.join(", ", methodNames);
         }
 
-        // Add each method source as a separate StringFragment
-        int count = 0;
-        for (var entry : sourcesData.entrySet()) {
-            String methodName = entry.getKey();
-            String sourceCodeWithHeader = entry.getValue();
-            String description = "Source for method " + methodName;
-            // Create and add the fragment
-            var fragment = new ContextFragment.StringFragment(
-                    contextManager,
-                    sourceCodeWithHeader,
-                    description,
-                    SyntaxConstants.SYNTAX_STYLE_JAVA); // Pass contextManager
-            contextManager.addVirtualFragment(fragment);
-            count++;
+        var msg = "Added %d method source(s)".formatted(count);
+        if (!notFound.isEmpty()) {
+            msg += ". Could not find methods: [%s]".formatted(String.join(", ", notFound));
         }
-
-        return "Added %d method source(s) for: [%s]".formatted(count, String.join(", ", sourcesData.keySet()));
+        return msg + ".";
     }
 
     @Tool("Returns the file paths relative to the project root for the given fully-qualified class names.")

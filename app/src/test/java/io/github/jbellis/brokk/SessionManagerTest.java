@@ -246,23 +246,28 @@ public class SessionManagerTest {
                         expectedFf.imageBytesContent(),
                         actualFf.imageBytesContent(),
                         "FrozenFragment imageBytesContent mismatch for ID " + expected.id());
-            } else if (expected.image() != null
-                    && actual.image() != null) { // Fallback for non-frozen, if any after freezing
-                assertArrayEquals(
-                        imageToBytes(expected.image()),
-                        imageToBytes(actual.image()),
-                        "Fragment image content mismatch for ID " + expected.id());
+            } else {
+                if (actual.image() != null) { // Fallback for non-frozen, if any after freezing
+                    assertArrayEquals(
+                            imageToBytes(expected.image()),
+                            imageToBytes(actual.image()),
+                            "Fragment image content mismatch for ID " + expected.id());
+                }
             }
         }
 
-        // Compare files (ProjectFile and CodeUnit DTOs are by value)
-        // FrozenFragment.sources() intentionally throws UnsupportedOperationException, so untested
-        if (!(expected instanceof FrozenFragment)) {
-            assertEquals(
-                    expected.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
-                    actual.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
-                    "Fragment sources mismatch for ID " + expected.id());
-        }
+        // Compare additional serialized top-level methods
+        assertEquals(
+                expected.formatSummary(),
+                actual.formatSummary(),
+                "Fragment formatSummary mismatch for ID " + expected.id());
+        assertEquals(expected.repr(), actual.repr(), "Fragment repr mismatch for ID " + expected.id());
+
+        // Compare files and sources (ProjectFile and CodeUnit DTOs are by value)
+        assertEquals(
+                expected.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
+                actual.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
+                "Fragment sources mismatch for ID " + expected.id());
         assertEquals(
                 expected.files().stream().map(ProjectFile::toString).collect(Collectors.toSet()),
                 actual.files().stream().map(ProjectFile::toString).collect(Collectors.toSet()),

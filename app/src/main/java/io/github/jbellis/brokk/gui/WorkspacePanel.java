@@ -1370,7 +1370,7 @@ public class WorkspacePanel extends JPanel {
         StringBuilder fullText = new StringBuilder();
         for (var frag : allFragments) {
             String locText;
-            if (frag.isText() || frag.getType().isOutputFragment()) {
+            if (frag.isText() || frag.getType().isOutput()) {
                 var text = frag.text();
                 fullText.append(text).append("\n");
                 int loc = text.split("\\r?\\n", -1).length;

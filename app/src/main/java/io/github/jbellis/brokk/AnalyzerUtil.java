@@ -227,7 +227,6 @@ public class AnalyzerUtil {
             StringBuilder sb = new StringBuilder();
 
             if (!methodsByClass.isEmpty()) {
-                sb.append("Method uses:\n\n");
                 for (var entry : methodsByClass.entrySet()) {
                     var fqcn = entry.getKey();
 
@@ -252,8 +251,6 @@ public class AnalyzerUtil {
             }
 
             if (!classParts.isEmpty()) {
-                sb.append("Type uses:\n\n");
-
                 // Group class parts by FQCN
                 Map<String, List<String>> classCodesByFqcn = new LinkedHashMap<>();
                 for (var cws : classParts) {

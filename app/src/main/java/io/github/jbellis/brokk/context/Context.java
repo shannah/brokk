@@ -199,11 +199,17 @@ public class Context {
         return UuidCreator.getTimeOrderedEpoch();
     }
 
+    public String getReadOnlyToc() {
+        return getReadOnlyFragments().map(ContextFragment::formatToc).collect(Collectors.joining(", "));
+    }
+
+    public String getEditableToc() {
+        return getEditableFragments().map(ContextFragment::formatToc).collect(Collectors.joining(", "));
+    }
+
     /** Creates a new Context with an additional set of editable files. Rebuilds autoContext if toggled on. */
-    public Context addEditableFiles(
-            Collection<ContextFragment.ProjectPathFragment> paths) { // IContextManager is already member
+    public Context addEditableFiles(Collection<ContextFragment.ProjectPathFragment> paths) {
         var toAdd = paths.stream()
-                .filter(Objects::nonNull) // Ensure correct type for contains check
                 .filter(fragment -> !editableFiles.contains(fragment))
                 .toList();
         if (toAdd.isEmpty()) {
@@ -383,9 +389,8 @@ public class Context {
 
     /** Returns readonly files and virtual fragments (excluding usage fragments) as a combined stream */
     public Stream<ContextFragment> getReadOnlyFragments() {
-        return Streams.concat(
-                readonlyFiles.stream(),
-                virtualFragments.stream().filter(f -> f.getType() != ContextFragment.FragmentType.USAGE));
+        return Streams.concat(readonlyFiles.stream(), virtualFragments.stream().filter(f -> !f.getType()
+                .isPotentiallyEditable()));
     }
 
     /** Returns editable files and usage fragments as a combined stream */
@@ -414,12 +419,11 @@ public class Context {
         // Include FrozenFragments that originated from editable files, and other non-ProjectPathFragment types if any.
         // These will not be sorted by mtime but will appear after usage fragments and before mtime-sorted project
         // files.
-        // This ordering might need refinement based on desired UX. For now, keeping it simple.
         Stream<ContextFragment> otherEditableFragments =
                 editableFiles.stream().filter(f -> !(f instanceof ContextFragment.ProjectPathFragment));
 
         return Streams.concat(
-                virtualFragments.stream().filter(f -> f.getType() == ContextFragment.FragmentType.USAGE),
+                virtualFragments.stream().filter(f -> f.getType().isPotentiallyEditable()),
                 otherEditableFragments,
                 sortedProjectFiles.map(ContextFragment.class::cast));
     }

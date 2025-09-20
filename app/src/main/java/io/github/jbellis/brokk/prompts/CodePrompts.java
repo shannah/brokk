@@ -270,21 +270,22 @@ public abstract class CodePrompts {
      * @param cm The ContextManager.
      * @return A string summarizing editable files, read-only snippets, etc.
      */
-    public static String formatWorkspaceDescriptions(IContextManager cm) {
-        var editableContents = cm.getEditableSummary();
-        var readOnlyContents = cm.getReadOnlySummary();
+    public static String formatWorkspaceToc(IContextManager cm) {
+        var ctx = cm.topContext();
+        var editableContents = ctx.getEditableToc();
+        var readOnlyContents = ctx.getReadOnlyToc();
         var workspaceBuilder = new StringBuilder();
         if (!editableContents.isBlank()) {
-            workspaceBuilder.append("\n- Editable files: ").append(editableContents);
+            workspaceBuilder.append("<editable-toc>\n%s\n</editable-toc>".formatted(editableContents));
         }
         if (!readOnlyContents.isBlank()) {
-            workspaceBuilder.append("\n- Read-only snippets: ").append(readOnlyContents);
+            workspaceBuilder.append("<readonly-toc>\n%s\n</readonly-toc>".formatted(readOnlyContents));
         }
         return workspaceBuilder.toString();
     }
 
     protected SystemMessage systemMessage(IContextManager cm, String reminder) {
-        var workspaceSummary = formatWorkspaceDescriptions(cm);
+        var workspaceSummary = formatWorkspaceToc(cm);
         var styleGuide = cm.getProject().getStyleGuide();
 
         var text =
@@ -292,9 +293,9 @@ public abstract class CodePrompts {
           <instructions>
           %s
           </instructions>
-          <workspace-summary>
+          <workspace-toc>
           %s
-          </workspace-summary>
+          </workspace-toc>
           <style_guide>
           %s
           </style_guide>

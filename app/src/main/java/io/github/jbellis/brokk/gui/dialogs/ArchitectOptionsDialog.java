@@ -314,7 +314,7 @@ public class ArchitectOptionsDialog {
                 boolean hasImages = contextManager
                         .topContext()
                         .allFragments()
-                        .anyMatch(f -> !f.isText() && !f.getType().isOutputFragment());
+                        .anyMatch(f -> !f.isText() && !f.getType().isOutput());
 
                 if (hasImages) {
                     var nonVision = new java.util.LinkedHashSet<String>();

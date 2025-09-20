@@ -31,14 +31,6 @@ public interface IContextManager {
         return List.of();
     }
 
-    default String getEditableSummary() {
-        return "";
-    }
-
-    default String getReadOnlySummary() {
-        return "";
-    }
-
     /**
      * Returns the live, unfrozen context that we can edit.
      *

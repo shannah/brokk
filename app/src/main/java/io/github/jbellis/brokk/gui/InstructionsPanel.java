@@ -1212,7 +1212,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return contextManager
                 .topContext()
                 .allFragments()
-                .anyMatch(f -> !f.isText() && !f.getType().isOutputFragment());
+                .anyMatch(f -> !f.isText() && !f.getType().isOutput());
     }
 
     /**

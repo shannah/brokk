@@ -270,14 +270,10 @@ public class ContextSerializationTest {
             }
         }
 
-        // Compare files (ProjectFile and CodeUnit DTOs are by value)
-        // FrozenFragment.sources() intentionally throws UnsupportedOperationException, so untested
-        if (!(expected instanceof FrozenFragment)) {
-            assertEquals(
-                    expected.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
-                    actual.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
-                    "Fragment sources mismatch for ID " + expected.id());
-        }
+        // Compare additional serialized top-level methods
+        assertEquals(expected.repr(), actual.repr(), "Fragment repr mismatch for ID " + expected.id());
+
+        // Compare files (sources are not snapshotted into FrozenFragment directly)
         assertEquals(
                 expected.files().stream().map(ProjectFile::toString).collect(Collectors.toSet()),
                 actual.files().stream().map(ProjectFile::toString).collect(Collectors.toSet()),
@@ -935,6 +931,34 @@ public class ContextSerializationTest {
     }
 
     @Test
+    void testRoundTripUsageFragmentIncludeTestFiles() throws Exception {
+        var fragment = new ContextFragment.UsageFragment(mockContextManager, "com.example.MyClass.myMethod", true);
+
+        var context = new Context(mockContextManager, "Test UsageFragment include").addVirtualFragment(fragment);
+        ContextHistory originalHistory = new ContextHistory(context);
+
+        Path zipFile = tempDir.resolve("test_usage_include_history.zip");
+        HistoryIo.writeZip(originalHistory, zipFile);
+        ContextHistory loadedHistory = HistoryIo.readZip(zipFile, mockContextManager);
+
+        Context loadedCtx = loadedHistory.getHistory().get(0);
+        var loadedRawFragment = loadedCtx
+                .virtualFragments()
+                .filter(f -> f.getType() == ContextFragment.FragmentType.USAGE)
+                .findFirst()
+                .orElseThrow();
+
+        if (loadedRawFragment instanceof ContextFragment.UsageFragment loadedFragment) {
+            assertTrue(loadedFragment.includeTestFiles(), "includeTestFiles should be preserved as true");
+            assertEquals("com.example.MyClass.myMethod", loadedFragment.targetIdentifier());
+        } else if (loadedRawFragment instanceof FrozenFragment ff) {
+            assertEquals(ContextFragment.FragmentType.USAGE, ff.getType());
+        } else {
+            fail("Expected UsageFragment or FrozenFragment, got: " + loadedRawFragment.getClass());
+        }
+    }
+
+    @Test
     void testRoundTripCallGraphFragment() throws Exception {
         var fragment =
                 new ContextFragment.CallGraphFragment(mockContextManager, "com.example.MyClass.doStuff", 3, true);
@@ -1186,5 +1210,50 @@ public class ContextSerializationTest {
         assertTrue(loadedGitState2.isPresent());
         assertEquals("test-commit-hash-2", loadedGitState2.get().commitHash());
         assertNull(loadedGitState2.get().diff());
+    }
+
+    @Test
+    void testRoundTripCodeFragment() throws Exception {
+        var projectFile = new ProjectFile(tempDir, "src/CodeFragmentTarget.java");
+        Files.createDirectories(projectFile.absPath().getParent());
+        Files.writeString(projectFile.absPath(), "public class CodeFragmentTarget {}");
+        var codeUnit = createTestCodeUnit("com.example.CodeFragmentTarget", projectFile);
+
+        var fragment = new ContextFragment.CodeFragment(mockContextManager, codeUnit);
+
+        var context = new Context(mockContextManager, "Test CodeFragment").addVirtualFragment(fragment);
+        ContextHistory originalHistory = new ContextHistory(context);
+
+        Path zipFile = tempDir.resolve("test_codefragment_history.zip");
+        HistoryIo.writeZip(originalHistory, zipFile);
+        ContextHistory loadedHistory = HistoryIo.readZip(zipFile, mockContextManager);
+
+        assertContextsEqual(
+                originalHistory.getHistory().get(0), loadedHistory.getHistory().get(0));
+
+        Context loadedCtx = loadedHistory.getHistory().get(0);
+        var loadedRawFragment = loadedCtx
+                .virtualFragments()
+                .filter(f -> f.getType() == ContextFragment.FragmentType.CODE)
+                .findFirst()
+                .orElseThrow();
+
+        if (loadedRawFragment instanceof ContextFragment.CodeFragment loadedFragment) {
+            assertEquals(codeUnit.fqName(), loadedFragment.getCodeUnit().fqName());
+        } else if (loadedRawFragment instanceof FrozenFragment loadedFrozenFragment) {
+            assertEquals(ContextFragment.FragmentType.CODE, loadedFrozenFragment.getType());
+            assertEquals(ContextFragment.CodeFragment.class.getName(), loadedFrozenFragment.originalClassName());
+            assertEquals(
+                    "com.example.CodeFragmentTarget",
+                    loadedFrozenFragment.meta().get("fqName"));
+            assertEquals(
+                    projectFile.getRoot().toString(),
+                    loadedFrozenFragment.meta().get("repoRoot"));
+            assertEquals(
+                    projectFile.getRelPath().toString(),
+                    loadedFrozenFragment.meta().get("relPath"));
+        } else {
+            fail("Expected CodeFragment or FrozenFragment, got: " + loadedRawFragment.getClass());
+        }
     }
 }
