@@ -8,6 +8,9 @@ import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.util.Environment;
 import java.awt.*;
+import java.io.File;
+import java.nio.file.Files;
+import java.nio.file.Path;
 import java.util.List;
 import java.util.Locale;
 import java.util.concurrent.CompletableFuture;
@@ -102,6 +105,46 @@ public final class MOPWebViewHost extends JPanel {
         Platform.runLater(() -> {
             var view = new WebView();
             view.setContextMenuEnabled(false);
+
+            // Set unique user data directory per process to avoid DirectoryLock conflicts
+            // when multiple brokk instances are running simultaneously
+            // First get the default user data directory that JavaFX would use
+            File defaultUserDataDir = view.getEngine().getUserDataDirectory();
+            Path userDataDir;
+            if (defaultUserDataDir != null) {
+                // Append PID to the default directory name
+                Path defaultPath = defaultUserDataDir.toPath();
+                userDataDir = defaultPath.resolveSibling(defaultPath.getFileName() + "-"
+                        + ProcessHandle.current().pid());
+            } else {
+                // Fallback: use OS-appropriate cache directory if default is null
+                Path cacheDir;
+                if (Environment.isMacOs()) {
+                    cacheDir = Environment.getHomePath().resolve("Library/Caches");
+                } else if (Environment.isWindows()) {
+                    String localAppData = System.getenv("LOCALAPPDATA");
+                    cacheDir = localAppData != null
+                            ? Path.of(localAppData)
+                            : Environment.getHomePath().resolve("AppData/Local");
+                } else {
+                    // Linux/Unix: follow XDG Base Directory spec
+                    String xdgCache = System.getenv("XDG_CACHE_HOME");
+                    cacheDir = xdgCache != null
+                            ? Path.of(xdgCache)
+                            : Environment.getHomePath().resolve(".cache");
+                }
+                userDataDir = cacheDir.resolve(
+                        "brokk/webview-" + ProcessHandle.current().pid());
+            }
+            try {
+                Files.createDirectories(userDataDir);
+                view.getEngine().setUserDataDirectory(userDataDir.toFile());
+                logger.debug("Set WebView user data directory to: {}", userDataDir);
+            } catch (Exception e) {
+                logger.warn(
+                        "Failed to create WebView user data directory: {}, falling back to default", userDataDir, e);
+            }
+
             webViewRef.set(view); // Store reference for later theme updates
             var scene = new Scene(view);
             requireNonNull(fxPanel).setScene(scene);
