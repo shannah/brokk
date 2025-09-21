@@ -715,7 +715,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     /** Add the given files to editable. */
     @Override
-    public void editFiles(Collection<ProjectFile> files) {
+    public void addFiles(Collection<ProjectFile> files) {
         var filesByType = files.stream().collect(Collectors.partitioningBy(BrokkFile::isText));
 
         var textFiles = castNonNull(filesByType.get(true));
@@ -725,80 +725,33 @@ public class ContextManager implements IContextManager, AutoCloseable {
             var proposedEditableFragments = textFiles.stream()
                     .map(pf -> new ContextFragment.ProjectPathFragment(pf, this))
                     .toList();
-            this.editFiles(proposedEditableFragments);
+            this.addPathFragments(proposedEditableFragments);
         }
 
         if (!binaryFiles.isEmpty()) {
-            addReadOnlyFiles(binaryFiles);
+            addFiles(binaryFiles);
         }
     }
 
-    private Context applyEditableFileChanges(
+    private Context applyFileChanges(
             Context currentLiveCtx, List<ContextFragment.ProjectPathFragment> fragmentsToAdd) {
-        var filesToEditSet = fragmentsToAdd.stream()
-                .map(ContextFragment.ProjectPathFragment::file)
-                .collect(Collectors.toSet());
-
-        var existingReadOnlyFragmentsToRemove = currentLiveCtx
-                .readonlyFiles()
-                .filter(pf -> pf instanceof PathFragment pathFrag && filesToEditSet.contains(pathFrag.file()))
-                .toList();
-
-        var currentEditableFileSet = currentLiveCtx
-                .editableFiles()
-                .filter(PathFragment.class::isInstance)
-                .map(PathFragment.class::cast)
-                .map(PathFragment::file)
+        var currentFileSet = currentLiveCtx
+                .fileFragments()
+                .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
         var uniqueNewEditableFragments = fragmentsToAdd.stream()
-                .filter(frag -> !currentEditableFileSet.contains(frag.file()))
+                .filter(frag -> !currentFileSet.contains(frag.file()))
                 .toList();
 
-        return currentLiveCtx
-                .removeReadonlyFiles(existingReadOnlyFragmentsToRemove)
-                .addEditableFiles(uniqueNewEditableFragments);
+        return currentLiveCtx.addPathFragments(uniqueNewEditableFragments);
     }
 
     /** Add the given files to editable. */
-    public void editFiles(List<ContextFragment.ProjectPathFragment> fragments) {
+    public void addPathFragments(List<ContextFragment.ProjectPathFragment> fragments) {
         assert fragments.stream().allMatch(ContextFragment.PathFragment::isText)
                 : "Only text files can be made editable";
-        pushContext(currentLiveCtx -> applyEditableFileChanges(currentLiveCtx, fragments));
+        pushContext(currentLiveCtx -> applyFileChanges(currentLiveCtx, fragments));
         io.systemOutput("Edited " + joinForOutput(fragments));
-    }
-
-    private Context applyReadOnlyPathFragmentChanges(Context currentLiveCtx, List<PathFragment> fragmentsToAdd) {
-        var filesToMakeReadOnlySet =
-                fragmentsToAdd.stream().map(PathFragment::file).collect(Collectors.toSet());
-
-        var existingEditableFragmentsToRemove = currentLiveCtx
-                .editableFiles()
-                .filter(pf -> pf instanceof PathFragment pathFrag && filesToMakeReadOnlySet.contains(pathFrag.file()))
-                .map(PathFragment.class::cast) // Ensure they are PathFragments to be removed
-                .toList();
-
-        var currentReadOnlyFileSet = currentLiveCtx
-                .readonlyFiles()
-                .filter(PathFragment.class::isInstance)
-                .map(PathFragment.class::cast)
-                .map(PathFragment::file)
-                .collect(Collectors.toSet());
-        var uniqueNewReadOnlyFragments = fragmentsToAdd.stream()
-                .filter(frag -> !currentReadOnlyFileSet.contains(frag.file()))
-                .toList();
-
-        return currentLiveCtx
-                .removeEditableFiles(existingEditableFragmentsToRemove)
-                .addReadonlyFiles(uniqueNewReadOnlyFragments);
-    }
-
-    /** Add read-only files. */
-    public void addReadOnlyFiles(Collection<? extends BrokkFile> files) {
-        var proposedReadOnlyFragments = files.stream()
-                .map(bf -> ContextFragment.toPathFragment(bf, this))
-                .toList();
-        pushContext(currentLiveCtx -> applyReadOnlyPathFragmentChanges(currentLiveCtx, proposedReadOnlyFragments));
-        io.systemOutput("Read " + joinForOutput(proposedReadOnlyFragments));
     }
 
     /** Drop all context. */
@@ -957,16 +910,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 List<TaskEntry> newHistory = List.copyOf(finalHistory);
 
                 // Categorize fragments to add after unfreezing
-                List<ContextFragment.ProjectPathFragment> editablePathsToAdd = new ArrayList<>();
-                List<PathFragment> readonlyPathsToAdd = new ArrayList<>();
+                List<ContextFragment.ProjectPathFragment> pathsToAdd = new ArrayList<>();
                 List<VirtualFragment> virtualFragmentsToAdd = new ArrayList<>();
 
                 Set<String> sourceEditableIds = sourceFrozenContext
-                        .editableFiles()
-                        .map(ContextFragment::id)
-                        .collect(Collectors.toSet());
-                Set<String> sourceReadonlyIds = sourceFrozenContext
-                        .readonlyFiles()
+                        .fileFragments()
                         .map(ContextFragment::id)
                         .collect(Collectors.toSet());
                 Set<String> sourceVirtualIds = sourceFrozenContext
@@ -979,10 +927,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
                     if (sourceEditableIds.contains(fragmentFromKeeperList.id())
                             && unfrozen instanceof ContextFragment.ProjectPathFragment ppf) {
-                        editablePathsToAdd.add(ppf);
-                    } else if (sourceReadonlyIds.contains(fragmentFromKeeperList.id())
-                            && unfrozen instanceof PathFragment pf) {
-                        readonlyPathsToAdd.add(pf);
+                        pathsToAdd.add(ppf);
                     } else if (sourceVirtualIds.contains(fragmentFromKeeperList.id())
                             && unfrozen instanceof VirtualFragment vf) {
                         if (!(vf instanceof ContextFragment.HistoryFragment)) {
@@ -1002,20 +947,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
                 pushContext(currentLiveCtx -> {
                     Context modifiedCtx = currentLiveCtx;
-                    if (!readonlyPathsToAdd.isEmpty()) {
-                        modifiedCtx = applyReadOnlyPathFragmentChanges(modifiedCtx, readonlyPathsToAdd);
-                    }
-                    if (!editablePathsToAdd.isEmpty()) {
-                        modifiedCtx = applyEditableFileChanges(modifiedCtx, editablePathsToAdd);
+                    if (!pathsToAdd.isEmpty()) {
+                        modifiedCtx = applyFileChanges(modifiedCtx, pathsToAdd);
                     }
                     for (VirtualFragment vfToAdd : virtualFragmentsToAdd) {
                         modifiedCtx = modifiedCtx.addVirtualFragment(vfToAdd);
                     }
                     return new Context(
                             this,
-                            modifiedCtx.editableFiles().toList(),
-                            modifiedCtx.readonlyFiles().toList(),
-                            modifiedCtx.virtualFragments().toList(),
+                            modifiedCtx.allFragments().toList(),
                             newHistory,
                             null,
                             CompletableFuture.completedFuture(actionMessage));
@@ -1106,9 +1046,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @param fragment The PathFragment to add.
      */
-    public void addReadOnlyFragmentAsync(PathFragment fragment) {
+    public void addPathFragmentAsync(PathFragment fragment) {
         submitContextTask("Capture file revision", () -> {
-            pushContext(currentLiveCtx -> currentLiveCtx.addReadonlyFiles(List.of(fragment)));
+            pushContext(currentLiveCtx -> currentLiveCtx.addPathFragments(List.of(fragment)));
         });
     }
 
@@ -1391,12 +1331,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     @Override
-    public Set<ProjectFile> getEditableFiles() {
+    public Set<ProjectFile> getFilesInContext() {
         return topContext()
-                .editableFiles()
-                .filter(ContextFragment.ProjectPathFragment.class::isInstance)
-                .map(ContextFragment.ProjectPathFragment.class::cast)
-                .map(ContextFragment.ProjectPathFragment::file)
+                .fileFragments()
+                .flatMap(cf -> cf.files().stream())
                 .collect(Collectors.toSet());
     }
 
@@ -1928,7 +1866,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // Step 1: ensure changed files are tracked as editable
             if (!result.changedFiles().isEmpty()) {
                 // Capture current editable files once to keep the lambda valid
-                var existingEditableFiles = updated.editableFiles()
+                var existingEditableFiles = updated.fileFragments()
                         .filter(ContextFragment.ProjectPathFragment.class::isInstance)
                         .map(ContextFragment.ProjectPathFragment.class::cast)
                         .map(ContextFragment.ProjectPathFragment::file)
@@ -1943,7 +1881,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         .toList();
 
                 if (!fragmentsToAdd.isEmpty()) {
-                    updated = applyEditableFileChanges(updated, fragmentsToAdd);
+                    updated = applyFileChanges(updated, fragmentsToAdd);
                 }
             }
 

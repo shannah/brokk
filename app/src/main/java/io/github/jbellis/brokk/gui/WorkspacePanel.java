@@ -73,7 +73,6 @@ public class WorkspacePanel extends JPanel {
     /** Enum representing the different types of context actions that can be performed. */
     public enum ContextAction {
         EDIT,
-        READ,
         SUMMARIZE,
         DROP,
         COPY,
@@ -141,8 +140,7 @@ public class WorkspacePanel extends JPanel {
 
                 actions.add(null); // Separator
                 actions.add(WorkspaceAction.EDIT_FILE.createFileRefAction(panel, fileRef));
-                actions.add(WorkspaceAction.READ_FILE.createFileRefAction(panel, fileRef));
-                actions.add(WorkspaceAction.SUMMARIZE_FILE.createFileRefAction(panel, fileRef));
+                    actions.add(WorkspaceAction.SUMMARIZE_FILE.createFileRefAction(panel, fileRef));
             }
 
             return actions;
@@ -212,13 +210,11 @@ public class WorkspacePanel extends JPanel {
                     var fileData = new TableUtils.FileReferenceList.FileReferenceData(
                             projectFile.getFileName(), projectFile.toString(), projectFile);
                     actions.add(WorkspaceAction.EDIT_FILE.createFileRefAction(panel, fileData));
-                    actions.add(WorkspaceAction.READ_FILE.createFileRefAction(panel, fileData));
                     actions.add(WorkspaceAction.SUMMARIZE_FILE.createFileRefAction(panel, fileData));
                 });
             } else {
                 var selectedFragments = List.of(fragment);
                 actions.add(WorkspaceAction.EDIT_ALL_REFS.createFragmentsAction(panel, selectedFragments));
-                actions.add(WorkspaceAction.READ_ALL_REFS.createFragmentsAction(panel, selectedFragments));
                 actions.add(WorkspaceAction.SUMMARIZE_ALL_REFS.createFragmentsAction(panel, selectedFragments));
             }
 
@@ -265,7 +261,6 @@ public class WorkspacePanel extends JPanel {
             actions.add(null); // Separator
 
             actions.add(WorkspaceAction.EDIT_ALL_REFS.createFragmentsAction(panel, fragments));
-            actions.add(WorkspaceAction.READ_ALL_REFS.createFragmentsAction(panel, fragments));
             actions.add(WorkspaceAction.SUMMARIZE_ALL_REFS.createFragmentsAction(panel, fragments));
 
             actions.add(null); // Separator
@@ -294,10 +289,8 @@ public class WorkspacePanel extends JPanel {
         VIEW_HISTORY("View History"),
         COMPRESS_HISTORY("Compress History"),
         EDIT_FILE("Edit File"),
-        READ_FILE("Read File"),
         SUMMARIZE_FILE("Summarize File"),
         EDIT_ALL_REFS("Edit all References"),
-        READ_ALL_REFS("Read all References"),
         SUMMARIZE_ALL_REFS("Summarize all References"),
         COPY("Copy"),
         DROP("Drop"),
@@ -362,7 +355,7 @@ public class WorkspacePanel extends JPanel {
 
         public AbstractAction createFileRefAction(
                 WorkspacePanel panel, TableUtils.FileReferenceList.FileReferenceData fileRef) {
-            var baseName = this == EDIT_FILE ? "Edit " : this == READ_FILE ? "Read " : "Summarize ";
+            var baseName = this == EDIT_FILE ? "Edit " : "Summarize ";
             return new AbstractAction(baseName + fileRef.getFullPath()) {
                 @Override
                 public void actionPerformed(ActionEvent e) {
@@ -370,12 +363,11 @@ public class WorkspacePanel extends JPanel {
                         var contextAction =
                                 switch (WorkspaceAction.this) {
                                     case EDIT_FILE -> ContextAction.EDIT;
-                                    case READ_FILE -> ContextAction.READ;
-                                    case SUMMARIZE_FILE -> ContextAction.SUMMARIZE;
-                                    default ->
-                                        throw new UnsupportedOperationException(
-                                                "File ref action not implemented: " + WorkspaceAction.this);
-                                };
+                    case SUMMARIZE_FILE -> ContextAction.SUMMARIZE;
+                    default ->
+                        throw new UnsupportedOperationException(
+                                "File ref action not implemented: " + WorkspaceAction.this);
+                };
                         var fragment =
                                 new ContextFragment.ProjectPathFragment(fileRef.getRepoFile(), panel.contextManager);
                         panel.performContextActionAsync(contextAction, List.of(fragment));
@@ -424,14 +416,13 @@ public class WorkspacePanel extends JPanel {
                     var contextAction =
                             switch (WorkspaceAction.this) {
                                 case EDIT_ALL_REFS -> ContextAction.EDIT;
-                                case READ_ALL_REFS -> ContextAction.READ;
-                                case SUMMARIZE_ALL_REFS -> ContextAction.SUMMARIZE;
-                                case COPY -> ContextAction.COPY;
-                                case DROP -> ContextAction.DROP;
-                                case RUN_TESTS -> ContextAction.RUN_TESTS;
-                                default ->
-                                    throw new UnsupportedOperationException(
-                                            "Fragments action not implemented: " + WorkspaceAction.this);
+                    case SUMMARIZE_ALL_REFS -> ContextAction.SUMMARIZE;
+                    case COPY -> ContextAction.COPY;
+                    case DROP -> ContextAction.DROP;
+                    case RUN_TESTS -> ContextAction.RUN_TESTS;
+                    default ->
+                        throw new UnsupportedOperationException(
+                                "Fragments action not implemented: " + WorkspaceAction.this);
                             };
                     panel.performContextActionAsync(contextAction, fragments);
 
@@ -448,13 +439,10 @@ public class WorkspacePanel extends JPanel {
                                         "Cannot edit because selection includes untracked or external files.");
                             }
                         }
-                    } else if (WorkspaceAction.this == READ_ALL_REFS || WorkspaceAction.this == SUMMARIZE_ALL_REFS) {
+                    } else if (WorkspaceAction.this == SUMMARIZE_ALL_REFS) {
                         if (!panel.hasFiles(fragments)) {
                             setEnabled(false);
-                            var actionName = WorkspaceAction.this == READ_ALL_REFS ? "read" : "summarize";
-                            putValue(
-                                    Action.SHORT_DESCRIPTION,
-                                    "No files associated with the selection to " + actionName + ".");
+                            putValue(Action.SHORT_DESCRIPTION, "No files associated with the selection to summarize.");
                         }
                     }
                 }
@@ -1052,12 +1040,7 @@ public class WorkspacePanel extends JPanel {
                         case EDIT -> {
                             // Only allow editing tracked files; others are silently ignored by editFiles
                             contextManager.submitContextTask("Edit files (drop)", () -> {
-                                contextManager.editFiles(projectFiles);
-                            });
-                        }
-                        case READ -> {
-                            contextManager.submitContextTask("Read files (drop)", () -> {
-                                contextManager.addReadOnlyFiles(projectFiles);
+                                contextManager.addFiles(projectFiles);
                             });
                         }
                         case SUMMARIZE -> {
@@ -1104,10 +1087,19 @@ public class WorkspacePanel extends JPanel {
 
         // Add options submenu
         JMenu addMenu = new JMenu("Add");
-        AddMenuFactory.populateAddMenu(addMenu, this);
+        // Removed populateAddMenu, as "Read Files" is being removed, and other "Add" actions are not in this scope.
+        // A placeholder or a direct button will be used for "Add" functionality as part of the overall UI redesign.
+        // For now, this menu will remain empty or handle only universal actions (Paste, Drop All).
+        // If there's no other menu items, we won't add it.
+        // This is temporarily removing AddMenuFactory.populateAddMenu to simplify the current refactor.
+        // A more robust "Add" mechanism will be introduced later.
+        // AddMenuFactory.populateAddMenu(addMenu, this); // Removed
 
-        tablePopupMenu.add(addMenu);
-        tablePopupMenu.addSeparator();
+        // If addMenu is empty, don't add it.
+        if (addMenu.getMenuComponentCount() > 0) {
+            tablePopupMenu.add(addMenu);
+            tablePopupMenu.addSeparator();
+        }
 
         JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
         dropAllMenuItem.setActionCommand(DROP_ALL_ACTION_CMD);
@@ -1382,7 +1374,7 @@ public class WorkspacePanel extends JPanel {
             var desc = frag.description();
 
             // Mark editable if it's in the editable streams
-            boolean isEditable = ctx.editableFiles().anyMatch(e -> e == frag);
+            boolean isEditable = ctx.fileFragments().anyMatch(e -> e == frag);
             if (isEditable) {
                 desc = "✏️ " + desc;
             }
@@ -1771,7 +1763,6 @@ public class WorkspacePanel extends JPanel {
             try {
                 switch (action) {
                     case EDIT -> doEditAction(selectedFragments);
-                    case READ -> doReadAction(selectedFragments);
                     case COPY -> doCopyAction(selectedFragments);
                     case DROP -> doDropAction(selectedFragments);
                     case SUMMARIZE -> doSummarizeAction(selectedFragments);
@@ -1802,7 +1793,7 @@ public class WorkspacePanel extends JPanel {
                     && !selection.files().isEmpty()) {
                 // We disallowed external files, so this cast should be safe
                 var projectFiles = toProjectFilesUnsafe(selection.files());
-                contextManager.editFiles(projectFiles);
+                contextManager.addFiles(projectFiles);
             }
         } else {
             // Edit files from selected fragments
@@ -1810,35 +1801,7 @@ public class WorkspacePanel extends JPanel {
                     .flatMap(fragment -> fragment.files().stream())
                     .filter(Objects::nonNull)
                     .collect(Collectors.toSet());
-            contextManager.editFiles(files);
-        }
-    }
-
-    /** Read Action: Allows selecting Files (internal/external) */
-    private void doReadAction(List<? extends ContextFragment> selectedFragments) { // Use wildcard
-        var project = contextManager.getProject();
-        if (selectedFragments.isEmpty()) {
-            // Show dialog allowing ONLY file selection (internal + external)
-            // TODO when we can extract a single class from a source file, enable classes as well
-            var selection = showMultiSourceSelectionDialog(
-                    "Add Read-Only Context",
-                    true, // Allow external files
-                    CompletableFuture.completedFuture(project.getAllFiles()), // All project files for completion
-                    Set.of(SelectionMode.FILES)); // FILES mode only
-
-            if (selection == null
-                    || selection.files() == null
-                    || selection.files().isEmpty()) {
-                return;
-            }
-
-            contextManager.addReadOnlyFiles(selection.files());
-        } else {
-            // Add files from selected fragments
-            var files = selectedFragments.stream()
-                    .flatMap(frag -> frag.files().stream())
-                    .collect(Collectors.toSet());
-            contextManager.addReadOnlyFiles(files);
+            contextManager.addFiles(files);
         }
     }
 

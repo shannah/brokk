@@ -97,22 +97,16 @@ public class Context {
         this.parsedOutput = parsedOutput;
     }
 
-    // Backward-compatible public constructor: combine editable + readonly + virtuals into unified fragments
     public Context(
             IContextManager contextManager,
-            List<ContextFragment> editableFiles,
-            List<ContextFragment> readonlyFiles,
-            List<ContextFragment.VirtualFragment> virtualFragments,
+            List<ContextFragment> fragments,
             List<TaskEntry> taskHistory,
             @Nullable ContextFragment.TaskFragment parsedOutput,
             Future<String> action) {
         this(
                 newContextId(),
                 contextManager,
-                Streams.concat(
-                                Streams.concat(editableFiles.stream(), readonlyFiles.stream()),
-                                virtualFragments.stream().map(v -> (ContextFragment) v))
-                        .toList(),
+fragments,
                 taskHistory,
                 parsedOutput,
                 action);
@@ -154,10 +148,12 @@ public class Context {
         return getEditableFragments().map(ContextFragment::formatToc).collect(Collectors.joining(", "));
     }
 
-    // Add file fragments (formerly editable)
-    public Context addEditableFiles(Collection<? extends ContextFragment.PathFragment> paths) {
+    public String getReadOnlyToc() {
+        return getReadOnlyFragments().map(ContextFragment::formatToc).collect(Collectors.joining(", "));
+    }
+
+    public Context addPathFragments(Collection<? extends ContextFragment.PathFragment> paths) {
         var toAdd = paths.stream()
-                .filter(Objects::nonNull)
                 .filter(p -> !fragments.contains(p))
                 .toList();
         if (toAdd.isEmpty()) {
@@ -172,33 +168,7 @@ public class Context {
         return withFragments(newFragments, CompletableFuture.completedFuture(action));
     }
 
-    // Add file fragments (formerly readonly)
-    public Context addReadonlyFiles(Collection<ContextFragment.PathFragment> paths) {
-        var toAdd = paths.stream()
-                .filter(Objects::nonNull)
-                .filter(p -> !fragments.contains(p))
-                .toList();
-        if (toAdd.isEmpty()) {
-            return this;
-        }
-        var newFragments = new ArrayList<>(fragments);
-        newFragments.addAll(toAdd);
-
-        String actionDetails =
-                toAdd.stream().map(ContextFragment::shortDescription).collect(Collectors.joining(", "));
-        String action = "Read " + actionDetails;
-        return withFragments(newFragments, CompletableFuture.completedFuture(action));
-    }
-
-    public Context removeEditableFiles(List<? extends ContextFragment> toRemove) {
-        return removeFileFragments(toRemove, "Removed ");
-    }
-
-    public Context removeReadonlyFiles(List<? extends ContextFragment> toRemove) {
-        return removeFileFragments(toRemove, "Removed ");
-    }
-
-    private Context removeFileFragments(List<? extends ContextFragment> toRemove, String actionPrefix) {
+    public Context removePathFragments(List<? extends ContextFragment> toRemove, String actionPrefix) {
         var newFragments = new ArrayList<>(fragments);
         if (!newFragments.removeAll(toRemove)) {
             return this;
@@ -299,21 +269,20 @@ public class Context {
         return id;
     }
 
-    // Editable files now means all path fragments (including frozen ones)
-    public Stream<ContextFragment> editableFiles() {
+    public Stream<ContextFragment> fileFragments() {
         return fragments.stream().filter(f -> f.getType().isPath());
-    }
-
-    // Readonly files are no longer tracked separately; preserved API returns empty
-    public Stream<ContextFragment> readonlyFiles() {
-        return Stream.empty();
     }
 
     public Stream<ContextFragment.VirtualFragment> virtualFragments() {
         return fragments.stream().filter(f -> f.getType().isVirtual()).map(f -> (ContextFragment.VirtualFragment) f);
     }
 
-    /** Returns file fragments and editable virtual fragments (usage) */
+    /** Returns readonly files and virtual fragments (excluding usage fragments) as a combined stream */
+    public Stream<ContextFragment> getReadOnlyFragments() {
+        return fragments.stream().filter(f -> !f.getType().isEditable());
+    }
+
+    /** Returns file fragments and editable virtual fragments (usage), ordered with most-recently-modified last */
     public Stream<ContextFragment> getEditableFragments() {
         // Helper record for associating a fragment with its mtime for safe sorting and filtering
         record EditableFileWithMtime(ContextFragment.ProjectPathFragment fragment, long mtime) {}
@@ -373,8 +342,6 @@ public class Context {
         String action = "Dropped all context";
         return new Context(
                 contextManager,
-                List.of(),
-                List.of(),
                 List.of(),
                 List.of(),
                 null,
@@ -543,8 +510,6 @@ public class Context {
             liveContext = new Context(
                     this.contextManager,
                     liveFragments,
-                    List.of(), // readonly (kept for compatibility with constructor)
-                    List.of(), // virtuals (kept for compatibility with constructor)
                     this.taskHistory,
                     this.parsedOutput,
                     this.action);

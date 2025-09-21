@@ -50,8 +50,6 @@ public final class BrokkCli implements Callable<Integer> {
     @CommandLine.Option(names = "--edit", description = "Add a file to the workspace for editing. Can be repeated.")
     private List<String> editFiles = new ArrayList<>();
 
-    @CommandLine.Option(names = "--read", description = "Add a file to the workspace as read-only. Can be repeated.")
-    private List<String> readFiles = new ArrayList<>();
 
     @CommandLine.Option(
             names = "--add-class",
@@ -269,13 +267,11 @@ public final class BrokkCli implements Callable<Integer> {
 
         // Resolve files and classes
         var resolvedEditFiles = resolveFiles(editFiles, "editable file");
-        var resolvedReadFiles = resolveFiles(readFiles, "read-only file");
         var resolvedClasses = resolveClasses(addClasses, cm.getAnalyzer(), "class");
         var resolvedSummaryClasses = resolveClasses(addSummaryClasses, cm.getAnalyzer(), "summary class");
 
         // If any resolution failed, the helper methods will have printed an error.
         if ((resolvedEditFiles.isEmpty() && !editFiles.isEmpty())
-                || (resolvedReadFiles.isEmpty() && !readFiles.isEmpty())
                 || (resolvedClasses.isEmpty() && !addClasses.isEmpty())
                 || (resolvedSummaryClasses.isEmpty() && !addSummaryClasses.isEmpty())) {
             return 1;
@@ -283,9 +279,7 @@ public final class BrokkCli implements Callable<Integer> {
 
         // Build context
         if (!resolvedEditFiles.isEmpty())
-            cm.editFiles(resolvedEditFiles.stream().map(cm::toFile).toList());
-        if (!resolvedReadFiles.isEmpty())
-            cm.addReadOnlyFiles(resolvedReadFiles.stream().map(cm::toFile).toList());
+            cm.addFiles(resolvedEditFiles.stream().map(cm::toFile).toList());
         if (!resolvedClasses.isEmpty()) workspaceTools.addClassesToWorkspace(resolvedClasses);
         if (!resolvedSummaryClasses.isEmpty()) workspaceTools.addClassSummariesToWorkspace(resolvedSummaryClasses);
         if (!addSummaryFiles.isEmpty()) workspaceTools.addFileSummariesToWorkspace(addSummaryFiles);
@@ -392,17 +386,17 @@ public final class BrokkCli implements Callable<Integer> {
     }
 
     private List<String> resolveFiles(List<String> inputs, String entityType) {
-        Supplier<Collection<ProjectFile>> primarySource = project::getAllFiles;
-        Supplier<Collection<ProjectFile>> secondarySource =
-                () -> project.getRepo().getTrackedFiles();
+        // Files can only be added as editable via CLI, so we only consider tracked files
+        // and allow listing all tracked files as a primary source.
+        Supplier<Collection<ProjectFile>> primarySource = () -> project.getRepo().getTrackedFiles();
 
         return inputs.stream()
                 .map(input -> {
                     var pf = cm.toFile(input);
-                    if (pf.exists()) {
+                    if (pf.exists() && project.getRepo().getTrackedFiles().contains(pf)) {
                         return Optional.of(pf);
                     }
-                    return resolve(input, primarySource, secondarySource, ProjectFile::toString, entityType);
+                    return resolve(input, primarySource, List::of, ProjectFile::toString, entityType);
                 })
                 .flatMap(Optional::stream)
                 .map(ProjectFile::toString)

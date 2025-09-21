@@ -106,7 +106,7 @@ public interface IContextManager {
         return new ProjectFile(project.getRoot(), trimmed);
     }
 
-    default Set<ProjectFile> getEditableFiles() {
+    default Set<ProjectFile> getFilesInContext() {
         throw new UnsupportedOperationException();
     }
 
@@ -145,7 +145,7 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default void editFiles(Collection<ProjectFile> path) {}
+    default void addFiles(Collection<ProjectFile> path) {}
 
     default IProject getProject() {
         throw new UnsupportedOperationException();

@@ -427,7 +427,7 @@ public class BuildAgent {
 
         // Get ProjectFiles from editable and read-only fragments
         var topContext = requireNonNull(cm.topContext());
-        var projectFilesFromEditableOrReadOnly = Stream.concat(topContext.editableFiles(), topContext.readonlyFiles())
+        var projectFilesFromEditableOrReadOnly = topContext.fileFragments()
                 .flatMap(fragment -> fragment.files().stream()); // No analyzer
 
         // Get ProjectFiles specifically from SkeletonFragments among all virtual fragments

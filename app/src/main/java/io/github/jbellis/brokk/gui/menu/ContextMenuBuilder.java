@@ -143,11 +143,6 @@ public class ContextMenuBuilder {
 
         parent.add(new JPopupMenu.Separator());
 
-        // Read File
-        var readFileItem = new JMenuItem("Read File");
-        readFileItem.addActionListener(e -> readFiles(context));
-        parent.add(readFileItem);
-
         // Edit File
         var editFileItem = new JMenuItem("Edit File");
         editFileItem.setEnabled(analyzerReady);
@@ -204,10 +199,6 @@ public class ContextMenuBuilder {
         editItem.setEnabled(allFilesTracked);
         menu.add(editItem);
 
-        // Read
-        var readItem = new JMenuItem(files.size() == 1 ? "Read" : "Read All");
-        readItem.addActionListener(e -> readFiles(fileContext));
-        menu.add(readItem);
 
         // Summarize
         var summarizeItem = new JMenuItem(files.size() == 1 ? "Summarize" : "Summarize All");
@@ -348,15 +339,10 @@ public class ContextMenuBuilder {
 
     private void editFiles(FileMenuContext context) {
         context.contextManager().submitContextTask("Edit files", () -> {
-            context.contextManager().editFiles(context.files());
+            context.contextManager().addFiles(context.files());
         });
     }
 
-    private void readFiles(FileMenuContext context) {
-        context.contextManager().submitContextTask("Read files", () -> {
-            context.contextManager().addReadOnlyFiles(context.files());
-        });
-    }
 
     private void summarizeFiles(FileMenuContext context) {
         if (!context.contextManager().getAnalyzerWrapper().isReady()) {
@@ -413,20 +399,11 @@ public class ContextMenuBuilder {
                     return;
                 }
 
-                context.contextManager().editFiles(List.of(file));
+                context.contextManager().addFiles(List.of(file));
             }
         });
     }
 
-    private void readFiles(SymbolMenuContext context) {
-        context.contextManager().submitContextTask("Read file", () -> {
-            var definition = findSymbolDefinition(context);
-            if (definition.isPresent()) {
-                var file = definition.get().source();
-                context.contextManager().addReadOnlyFiles(List.of(file));
-            }
-        });
-    }
 
     private void summarizeFiles(SymbolMenuContext context) {
         if (!context.contextManager().getAnalyzerWrapper().isReady()) {

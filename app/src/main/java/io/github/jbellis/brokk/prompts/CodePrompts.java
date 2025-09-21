@@ -15,12 +15,9 @@ import java.awt.*;
 import java.util.*;
 import java.util.List;
 import java.util.stream.Collectors;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
 
 /** Generates prompts for the main coding agent loop, including instructions for SEARCH/REPLACE blocks. */
 public abstract class CodePrompts {
-    private static final Logger logger = LogManager.getLogger(CodePrompts.class);
     public static final CodePrompts instance = new CodePrompts() {}; // Changed instance creation
 
     public static final String LAZY_REMINDER =
@@ -270,9 +267,13 @@ public abstract class CodePrompts {
     public static String formatWorkspaceToc(IContextManager cm) {
         var ctx = cm.topContext();
         var editableContents = ctx.getEditableToc();
+        var readOnlyContents = ctx.getReadOnlyToc();
         var workspaceBuilder = new StringBuilder();
         if (!editableContents.isBlank()) {
             workspaceBuilder.append("<editable-toc>\n%s\n</editable-toc>".formatted(editableContents));
+        }
+        if (!readOnlyContents.isBlank()) {
+            workspaceBuilder.append("<readonly-toc>\n%s\n</readonly-toc>".formatted(readOnlyContents));
         }
         return workspaceBuilder.toString();
     }

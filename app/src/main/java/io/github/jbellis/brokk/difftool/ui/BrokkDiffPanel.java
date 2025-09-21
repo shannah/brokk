@@ -723,7 +723,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
                 var panelFiles = p.getFilesBeingSaved();
                 for (var file : panelFiles) {
                     // Check if this file is already in the current workspace context
-                    var editableFilesList = currentContext.editableFiles().toList();
+                    var editableFilesList = currentContext.fileFragments().toList();
                     boolean inWorkspace = editableFilesList.stream()
                             .anyMatch(f -> f instanceof ContextFragment.ProjectPathFragment ppf
                                     && ppf.file().equals(file));
@@ -734,7 +734,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             }
 
             if (!externalFiles.isEmpty()) {
-                contextManager.editFiles(externalFiles);
+                contextManager.addFiles(externalFiles);
             }
 
             // Step 1: Collect changes (on EDT) before writing to disk

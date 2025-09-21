@@ -204,7 +204,7 @@ public class ArchitectAgent {
             var relevantTests = testAgent.execute(instructions);
             if (!relevantTests.isEmpty()) {
                 logger.debug("Adding relevant test files found by ValidationAgent to workspace: {}", relevantTests);
-                contextManager.editFiles(relevantTests);
+                contextManager.addFiles(relevantTests);
             } else {
                 logger.debug("ValidationAgent found no relevant test files to add");
             }
@@ -717,15 +717,27 @@ public class ArchitectAgent {
                 toolSpecs.addAll(toolRegistry.getTools(this, List.of("projectFinished", "abortProject")));
             }
 
-            // Add undo tool if the last CodeAgent call failed and made changes
+            // Add undo tool if the last CodeAgent call failed and made changes.
+            // This is handled as an implicit tool for now, always available in a failing state.
+            // If the LLM makes progress without explicitly calling undo, the flag is cleared.
+            // The tool is only added here to the tool_specs to allow the LLM to call it explicitly.
             if (this.offerUndoToolNext) {
                 logger.debug("Offering undoLastChanges tool for this turn.");
                 toolSpecs.addAll(toolRegistry.getTools(this, List.of("undoLastChanges")));
-                this.offerUndoToolNext = false; // Reset the flag, offer is for this turn only
+                // Do NOT reset the flag here; it should persist until a successful action or explicit undo.
             }
 
             // Ask the LLM for the next step
             var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, true);
+
+            // If a successful non-undo tool was called, reset the undo flag
+            if (!this.offerUndoToolNext) { // Only if it wasn't set to begin with
+                boolean calledNonUndoTool = result.toolRequests().stream()
+                        .noneMatch(req -> req.name().equals("undoLastChanges"));
+                if (calledNonUndoTool) {
+                    this.offerUndoToolNext = false; // Clear the flag if the LLM made other progress
+                }
+            }
 
             if (result.error() != null) {
                 logger.debug(

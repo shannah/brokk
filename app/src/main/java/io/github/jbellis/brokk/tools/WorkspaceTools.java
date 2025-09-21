@@ -55,7 +55,7 @@ public class WorkspaceTools {
                     pathFragments.stream()
                             .map(ContextFragment.ProjectPathFragment::shortDescription)
                             .collect(Collectors.joining(", ")));
-            contextManager.editFiles(pathFragments);
+            contextManager.addPathFragments(pathFragments);
         }
 
         // Process SkeletonFragments
@@ -122,7 +122,7 @@ public class WorkspaceTools {
             }
         }
 
-        contextManager.editFiles(projectFiles);
+        contextManager.addFiles(projectFiles);
         String fileNames = projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
         String result = "";
         if (!fileNames.isEmpty()) {

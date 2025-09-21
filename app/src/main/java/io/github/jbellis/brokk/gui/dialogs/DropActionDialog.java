@@ -36,21 +36,17 @@ public final class DropActionDialog extends JDialog {
         mainPanel.setBorder(
                 BorderFactory.createEmptyBorder(Constants.V_GAP, Constants.H_GAP, Constants.V_GAP, Constants.H_GAP));
 
-        var radiosPanel = new JPanel(new GridLayout(allowSummarize ? 3 : 2, 1, Constants.H_GAP, Constants.V_GAP));
+        var radiosPanel = new JPanel(new GridLayout(allowSummarize ? 2 : 1, 1, Constants.H_GAP, Constants.V_GAP));
         var edit = new JRadioButton("Edit");
-        var read = new JRadioButton("Read");
 
         edit.setSelected(true);
 
         var group = new ButtonGroup();
         group.add(edit);
-        group.add(read);
 
         radiosPanel.add(edit);
-        radiosPanel.add(read);
 
         edit.addActionListener(_e -> selected = WorkspacePanel.ContextAction.EDIT);
-        read.addActionListener(_e -> selected = WorkspacePanel.ContextAction.READ);
 
         if (allowSummarize) {
             var summarize = new JRadioButton("Summarize");

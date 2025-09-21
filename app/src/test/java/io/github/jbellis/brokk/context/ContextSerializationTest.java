@@ -126,7 +126,7 @@ public class ContextSerializationTest {
         // Context 1: Project file, string fragment
         var projectFile1 = new ProjectFile(tempDir, "src/File1.java");
         var context1 = new Context(mockContextManager, "Context 1 started")
-                .addEditableFiles(List.of(new ContextFragment.ProjectPathFragment(projectFile1, mockContextManager)))
+                .addPathFragments(List.of(new ContextFragment.ProjectPathFragment(projectFile1, mockContextManager)))
                 .addVirtualFragment(new ContextFragment.StringFragment(
                         mockContextManager, "Virtual content 1", "VC1", SyntaxConstants.SYNTAX_STYLE_JAVA));
         ContextHistory originalHistory = new ContextHistory(context1);
@@ -386,7 +386,7 @@ public class ContextSerializationTest {
                 mockContextManager, "text", "desc", SyntaxConstants.SYNTAX_STYLE_NONE);
 
         var context = new Context(mockContextManager, "Initial")
-                .addEditableFiles(List.of(ctxFragment))
+                .addPathFragments(List.of(ctxFragment))
                 .addVirtualFragment(strFragment);
         var history = new ContextHistory(context);
 
@@ -454,7 +454,7 @@ public class ContextSerializationTest {
         Files.writeString(projectFile.absPath(), "public class Test {}");
         var fragment = new ContextFragment.ProjectPathFragment(projectFile, mockContextManager);
 
-        var updatedContext1 = context1.addEditableFiles(List.of(fragment));
+        var updatedContext1 = context1.addPathFragments(List.of(fragment));
         var history = new ContextHistory(updatedContext1);
 
         // Create context with a slow-resolving action (simulates async operation)
@@ -535,12 +535,12 @@ public class ContextSerializationTest {
 
         // Context 1
         var updatedContext1 =
-                context1.addEditableFiles(List.of(liveProjectPathFragment)).addVirtualFragment(liveStringFragment);
+                context1.addPathFragments(List.of(liveProjectPathFragment)).addVirtualFragment(liveStringFragment);
         var history = new ContextHistory(updatedContext1);
 
         // Context 2 also uses the same live instances
         var context2 = new Context(mockContextManager, "Context 2")
-                .addEditableFiles(List.of(liveProjectPathFragment))
+                .addPathFragments(List.of(liveProjectPathFragment))
                 .addVirtualFragment(liveStringFragment);
         history.addFrozenContextAndClearRedo(context2.freeze());
 
@@ -657,7 +657,7 @@ public class ContextSerializationTest {
 
         var fragment = new ContextFragment.GitFileFragment(projectFile, "abcdef1234567890", "content for git file");
 
-        var context = new Context(mockContextManager, "Test GitFileFragment").addReadonlyFiles(List.of(fragment));
+        var context = new Context(mockContextManager, "Test GitFileFragment").addPathFragments(List.of(fragment));
         ContextHistory originalHistory = new ContextHistory(context);
 
         Path zipFile = tempDir.resolve("test_gitfile_history.zip");
@@ -687,7 +687,7 @@ public class ContextSerializationTest {
         var externalFile = new io.github.jbellis.brokk.analyzer.ExternalFile(externalFilePath);
         var fragment = new ContextFragment.ExternalPathFragment(externalFile, mockContextManager);
 
-        var context = new Context(mockContextManager, "Test ExternalPathFragment").addReadonlyFiles(List.of(fragment));
+        var context = new Context(mockContextManager, "Test ExternalPathFragment").addPathFragments(List.of(fragment));
         ContextHistory originalHistory = new ContextHistory(context);
 
         Path zipFile = tempDir.resolve("test_externalpath_history.zip");
@@ -721,7 +721,7 @@ public class ContextSerializationTest {
                 tempDir, tempDir.relativize(imageFilePath)); // Treat as project file for test
         var fragment = new ContextFragment.ImageFileFragment(brokkImageFile, mockContextManager);
 
-        var context = new Context(mockContextManager, "Test ImageFileFragment").addReadonlyFiles(List.of(fragment));
+        var context = new Context(mockContextManager, "Test ImageFileFragment").addPathFragments(List.of(fragment));
         ContextHistory originalHistory = new ContextHistory(context);
 
         Path zipFile = tempDir.resolve("test_imagefile_history.zip");
