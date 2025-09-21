@@ -733,24 +733,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
     }
 
-    private Context applyFileChanges(
-            Context currentLiveCtx, List<ContextFragment.ProjectPathFragment> fragmentsToAdd) {
-        var currentFileSet = currentLiveCtx
-                .fileFragments()
-                .flatMap(f -> f.files().stream())
-                .collect(Collectors.toSet());
-        var uniqueNewEditableFragments = fragmentsToAdd.stream()
-                .filter(frag -> !currentFileSet.contains(frag.file()))
-                .toList();
-
-        return currentLiveCtx.addPathFragments(uniqueNewEditableFragments);
-    }
-
     /** Add the given files to editable. */
-    public void addPathFragments(List<ContextFragment.ProjectPathFragment> fragments) {
+    public void addPathFragments(List<? extends PathFragment> fragments) {
         assert fragments.stream().allMatch(ContextFragment.PathFragment::isText)
                 : "Only text files can be made editable";
-        pushContext(currentLiveCtx -> applyFileChanges(currentLiveCtx, fragments));
+        pushContext(currentLiveCtx -> currentLiveCtx.addPathFragments(fragments));
         io.systemOutput("Edited " + joinForOutput(fragments));
     }
 
@@ -948,7 +935,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 pushContext(currentLiveCtx -> {
                     Context modifiedCtx = currentLiveCtx;
                     if (!pathsToAdd.isEmpty()) {
-                        modifiedCtx = applyFileChanges(modifiedCtx, pathsToAdd);
+                        modifiedCtx = modifiedCtx.addPathFragments(pathsToAdd);
                     }
                     for (VirtualFragment vfToAdd : virtualFragmentsToAdd) {
                         modifiedCtx = modifiedCtx.addVirtualFragment(vfToAdd);
@@ -1881,7 +1868,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         .toList();
 
                 if (!fragmentsToAdd.isEmpty()) {
-                    updated = applyFileChanges(updated, fragmentsToAdd);
+                    updated = updated.addPathFragments(fragmentsToAdd);
                 }
             }
 

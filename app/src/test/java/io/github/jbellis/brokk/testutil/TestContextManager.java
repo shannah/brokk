@@ -60,7 +60,7 @@ public final class TestContextManager implements IContextManager {
         this.editableFiles.add(file);
         this.readonlyFiles.remove(file); // Cannot be both
     }
-    
+
     public MockAnalyzer getMockAnalyzer() {
         return mockAnalyzer;
     }
