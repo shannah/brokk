@@ -9,7 +9,6 @@ import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.ExternalFile;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import java.awt.*;
-import java.awt.event.InputEvent;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
@@ -78,7 +77,8 @@ public class FileSelectionPanel extends JPanel {
         autoCompletion.setAutoActivationEnabled(true);
         autoCompletion.setAutoActivationDelay(0); // show popup immediately
         autoCompletion.install(fileInputComponent);
-        AutoCompleteUtil.bindCtrlEnter(autoCompletion, fileInputComponent); // Ctrl+Enter on input might imply confirmation
+        AutoCompleteUtil.bindCtrlEnter(
+                autoCompletion, fileInputComponent); // Ctrl+Enter on input might imply confirmation
 
         // 3. FileTree
         tree = new FileSelectionTree(this.project, config.allowExternalFiles(), config.fileFilter());

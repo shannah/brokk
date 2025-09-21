@@ -200,18 +200,15 @@ public class AnalyzerUtil {
     }
 
     public record CodeWithSource(String code, CodeUnit source) {
-        /**
-         * Format this single CodeWithSource instance into the same textual representation used for lists.
-         */
+        /** Format this single CodeWithSource instance into the same textual representation used for lists. */
         public String text() {
             return text(List.of(this));
         }
 
         /**
-         * Formats a list of CodeWithSource parts into a human-readable usage summary.
-         * The summary will contain
-         * - "Method uses:" section grouped by containing class with <methods> blocks
-         * - "Type uses:" section with skeleton headers
+         * Formats a list of CodeWithSource parts into a human-readable usage summary. The summary will contain -
+         * "Method uses:" section grouped by containing class with <methods> blocks - "Type uses:" section with skeleton
+         * headers
          */
         public static String text(List<CodeWithSource> parts) {
             Map<String, List<String>> methodsByClass = new LinkedHashMap<>();
@@ -244,12 +241,13 @@ public class AnalyzerUtil {
                         }
                     }
 
-                    sb.append("""
+                    sb.append(
+                            """
                             <methods class="%s" file="%s">
                             %s
                             </methods>
                             """
-                            .formatted(fqcn, file, String.join("\n\n", entry.getValue())));
+                                    .formatted(fqcn, file, String.join("\n\n", entry.getValue())));
                 }
             }
 
@@ -263,7 +261,9 @@ public class AnalyzerUtil {
                     var cu = cws.source();
                     if (!cu.isClass()) continue;
                     String fqcn = cu.fqName();
-                    classCodesByFqcn.computeIfAbsent(fqcn, k -> new ArrayList<>()).add(cws.code());
+                    classCodesByFqcn
+                            .computeIfAbsent(fqcn, k -> new ArrayList<>())
+                            .add(cws.code());
                 }
 
                 for (var entry : classCodesByFqcn.entrySet()) {
@@ -280,12 +280,13 @@ public class AnalyzerUtil {
                         }
                     }
 
-                    sb.append("""
+                    sb.append(
+                            """
                             <class file="%s">
                             %s
                             </class>
                             """
-                            .formatted(file, String.join("\n\n", codesForClass)));
+                                    .formatted(file, String.join("\n\n", codesForClass)));
                 }
             }
 

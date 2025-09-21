@@ -247,15 +247,11 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
                         capabilityMap.put(language, capabilities);
                     });
                 } else {
-                    cm.getProject().getAnalyzerLanguages().stream()
-                            .findFirst()
-                            .ifPresent(language -> {
-                                var hasUsages =
-                                        analyzer.as(UsagesProvider.class).isPresent();
-                                var hasSource =
-                                        analyzer.as(SourceCodeProvider.class).isPresent();
-                                capabilityMap.put(language, new AnalyzerCapabilities(hasUsages, hasSource));
-                            });
+                    cm.getProject().getAnalyzerLanguages().stream().findFirst().ifPresent(language -> {
+                        var hasUsages = analyzer.as(UsagesProvider.class).isPresent();
+                        var hasSource = analyzer.as(SourceCodeProvider.class).isPresent();
+                        capabilityMap.put(language, new AnalyzerCapabilities(hasUsages, hasSource));
+                    });
                 }
                 return capabilityMap;
             });
@@ -455,17 +451,15 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
                                                     usageItem.addActionListener(action -> {
                                                         cm.submitBackgroundTask(
                                                                 "Capture Usages",
-                                                                () -> cm.usageForIdentifier(
-                                                                        codeUnit.fqName(), true));
+                                                                () -> cm.usageForIdentifier(codeUnit.fqName(), true));
                                                     });
                                                 } else {
                                                     usageItem.setToolTipText(
                                                             "Code intelligence does not support usage capturing for this language.");
                                                 }
 
-                                                var analyzer = cm
-                                                        .getAnalyzerWrapper()
-                                                        .getNonBlocking();
+                                                var analyzer =
+                                                        cm.getAnalyzerWrapper().getNonBlocking();
                                                 boolean sourceCodeAvailable = analyzer != null
                                                         && SourceCaptureUtil.isSourceCaptureAvailable(
                                                                 codeUnit, capabilities.hasSource(), analyzer);
@@ -478,8 +472,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
                                                 if (sourceCodeAvailable) {
                                                     // Use shared utility for consistent behavior
                                                     sourceItem.addActionListener(action -> {
-                                                        SourceCaptureUtil.captureSourceForCodeUnit(
-                                                                codeUnit, cm);
+                                                        SourceCaptureUtil.captureSourceForCodeUnit(codeUnit, cm);
                                                     });
                                                 } else {
                                                     sourceItem.setToolTipText(
@@ -790,8 +783,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
 
         // Submit the quick-edit session to a background future
         var future = cm.submitUserTask("Quick Edit", () -> {
-            var agent =
-                    new CodeAgent(cm, cm.getService().quickModel());
+            var agent = new CodeAgent(cm, cm.getService().quickModel());
             return agent.runQuickTask(file, selectedText, instructions);
         });
 
@@ -979,12 +971,13 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
         }
 
         // Prompt the user via the application's IConsoleIO (omits the Frame parameter)
-        int choice = cm.getIo().showConfirmDialog(
-                SwingUtilities.getWindowAncestor(this),
-                "You have unsaved changes. Do you want to save them before closing?",
-                "Unsaved Changes",
-                JOptionPane.YES_NO_CANCEL_OPTION,
-                JOptionPane.WARNING_MESSAGE);
+        int choice = cm.getIo()
+                .showConfirmDialog(
+                        SwingUtilities.getWindowAncestor(this),
+                        "You have unsaved changes. Do you want to save them before closing?",
+                        "Unsaved Changes",
+                        JOptionPane.YES_NO_CANCEL_OPTION,
+                        JOptionPane.WARNING_MESSAGE);
 
         return switch (choice) {
             case JOptionPane.YES_OPTION -> performSave(saveButton);
@@ -1035,11 +1028,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
                         messagesForHistory.add(
                                 Messages.customSystem("# Diff of changes\n\n```%s```".formatted(unifiedDiff)));
                         var saveResult = new TaskResult(
-                                cm,
-                                actionDescription,
-                                messagesForHistory,
-                                Set.of(file),
-                                TaskResult.StopReason.SUCCESS);
+                                cm, actionDescription, messagesForHistory, Set.of(file), TaskResult.StopReason.SUCCESS);
                         cm.addToHistory(saveResult, false); // Add the single entry
                         logger.debug("Added history entry for changes in: {}", file);
                     } catch (Exception e) {

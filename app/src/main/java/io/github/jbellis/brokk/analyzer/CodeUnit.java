@@ -42,9 +42,7 @@ public class CodeUnit implements Comparable<CodeUnit> {
         this.fqName = packageName.isEmpty() ? shortName : packageName + "." + shortName;
     }
 
-    /**
-     * Return the FQCN corresponding to the given FQMN
-     */
+    /** Return the FQCN corresponding to the given FQMN */
     public static String toClassname(String fqMethodName) {
         int lastDot = fqMethodName.lastIndexOf('.');
         if (lastDot == -1) {
