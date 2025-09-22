@@ -55,7 +55,8 @@ public final class AboutDialog extends JDialog {
 
         // Allow closing with ESC key
         var rootPane = getRootPane();
-        rootPane.getInputMap(JRootPane.WHEN_IN_FOCUSED_WINDOW).put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeDialog");
+        rootPane.getInputMap(JRootPane.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeDialog");
         rootPane.getActionMap().put("closeDialog", new AbstractAction() {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
