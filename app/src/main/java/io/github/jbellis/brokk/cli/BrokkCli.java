@@ -234,7 +234,7 @@ public final class BrokkCli implements Callable<Integer> {
                 return 1;
             }
             taskModelOverride = service.getModel(fav.config());
-            assert taskModelOverride != null : "service.getModel returned null for alias " + modelName;
+            assert taskModelOverride != null : service.getAvailableModels();
         }
 
         StreamingChatModel codeModelOverride = null;
@@ -247,7 +247,7 @@ public final class BrokkCli implements Callable<Integer> {
                 return 1;
             }
             codeModelOverride = service.getModel(fav.config());
-            assert codeModelOverride != null : "service.getModel returned null for alias " + codeModelName;
+            assert codeModelOverride != null : service.getAvailableModels();
         }
 
         var workspaceTools = new WorkspaceTools(cm);
