@@ -159,7 +159,7 @@ public class GitCommitTab extends JPanel {
 
         editFileItem.addActionListener(e -> {
             var selectedProjectFiles = getSelectedFilesFromTable();
-            contextManager.editFiles(selectedProjectFiles);
+            contextManager.addFiles(selectedProjectFiles);
             rightClickedFile = null; // Clear after use
         });
 
@@ -612,7 +612,7 @@ public class GitCommitTab extends JPanel {
                         .collect(Collectors.toSet());
 
                 // 2. Add all selected files to the workspace to snapshot their current state.
-                contextManager.editFiles(selectedFiles);
+                contextManager.addFiles(selectedFiles);
 
                 // 3. Separate files into "new" and "other".
                 var newFiles = selectedFiles.stream()
@@ -626,7 +626,7 @@ public class GitCommitTab extends JPanel {
                 // These fragments were just created by `editFiles`.
                 var fragmentsForNewFiles = contextManager
                         .liveContext()
-                        .editableFiles()
+                        .fileFragments()
                         .filter(f ->
                                 f instanceof ContextFragment.ProjectPathFragment ppf && newFiles.contains(ppf.file()))
                         .toList();
@@ -689,7 +689,7 @@ public class GitCommitTab extends JPanel {
                 if (!otherFilesToDrop.isEmpty()) {
                     var fragmentsToDrop = contextManager
                             .liveContext()
-                            .editableFiles()
+                            .fileFragments()
                             .filter(f -> f instanceof ContextFragment.ProjectPathFragment ppf
                                     && otherFilesToDrop.contains(ppf.file()))
                             .toList();

@@ -144,7 +144,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
             var finalCaptureButton = captureButton; // Final reference for lambda
             captureButton.addActionListener(e -> {
                 // Add the GitHistoryFragment to the read-only context
-                cm.addReadOnlyFragmentAsync(ghf);
+                cm.addPathFragmentAsync(ghf);
                 finalCaptureButton.setEnabled(false); // Disable after capture
                 finalCaptureButton.setToolTipText("Revision captured");
             });
@@ -159,12 +159,12 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
             editButton = new MaterialButton(text);
             SwingUtilities.invokeLater(() -> requireNonNull(editButton).setIcon(Icons.EDIT_DOCUMENT));
             var finalEditButton = editButton; // Final reference for lambda
-            if (cm.getEditableFiles().contains(file)) {
+            if (cm.getFilesInContext().contains(file)) {
                 finalEditButton.setEnabled(false);
                 finalEditButton.setToolTipText("File is in Edit context");
             } else {
                 finalEditButton.addActionListener(e -> {
-                    cm.editFiles(List.of(this.file));
+                    cm.addFiles(List.of(this.file));
                     finalEditButton.setEnabled(false);
                     finalEditButton.setToolTipText("File is in Edit context");
                 });

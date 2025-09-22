@@ -27,7 +27,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-/** Builder for creating consistent context menus for files and symbols */
+/** Builder for creating consistent context menus for files and symbols. */
 public class ContextMenuBuilder {
     private static final Logger logger = LogManager.getLogger(ContextMenuBuilder.class);
 
@@ -152,11 +152,6 @@ public class ContextMenuBuilder {
 
         parent.add(new JPopupMenu.Separator());
 
-        // Read File
-        var readFileItem = new JMenuItem("Read File");
-        readFileItem.addActionListener(e -> readFiles(context));
-        parent.add(readFileItem);
-
         // Edit File
         var editFileItem = new JMenuItem("Edit File");
         editFileItem.setEnabled(analyzerReady);
@@ -212,11 +207,6 @@ public class ContextMenuBuilder {
         editItem.addActionListener(e -> editFiles(fileContext));
         editItem.setEnabled(allFilesTracked);
         menu.add(editItem);
-
-        // Read
-        var readItem = new JMenuItem(files.size() == 1 ? "Read" : "Read All");
-        readItem.addActionListener(e -> readFiles(fileContext));
-        menu.add(readItem);
 
         // Summarize
         var summarizeItem = new JMenuItem(files.size() == 1 ? "Summarize" : "Summarize All");
@@ -335,11 +325,6 @@ public class ContextMenuBuilder {
         }
         parent.add(editItem);
 
-        // Read
-        var readItem = new JMenuItem("Read");
-        readItem.addActionListener(e -> readFiles(singleFileContext));
-        parent.add(readItem);
-
         // Summarize
         var summarizeItem = new JMenuItem("Summarize");
         summarizeItem.setEnabled(analyzerReady);
@@ -455,13 +440,7 @@ public class ContextMenuBuilder {
 
     private void editFiles(FileMenuContext context) {
         context.contextManager().submitContextTask("Edit files", () -> {
-            context.contextManager().editFiles(context.files());
-        });
-    }
-
-    private void readFiles(FileMenuContext context) {
-        context.contextManager().submitContextTask("Read files", () -> {
-            context.contextManager().addReadOnlyFiles(context.files());
+            context.contextManager().addFiles(context.files());
         });
     }
 
@@ -558,17 +537,7 @@ public class ContextMenuBuilder {
                     return;
                 }
 
-                context.contextManager().editFiles(List.of(file));
-            }
-        });
-    }
-
-    private void readFiles(SymbolMenuContext context) {
-        context.contextManager().submitContextTask("Read file", () -> {
-            var definition = findSymbolDefinition(context);
-            if (definition.isPresent()) {
-                var file = definition.get().source();
-                context.contextManager().addReadOnlyFiles(List.of(file));
+                context.contextManager().addFiles(List.of(file));
             }
         });
     }

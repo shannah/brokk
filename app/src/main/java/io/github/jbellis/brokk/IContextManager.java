@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
@@ -29,14 +28,6 @@ public interface IContextManager {
 
     default Collection<? extends ChatMessage> getHistoryMessages() {
         return List.of();
-    }
-
-    default String getEditableSummary() {
-        return "";
-    }
-
-    default String getReadOnlySummary() {
-        return "";
     }
 
     /**
@@ -115,11 +106,7 @@ public interface IContextManager {
         return new ProjectFile(project.getRoot(), trimmed);
     }
 
-    default Set<ProjectFile> getEditableFiles() {
-        throw new UnsupportedOperationException();
-    }
-
-    default Set<BrokkFile> getReadonlyProjectFiles() {
+    default Set<ProjectFile> getFilesInContext() {
         throw new UnsupportedOperationException();
     }
 
@@ -158,7 +145,7 @@ public interface IContextManager {
         throw new UnsupportedOperationException();
     }
 
-    default void editFiles(Collection<ProjectFile> path) {}
+    default void addFiles(Collection<ProjectFile> path) {}
 
     default IProject getProject() {
         throw new UnsupportedOperationException();

@@ -997,7 +997,7 @@ public class ContextAgent {
             boolean allowSkipPruning)
             throws InterruptedException, ContextTooLargeException {
         // If the workspace isn't empty and we have no analyzer, don't suggest adding whole files.
-        if (analyzer.isEmpty() && !cm.getEditableFiles().isEmpty()) {
+        if (analyzer.isEmpty() && !cm.getFilesInContext().isEmpty()) {
             debug("Non-empty context and no analyzer present, skipping file content suggestions");
             return new RecommendationResult(
                     true, List.of(), "Skipping file content suggestions for non-empty context without analyzer.");
