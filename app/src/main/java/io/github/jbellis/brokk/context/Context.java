@@ -103,13 +103,7 @@ public class Context {
             List<TaskEntry> taskHistory,
             @Nullable ContextFragment.TaskFragment parsedOutput,
             Future<String> action) {
-        this(
-                newContextId(),
-                contextManager,
-fragments,
-                taskHistory,
-                parsedOutput,
-                action);
+        this(newContextId(), contextManager, fragments, taskHistory, parsedOutput, action);
     }
 
     /** Produces a live context whose fragments are un-frozen versions of those in {@code frozen}. */
@@ -153,9 +147,7 @@ fragments,
     }
 
     public Context addPathFragments(Collection<? extends ContextFragment.PathFragment> paths) {
-        var toAdd = paths.stream()
-                .filter(p -> !fragments.contains(p))
-                .toList();
+        var toAdd = paths.stream().filter(p -> !fragments.contains(p)).toList();
         if (toAdd.isEmpty()) {
             return this;
         }
@@ -340,12 +332,7 @@ fragments,
 
     public Context removeAll() {
         String action = "Dropped all context";
-        return new Context(
-                contextManager,
-                List.of(),
-                List.of(),
-                null,
-                CompletableFuture.completedFuture(action));
+        return new Context(contextManager, List.of(), List.of(), null, CompletableFuture.completedFuture(action));
     }
 
     public boolean isEmpty() {
@@ -507,12 +494,8 @@ fragments,
 
         Context liveContext;
         if (!liveFragments.equals(fragments)) {
-            liveContext = new Context(
-                    this.contextManager,
-                    liveFragments,
-                    this.taskHistory,
-                    this.parsedOutput,
-                    this.action);
+            liveContext =
+                    new Context(this.contextManager, liveFragments, this.taskHistory, this.parsedOutput, this.action);
         } else {
             liveContext = this;
         }

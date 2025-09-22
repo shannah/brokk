@@ -735,8 +735,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     /** Add the given files to editable. */
     public void addPathFragments(List<? extends PathFragment> fragments) {
-        assert fragments.stream().allMatch(ContextFragment.PathFragment::isText)
-                : "Only text files can be made editable";
         pushContext(currentLiveCtx -> currentLiveCtx.addPathFragments(fragments));
         io.systemOutput("Edited " + joinForOutput(fragments));
     }
@@ -1319,10 +1317,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     @Override
     public Set<ProjectFile> getFilesInContext() {
-        return topContext()
-                .fileFragments()
-                .flatMap(cf -> cf.files().stream())
-                .collect(Collectors.toSet());
+        return topContext().fileFragments().flatMap(cf -> cf.files().stream()).collect(Collectors.toSet());
     }
 
     private void captureGitState(Context frozenContext) {

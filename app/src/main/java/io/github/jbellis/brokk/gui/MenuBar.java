@@ -27,7 +27,6 @@ import java.util.Comparator;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.swing.*;
 import javax.swing.event.MenuEvent;
@@ -208,7 +207,8 @@ public class MenuBar {
         contextMenu.addMenuListener(new MenuListener() {
             @Override
             public void menuSelected(MenuEvent e) {
-                summarizeContextItem.setEnabled(chrome.getContextManager().getAnalyzerWrapper().isReady());
+                summarizeContextItem.setEnabled(
+                        chrome.getContextManager().getAnalyzerWrapper().isReady());
             }
 
             @Override
@@ -249,11 +249,9 @@ public class MenuBar {
                                 pathsToAttach.add(startPath);
                             } else if (Files.isDirectory(startPath)) {
                                 try (Stream<Path> walk = Files.walk(startPath, FileVisitOption.FOLLOW_LINKS)) {
-                                    walk.filter(Files::isRegularFile)
-                                            .forEach(pathsToAttach::add);
+                                    walk.filter(Files::isRegularFile).forEach(pathsToAttach::add);
                                 } catch (IOException ex) {
-                                    chrome.toolError(
-                                            "Error reading directory " + startPath + ": " + ex.getMessage());
+                                    chrome.toolError("Error reading directory " + startPath + ": " + ex.getMessage());
                                 }
                             }
                         }
@@ -266,7 +264,8 @@ public class MenuBar {
                         var projectRoot = project.getRoot();
                         List<ContextFragment.PathFragment> fragments = new ArrayList<>();
                         for (Path p : pathsToAttach) {
-                            BrokkFile bf = Completions.maybeExternalFile(projectRoot, p.toAbsolutePath().normalize().toString());
+                            BrokkFile bf = Completions.maybeExternalFile(
+                                    projectRoot, p.toAbsolutePath().normalize().toString());
                             var pathFrag = ContextFragment.toPathFragment(bf, cm);
                             fragments.add(pathFrag);
                         }

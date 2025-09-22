@@ -149,7 +149,6 @@ public abstract class CodePrompts {
         if (changedFiles.isEmpty()) {
             messages.addAll(getWorkspaceContentsMessages(ctx));
         }
-        messages.addAll(getWorkspaceContentsMessages(ctx));
         messages.addAll(exampleMessages(flags));
         messages.addAll(getHistoryMessages(ctx));
         messages.addAll(taskMessages);

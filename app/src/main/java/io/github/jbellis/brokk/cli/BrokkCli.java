@@ -50,7 +50,6 @@ public final class BrokkCli implements Callable<Integer> {
     @CommandLine.Option(names = "--edit", description = "Add a file to the workspace for editing. Can be repeated.")
     private List<String> editFiles = new ArrayList<>();
 
-
     @CommandLine.Option(
             names = "--add-class",
             description = "Add the file containing the given FQCN to the workspace for editing. Can be repeated.")
@@ -388,7 +387,8 @@ public final class BrokkCli implements Callable<Integer> {
     private List<String> resolveFiles(List<String> inputs, String entityType) {
         // Files can only be added as editable via CLI, so we only consider tracked files
         // and allow listing all tracked files as a primary source.
-        Supplier<Collection<ProjectFile>> primarySource = () -> project.getRepo().getTrackedFiles();
+        Supplier<Collection<ProjectFile>> primarySource =
+                () -> project.getRepo().getTrackedFiles();
 
         return inputs.stream()
                 .map(input -> {

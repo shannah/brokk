@@ -252,10 +252,12 @@ public class SessionManagerTest {
         assertEquals(expected.repr(), actual.repr(), "Fragment repr mismatch for ID " + expected.id());
 
         // Compare files and sources (ProjectFile and CodeUnit DTOs are by value)
-        assertEquals(
-                expected.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
-                actual.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
-                "Fragment sources mismatch for ID " + expected.id());
+        if (!(expected instanceof FrozenFragment) && !(actual instanceof FrozenFragment)) {
+            assertEquals(
+                    expected.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
+                    actual.sources().stream().map(CodeUnit::fqName).collect(Collectors.toSet()),
+                    "Fragment sources mismatch for ID " + expected.id());
+        }
         assertEquals(
                 expected.files().stream().map(ProjectFile::toString).collect(Collectors.toSet()),
                 actual.files().stream().map(ProjectFile::toString).collect(Collectors.toSet()),

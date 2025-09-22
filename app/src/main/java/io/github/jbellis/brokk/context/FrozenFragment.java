@@ -251,8 +251,7 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
             Set<ProjectFile> files,
             String originalClassName,
             Map<String, String> meta,
-            @Nullable String repr
-            ) {
+            @Nullable String repr) {
         // idFromDto is the contentHash. Use INTERN_POOL to ensure global uniqueness.
         return INTERN_POOL.computeIfAbsent(
                 idFromDto,
@@ -269,8 +268,7 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                         files,
                         originalClassName,
                         meta,
-                        repr
-                        ));
+                        repr));
     }
 
     // Backwards-compatible overload used by migration code (V2_DtoMapper) and older DTOs.
@@ -300,8 +298,7 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 files,
                 originalClassName,
                 meta,
-                null
-                );
+                null);
     }
 
     /**
@@ -435,8 +432,7 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                             files,
                             originalClassName,
                             finalMeta,
-                            finalRepr
-                            ));
+                            finalRepr));
         } catch (UncheckedIOException e) {
             throw new IOException(e.getCause() != null ? e.getCause() : e);
         } catch (CancellationException e) {

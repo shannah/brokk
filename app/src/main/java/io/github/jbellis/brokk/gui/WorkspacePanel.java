@@ -8,7 +8,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.Service;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -138,7 +137,7 @@ public class WorkspacePanel extends JPanel {
 
                 actions.add(null); // Separator
                 actions.add(WorkspaceAction.EDIT_FILE.createFileRefAction(panel, fileRef));
-                    actions.add(WorkspaceAction.SUMMARIZE_FILE.createFileRefAction(panel, fileRef));
+                actions.add(WorkspaceAction.SUMMARIZE_FILE.createFileRefAction(panel, fileRef));
             }
 
             return actions;
@@ -361,11 +360,11 @@ public class WorkspacePanel extends JPanel {
                         var contextAction =
                                 switch (WorkspaceAction.this) {
                                     case EDIT_FILE -> ContextAction.EDIT;
-                    case SUMMARIZE_FILE -> ContextAction.SUMMARIZE;
-                    default ->
-                        throw new UnsupportedOperationException(
-                                "File ref action not implemented: " + WorkspaceAction.this);
-                };
+                                    case SUMMARIZE_FILE -> ContextAction.SUMMARIZE;
+                                    default ->
+                                        throw new UnsupportedOperationException(
+                                                "File ref action not implemented: " + WorkspaceAction.this);
+                                };
                         var fragment =
                                 new ContextFragment.ProjectPathFragment(fileRef.getRepoFile(), panel.contextManager);
                         panel.performContextActionAsync(contextAction, List.of(fragment));
@@ -414,13 +413,13 @@ public class WorkspacePanel extends JPanel {
                     var contextAction =
                             switch (WorkspaceAction.this) {
                                 case EDIT_ALL_REFS -> ContextAction.EDIT;
-                    case SUMMARIZE_ALL_REFS -> ContextAction.SUMMARIZE;
-                    case COPY -> ContextAction.COPY;
-                    case DROP -> ContextAction.DROP;
-                    case RUN_TESTS -> ContextAction.RUN_TESTS;
-                    default ->
-                        throw new UnsupportedOperationException(
-                                "Fragments action not implemented: " + WorkspaceAction.this);
+                                case SUMMARIZE_ALL_REFS -> ContextAction.SUMMARIZE;
+                                case COPY -> ContextAction.COPY;
+                                case DROP -> ContextAction.DROP;
+                                case RUN_TESTS -> ContextAction.RUN_TESTS;
+                                default ->
+                                    throw new UnsupportedOperationException(
+                                            "Fragments action not implemented: " + WorkspaceAction.this);
                             };
                     panel.performContextActionAsync(contextAction, fragments);
 
@@ -2019,10 +2018,10 @@ public class WorkspacePanel extends JPanel {
 
     public void attachContextViaDialog(boolean defaultSummarizeChecked) {
         assert SwingUtilities.isEventDispatchThread();
-            var dlg = new AttachContextDialog(chrome.getFrame(), contextManager, defaultSummarizeChecked);
-            dlg.setLocationRelativeTo(chrome.getFrame());
-            dlg.setVisible(true); // modal; blocks until closed and selection is set
-            var result = dlg.getSelection();
+        var dlg = new AttachContextDialog(chrome.getFrame(), contextManager, defaultSummarizeChecked);
+        dlg.setLocationRelativeTo(chrome.getFrame());
+        dlg.setVisible(true); // modal; blocks until closed and selection is set
+        var result = dlg.getSelection();
 
         if (result == null) return;
 
@@ -2042,9 +2041,16 @@ public class WorkspacePanel extends JPanel {
                         if (cu.isClass()) {
                             contextManager.addSummaries(Collections.emptySet(), java.util.Set.of(cu));
                         } else {
-                            var analyzer = contextManager.getAnalyzerUninterrupted().as(SkeletonProvider.class).orElseThrow();
+                            var analyzer = contextManager
+                                    .getAnalyzerUninterrupted()
+                                    .as(SkeletonProvider.class)
+                                    .orElseThrow();
                             analyzer.getSkeleton(cu.fqName()).ifPresent(st -> {
-                                var summary = new ContextFragment.StringFragment(contextManager, st, "Summary of " + cu.fqName(), cu.source().getSyntaxStyle());
+                                var summary = new ContextFragment.StringFragment(
+                                        contextManager,
+                                        st,
+                                        "Summary of " + cu.fqName(),
+                                        cu.source().getSyntaxStyle());
                                 contextManager.addVirtualFragment(summary);
                             });
                         }

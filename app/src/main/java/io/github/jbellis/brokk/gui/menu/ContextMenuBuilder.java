@@ -199,7 +199,6 @@ public class ContextMenuBuilder {
         editItem.setEnabled(allFilesTracked);
         menu.add(editItem);
 
-
         // Summarize
         var summarizeItem = new JMenuItem(files.size() == 1 ? "Summarize" : "Summarize All");
         boolean analyzerReady =
@@ -343,7 +342,6 @@ public class ContextMenuBuilder {
         });
     }
 
-
     private void summarizeFiles(FileMenuContext context) {
         if (!context.contextManager().getAnalyzerWrapper().isReady()) {
             context.chrome()
@@ -403,7 +401,6 @@ public class ContextMenuBuilder {
             }
         });
     }
-
 
     private void summarizeFiles(SymbolMenuContext context) {
         if (!context.contextManager().getAnalyzerWrapper().isReady()) {

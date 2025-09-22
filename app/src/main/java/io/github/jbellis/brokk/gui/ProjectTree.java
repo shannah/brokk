@@ -318,7 +318,6 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         editItem.setEnabled(allFilesTracked);
         contextMenu.add(editItem);
 
-
         boolean canSummarize = anySummarizable(targetFiles);
         if (canSummarize) {
             JMenuItem summarizeItem = new JMenuItem(summarizeLabel);

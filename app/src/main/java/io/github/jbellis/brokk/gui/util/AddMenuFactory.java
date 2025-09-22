@@ -53,7 +53,6 @@ public final class AddMenuFactory {
             parent.add(editMenuItem);
         }
 
-
         JMenuItem summarizeMenuItem = new JMenuItem("Summarize Files");
         summarizeMenuItem.addActionListener(e -> {
             wp.performContextActionAsync(WorkspacePanel.ContextAction.SUMMARIZE, List.<ContextFragment>of());

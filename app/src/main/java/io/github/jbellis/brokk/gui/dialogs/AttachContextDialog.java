@@ -30,8 +30,8 @@ import javax.swing.JCheckBox;
 import javax.swing.JDialog;
 import javax.swing.JLabel;
 import javax.swing.JPanel;
-import javax.swing.JToggleButton;
 import javax.swing.JTextField;
+import javax.swing.JToggleButton;
 import javax.swing.KeyStroke;
 import javax.swing.SwingUtilities;
 import javax.swing.text.JTextComponent;
@@ -42,19 +42,21 @@ import org.fife.ui.autocomplete.ShorthandCompletion;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * AttachContextDialog (ACD)
- * - Segmented control: Files | Classes | Methods | Usages, placed above the search bar
- * - Single text input with autocomplete and a light-grey "Search" overlay hint
- * - Checkbox "Summarize" placed below the search bar
- * - Returns a Result(fragment, summarize)
- * - Enter confirms current input; Escape cancels. No OK/Cancel buttons.
- * - If analyzer is not ready: disable all segments except Files.
- * - Segments gated by analyzer capabilities when ready: SkeletonProvider / SourceCodeProvider / UsagesProvider.
- * - Registers an AnalyzerCallback to update gating as analyzer state changes.
+ * AttachContextDialog (ACD) - Segmented control: Files | Classes | Methods | Usages, placed above the search bar -
+ * Single text input with autocomplete and a light-grey "Search" overlay hint - Checkbox "Summarize" placed below the
+ * search bar - Returns a Result(fragment, summarize) - Enter confirms current input; Escape cancels. No OK/Cancel
+ * buttons. - If analyzer is not ready: disable all segments except Files. - Segments gated by analyzer capabilities
+ * when ready: SkeletonProvider / SourceCodeProvider / UsagesProvider. - Registers an AnalyzerCallback to update gating
+ * as analyzer state changes.
  */
 public class AttachContextDialog extends JDialog {
 
-    public enum TabType { FILES, CLASSES, METHODS, USAGES }
+    public enum TabType {
+        FILES,
+        CLASSES,
+        METHODS,
+        USAGES
+    }
 
     public record Result(ContextFragment fragment, boolean summarize) {}
 
@@ -82,7 +84,8 @@ public class AttachContextDialog extends JDialog {
 
     private @Nullable Result selection = null;
 
-    private static final String ANALYZER_NOT_READY_TOOLTIP = " will be available after code intelligence is initialized.";
+    private static final String ANALYZER_NOT_READY_TOOLTIP =
+            " will be available after code intelligence is initialized.";
 
     private static final class ClosingAutoCompletion extends AutoCompletion {
         private final Runnable onAccepted;
@@ -144,14 +147,22 @@ public class AttachContextDialog extends JDialog {
         overlay.add(overlayLabel, BorderLayout.CENTER);
         searchOverlay = overlay;
 
-        if (searchField.getText().isEmpty()) searchOverlay.showOverlay(); else searchOverlay.hideOverlay();
+        if (searchField.getText().isEmpty()) searchOverlay.showOverlay();
+        else searchOverlay.hideOverlay();
         searchField.addCaretListener(e -> {
             if (searchField.getText().isEmpty() && !searchField.hasFocus()) searchOverlay.showOverlay();
             else searchOverlay.hideOverlay();
         });
         searchField.addFocusListener(new java.awt.event.FocusAdapter() {
-            @Override public void focusGained(java.awt.event.FocusEvent e) { searchOverlay.hideOverlay(); }
-            @Override public void focusLost(java.awt.event.FocusEvent e) { if (searchField.getText().isEmpty()) searchOverlay.showOverlay(); }
+            @Override
+            public void focusGained(java.awt.event.FocusEvent e) {
+                searchOverlay.hideOverlay();
+            }
+
+            @Override
+            public void focusLost(java.awt.event.FocusEvent e) {
+                if (searchField.getText().isEmpty()) searchOverlay.showOverlay();
+            }
         });
 
         var layered = searchOverlay.createLayeredPane(searchField);
@@ -185,7 +196,8 @@ public class AttachContextDialog extends JDialog {
         add(top, BorderLayout.NORTH);
 
         // Prepare autocomplete: default to Files
-        filesProvider.setAutoActivationRules(true, "._-$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
+        filesProvider.setAutoActivationRules(
+                true, "._-$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
         ac = new ClosingAutoCompletion(filesProvider, this::onConfirm);
         ac.setAutoActivationEnabled(true);
         ac.setAutoActivationDelay(0);
@@ -197,10 +209,14 @@ public class AttachContextDialog extends JDialog {
 
         // Cancel on Escape
         var ks = KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0);
-        getRootPane().registerKeyboardAction(ev -> {
-            selection = null;
-            dispose();
-        }, ks, javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
+        getRootPane()
+                .registerKeyboardAction(
+                        ev -> {
+                            selection = null;
+                            dispose();
+                        },
+                        ks,
+                        javax.swing.JComponent.WHEN_IN_FOCUSED_WINDOW);
 
         // Register analyzer callback to manage gating lifecycle
         registerAnalyzerCallback();
@@ -209,7 +225,7 @@ public class AttachContextDialog extends JDialog {
         gateTabs();
         onTabChanged();
 
-        setPreferredSize(new Dimension(700, 140));
+        setPreferredSize(new Dimension(700, 160));
         pack();
         setLocationRelativeTo(parent);
 
@@ -228,12 +244,12 @@ public class AttachContextDialog extends JDialog {
             }
         });
     }
-    
+
     public AttachContextDialog(Frame parent, ContextManager cm, boolean defaultSummarizeChecked) {
         this(parent, cm);
         this.summarizeCheck.setSelected(defaultSummarizeChecked);
     }
-    
+
     public @Nullable Result getSelection() {
         return selection;
     }
@@ -247,12 +263,13 @@ public class AttachContextDialog extends JDialog {
     }
 
     private void onTabChanged() {
-        DefaultCompletionProvider p = switch (getActiveTab()) {
-            case FILES -> filesProvider;
-            case CLASSES -> classesProvider;
-            case METHODS -> methodsProvider;
-            case USAGES -> usagesProvider;
-        };
+        DefaultCompletionProvider p =
+                switch (getActiveTab()) {
+                    case FILES -> filesProvider;
+                    case CLASSES -> classesProvider;
+                    case METHODS -> methodsProvider;
+                    case USAGES -> usagesProvider;
+                };
         p.setAutoActivationRules(true, "._-$abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789");
         ac.setCompletionProvider(p);
 
@@ -300,9 +317,12 @@ public class AttachContextDialog extends JDialog {
 
         // Analyzer is ready, enable/disable based on capabilities
         IAnalyzer analyzer = cm.getAnalyzerWrapper().getNonBlocking();
-        boolean hasSkeleton = analyzer != null && analyzer.as(SkeletonProvider.class).isPresent();
-        boolean hasSource = analyzer != null && analyzer.as(SourceCodeProvider.class).isPresent();
-        boolean hasUsages = analyzer != null && analyzer.as(UsagesProvider.class).isPresent();
+        boolean hasSkeleton =
+                analyzer != null && analyzer.as(SkeletonProvider.class).isPresent();
+        boolean hasSource =
+                analyzer != null && analyzer.as(SourceCodeProvider.class).isPresent();
+        boolean hasUsages =
+                analyzer != null && analyzer.as(UsagesProvider.class).isPresent();
 
         // Classes segment
         boolean classesEnabled = hasSkeleton || hasSource;
@@ -321,8 +341,8 @@ public class AttachContextDialog extends JDialog {
 
         // Ensure the selected segment remains valid
         if ((classesBtn.isSelected() && !classesEnabled)
-            || (methodsBtn.isSelected() && !methodsEnabled)
-            || (usagesBtn.isSelected() && !usagesEnabled)) {
+                || (methodsBtn.isSelected() && !methodsEnabled)
+                || (usagesBtn.isSelected() && !usagesEnabled)) {
             filesBtn.setSelected(true);
             onTabChanged();
         }
@@ -360,14 +380,24 @@ public class AttachContextDialog extends JDialog {
 
     private void confirmClass(String input) {
         var analyzer = cm.getAnalyzerWrapper().getNonBlocking();
-        if (analyzer == null) { selection = null; dispose(); return; }
+        if (analyzer == null) {
+            selection = null;
+            dispose();
+            return;
+        }
 
         Optional<CodeUnit> opt = analyzer.getDefinition(input).filter(CodeUnit::isClass);
         if (opt.isEmpty()) {
-            var s = analyzer.searchDefinitions(input).stream().filter(CodeUnit::isClass).findFirst();
+            var s = analyzer.searchDefinitions(input).stream()
+                    .filter(CodeUnit::isClass)
+                    .findFirst();
             opt = s;
         }
-        if (opt.isEmpty()) { selection = null; dispose(); return; }
+        if (opt.isEmpty()) {
+            selection = null;
+            dispose();
+            return;
+        }
 
         var cu = opt.get();
         var frag = new ContextFragment.CodeFragment(cm, cu);
@@ -377,14 +407,24 @@ public class AttachContextDialog extends JDialog {
 
     private void confirmMethod(String input) {
         var analyzer = cm.getAnalyzerWrapper().getNonBlocking();
-        if (analyzer == null) { selection = null; dispose(); return; }
+        if (analyzer == null) {
+            selection = null;
+            dispose();
+            return;
+        }
 
         Optional<CodeUnit> opt = analyzer.getDefinition(input).filter(CodeUnit::isFunction);
         if (opt.isEmpty()) {
-            var s = analyzer.searchDefinitions(input).stream().filter(CodeUnit::isFunction).findFirst();
+            var s = analyzer.searchDefinitions(input).stream()
+                    .filter(CodeUnit::isFunction)
+                    .findFirst();
             opt = s;
         }
-        if (opt.isEmpty()) { selection = null; dispose(); return; }
+        if (opt.isEmpty()) {
+            selection = null;
+            dispose();
+            return;
+        }
 
         var cu = opt.get();
         var frag = new ContextFragment.CodeFragment(cm, cu);
@@ -395,13 +435,18 @@ public class AttachContextDialog extends JDialog {
 
     private void confirmUsage(String input) {
         var analyzer = cm.getAnalyzerWrapper().getNonBlocking();
-        if (analyzer == null) { selection = null; dispose(); return; }
+        if (analyzer == null) {
+            selection = null;
+            dispose();
+            return;
+        }
 
         // Find best matching symbol (class or method). Prefer method if exact.
         Optional<CodeUnit> exactMethod = analyzer.getDefinition(input).filter(CodeUnit::isFunction);
         Optional<CodeUnit> any = exactMethod.isPresent()
-                                 ? exactMethod
-                                 : analyzer.getDefinition(input).or(() -> analyzer.searchDefinitions(input).stream().findFirst());
+                ? exactMethod
+                : analyzer.getDefinition(input)
+                        .or(() -> analyzer.searchDefinitions(input).stream().findFirst());
 
         if (summarizeCheck.isSelected() && any.isPresent() && any.get().isFunction()) {
             // For Usages with Summarize: create callers call graph with depth=1
@@ -468,7 +513,12 @@ public class AttachContextDialog extends JDialog {
     }
 
     private class SymbolsProvider extends DefaultCompletionProvider {
-        enum Mode { CLASSES, METHODS, ALL }
+        enum Mode {
+            CLASSES,
+            METHODS,
+            ALL
+        }
+
         private final Mode mode;
 
         SymbolsProvider(Mode mode) {
@@ -491,11 +541,13 @@ public class AttachContextDialog extends JDialog {
             if (analyzer == null || pattern.isEmpty()) return List.of();
 
             List<CodeUnit> cands = io.github.jbellis.brokk.Completions.completeSymbols(pattern, analyzer);
-            var filtered = switch (mode) {
-                case CLASSES -> cands.stream().filter(CodeUnit::isClass).toList();
-                case METHODS -> cands.stream().filter(CodeUnit::isFunction).toList();
-                case ALL -> cands;
-            };
+            var filtered =
+                    switch (mode) {
+                        case CLASSES -> cands.stream().filter(CodeUnit::isClass).toList();
+                        case METHODS ->
+                            cands.stream().filter(CodeUnit::isFunction).toList();
+                        case ALL -> cands;
+                    };
 
             var scored = io.github.jbellis.brokk.Completions.scoreShortAndLong(
                     pattern,
