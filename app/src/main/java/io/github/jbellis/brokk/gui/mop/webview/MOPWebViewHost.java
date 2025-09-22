@@ -426,6 +426,20 @@ public final class MOPWebViewHost extends JPanel {
         sendOrQueue(new HostCommand.HideSpinner(), bridge -> bridge.hideSpinner());
     }
 
+    /**
+     * Push a fresh snapshot of environment information to the WebView.
+     *
+     * @param analyzerReady whether the analyzer is ready
+     */
+    public void sendEnvironmentInfo(boolean analyzerReady) {
+        var bridge = bridgeRef.get();
+        if (bridge == null) {
+            logger.debug("sendEnvironmentInfo ignored; bridge not ready");
+            return;
+        }
+        bridge.sendEnvironmentInfo(analyzerReady);
+    }
+
     public void addSearchStateListener(Consumer<MOPBridge.SearchState> l) {
         searchListeners.add(l);
         var bridge = bridgeRef.get();

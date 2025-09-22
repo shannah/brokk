@@ -28,8 +28,6 @@ import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.*;
 import java.io.IOException;
-import java.io.UncheckedIOException;
-import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -179,6 +177,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     // Model reload state to prevent concurrent reloads
     private final AtomicBoolean isReloadingModels = new AtomicBoolean(false);
 
+    // Tracks current analyzer readiness for quick non-blocking queries
+    private final AtomicBoolean analyzerReady = new AtomicBoolean(false);
+
     @Override
     public ExecutorService getBackgroundTasks() {
         return backgroundTasks;
@@ -293,7 +294,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var loadedCH = sessionManager.loadHistory(currentSessionId, this);
         if (loadedCH == null) {
             if (forceNew) {
-                contextHistory = new ContextHistory(new Context(this, buildWelcomeMessage()));
+                contextHistory = new ContextHistory(new Context(this, null));
             } else {
                 initializeCurrentSessionAndHistory(true);
                 return;
@@ -408,6 +409,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
             public void onRepoChange() {
                 project.getRepo().invalidateCaches();
                 io.updateGitRepo();
+
+                // Notify analyzer callbacks
+                for (var callback : analyzerCallbacks) {
+                    try {
+                        callback.onRepoChange();
+                    } catch (Exception e) {
+                        logger.warn("Analyzer callback (onRepoChange) failed", e);
+                    }
+                }
             }
 
             @Override
@@ -429,12 +439,30 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 for (var fsListener : fileSystemEventListeners) {
                     fsListener.onTrackedFilesChanged();
                 }
+
+                // Notify analyzer callbacks
+                for (var callback : analyzerCallbacks) {
+                    try {
+                        callback.onTrackedFileChange();
+                    } catch (Exception e) {
+                        logger.warn("Analyzer callback (onTrackedFileChange) failed", e);
+                    }
+                }
             }
 
             @Override
             public void beforeEachBuild() {
                 if (io instanceof Chrome chrome) {
                     chrome.getContextPanel().showAnalyzerRebuildSpinner();
+                }
+                analyzerReady.set(false);
+                // Notify analyzer callbacks
+                for (var callback : analyzerCallbacks) {
+                    try {
+                        callback.beforeEachBuild();
+                    } catch (Exception e) {
+                        logger.warn("Analyzer callback (beforeEachBuild) failed", e);
+                    }
                 }
             }
 
@@ -443,6 +471,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (io instanceof Chrome chrome) {
                     chrome.getContextPanel().hideAnalyzerRebuildSpinner();
                 }
+                analyzerReady.set(true);
 
                 // Wait for context load to finish, with a timeout
                 long startTime = System.currentTimeMillis();
@@ -462,11 +491,21 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 if (externalRequest && io instanceof Chrome chrome) {
                     chrome.notifyActionComplete("Analyzer rebuild completed");
                 }
+
+                // Notify analyzer callbacks
+                for (var callback : analyzerCallbacks) {
+                    try {
+                        callback.afterEachBuild(externalRequest);
+                    } catch (Exception e) {
+                        logger.warn("Analyzer callback (afterEachBuild) failed", e);
+                    }
+                }
             }
 
             @Override
             public void onAnalyzerReady() {
                 logger.debug("Analyzer became ready, triggering symbol lookup refresh");
+                analyzerReady.set(true);
                 for (var callback : analyzerCallbacks) {
                     try {
                         callback.onAnalyzerReady();
@@ -1250,41 +1289,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return messages;
     }
 
-    /** Build a welcome message with environment information. Uses statically available model info. */
-    private String buildWelcomeMessage() {
-        String welcomeMarkdown;
-        var mdPath = "/WELCOME.md";
-        try (var welcomeStream = Brokk.class.getResourceAsStream(mdPath)) {
-            if (welcomeStream != null) {
-                welcomeMarkdown = new String(welcomeStream.readAllBytes(), StandardCharsets.UTF_8);
-            } else {
-                logger.warn("WELCOME.md resource not found.");
-                welcomeMarkdown = "Welcome to Brokk!";
-            }
-        } catch (IOException e1) {
-            throw new UncheckedIOException(e1);
-        }
-
-        var version = BuildInfo.version;
-
-        return """
-               %s
-
-               ## Environment
-               - Brokk version: %s
-               - Project: %s (%d native files, %d total including dependencies)
-               - Analyzer language: %s
-               """
-                .stripIndent()
-                .formatted(
-                        welcomeMarkdown,
-                        version,
-                        project.getRoot().getFileName(), // Show just the folder name
-                        project.getRepo().getTrackedFiles().size(),
-                        project.getAllFiles().size(),
-                        project.getAnalyzerLanguages());
-    }
-
     /** Shutdown all executors */
     @Override
     public void close() {
@@ -1313,6 +1317,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public boolean isLlmTaskInProgress() {
         return llmTaskInProgress.get();
+    }
+
+    /** Returns current analyzer readiness without blocking. */
+    public boolean isAnalyzerReady() {
+        return analyzerReady.get();
     }
 
     @Override
@@ -1944,7 +1953,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             updateActiveSession(sessionInfo.id()); // Mark as active for this project
 
             // initialize history for the session
-            contextHistory = new ContextHistory(new Context(this, "Welcome to the new session!"));
+            contextHistory = new ContextHistory(new Context(this, null));
             project.getSessionManager()
                     .saveHistory(contextHistory, currentSessionId); // Save the initial empty/welcome state
 

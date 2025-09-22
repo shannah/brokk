@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.data.message.ChatMessageType;
+import io.github.jbellis.brokk.BuildInfo;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.TaskEntry;
@@ -18,6 +19,8 @@ import io.github.jbellis.brokk.util.Messages;
 import java.awt.KeyboardFocusManager;
 import java.io.UncheckedIOException;
 import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Collection;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -595,8 +598,89 @@ public final class MOPBridge {
     }
 
     public void onBridgeReady() {
+        // Send initial environment snapshot; reflect current analyzer state and languages
+        boolean ready = contextManager != null && contextManager.isAnalyzerReady();
+        sendEnvironmentInfo(ready);
+
         if (hostComponent instanceof MOPWebViewHost host) {
             host.onBridgeReady();
+        }
+    }
+
+    /**
+     * Send a snapshot of environment information to the frontend. The frontend is expected to expose
+     * window.brokk.setEnvironmentInfo(info).
+     *
+     * @param analyzerReady whether the analyzer is ready
+     */
+    public void sendEnvironmentInfo(boolean analyzerReady) {
+        var cm = contextManager;
+        if (cm == null) {
+            logger.warn("sendEnvironmentInfo called without a ContextManager");
+            return;
+        }
+
+        try {
+            var project = cm.getProject();
+
+            String version = BuildInfo.version;
+            String projectName = project.getRoot().getFileName().toString();
+            int nativeFileCount = project.getRepo().getTrackedFiles().size();
+            int totalFileCount = project.getAllFiles().size();
+
+            List<String> analyzerLanguages = List.of();
+            try {
+                // Prefer whatever the project exposes (used previously in welcome message).
+                // Normalize to a list of strings for the frontend.
+                Object langs = project.getAnalyzerLanguages();
+                if (langs instanceof String s) {
+                    analyzerLanguages = s.isBlank() ? List.of() : List.of(s);
+                } else if (langs instanceof Collection<?> c) {
+                    analyzerLanguages = c.stream()
+                            .map(String::valueOf)
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .distinct()
+                            .toList();
+                } else if (langs != null && langs.getClass().isArray()) {
+                    var arr = (Object[]) langs;
+                    analyzerLanguages = Arrays.stream(arr)
+                            .map(String::valueOf)
+                            .map(String::trim)
+                            .filter(s -> !s.isEmpty())
+                            .distinct()
+                            .toList();
+                } else if (langs != null) {
+                    var s = String.valueOf(langs).trim();
+                    analyzerLanguages = s.isEmpty() ? List.of() : List.of(s);
+                }
+            } catch (Throwable t) {
+                logger.debug("Analyzer languages unavailable from project", t);
+            }
+
+            var payload = new java.util.LinkedHashMap<String, Object>();
+            payload.put("version", version);
+            payload.put("projectName", projectName);
+            payload.put("nativeFileCount", nativeFileCount);
+            payload.put("totalFileCount", totalFileCount);
+            payload.put("analyzerReady", analyzerReady);
+            if (!analyzerLanguages.isEmpty()) {
+                payload.put("analyzerLanguages", analyzerLanguages);
+            }
+
+            var json = toJson(payload);
+            var js = "if (window.brokk && window.brokk.setEnvironmentInfo) { " + "window.brokk.setEnvironmentInfo("
+                    + json + "); }";
+
+            Platform.runLater(() -> {
+                try {
+                    engine.executeScript(js);
+                } catch (Exception ex) {
+                    logger.warn("Failed to dispatch environment info to WebView", ex);
+                }
+            });
+        } catch (Exception e) {
+            logger.warn("Failed to gather or send environment info", e);
         }
     }
 
