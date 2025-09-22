@@ -27,7 +27,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-/** Builder for creating consistent context menus for files and symbols */
+/** Builder for creating consistent context menus for files and symbols. */
 public class ContextMenuBuilder {
     private static final Logger logger = LogManager.getLogger(ContextMenuBuilder.class);
 
