@@ -1648,7 +1648,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      *
      * @param goal The initial user instruction passed to the agent.
      */
-    private void executeArchitectCommand(
+    private TaskResult executeArchitectCommand(
             StreamingChatModel planningModel,
             StreamingChatModel codeModel,
             String goal) {
@@ -1658,6 +1658,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             var result = agent.execute();
             chrome.systemOutput("Agent complete!");
             contextManager.addToHistory(result, false);
+            return result;
         } catch (InterruptedException e) {
             throw new CancellationException(e.getMessage());
         }
@@ -1675,7 +1676,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var contextManager = chrome.getContextManager();
         try {
-            SearchAgent agent = new SearchAgent(query, contextManager, model, 0);
+            SearchAgent agent = new SearchAgent(query, contextManager, model, EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST));
             var result = agent.execute();
 
             // Search does not stream to llmOutput, so add the final answer here
@@ -1814,7 +1815,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      *
      * @param goal The user's goal/instructions.
      */
-    public void runArchitectCommand(String goal) {
+    public Future<TaskResult> runArchitectCommand(String goal) {
         var future = submitAction(ACTION_ARCHITECT, goal, () -> {
             var service = chrome.getContextManager().getService();
             var planningModel = service.getModel(Service.GEMINI_2_5_PRO);
@@ -1837,9 +1838,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 codeModel = service.quickModel();
             }
             // Proceed with execution using the selected options
-            executeArchitectCommand(planningModel, codeModel, goal);
+            return executeArchitectCommand(planningModel, codeModel, goal);
         });
         setActionRunning(future);
+        return future;
     }
 
     // Methods for running commands. These prepare the input and model, then delegate
@@ -1910,7 +1912,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         chrome.getProject().addToInstructionsHistory(input, 20);
         clearCommandInput();
         // disableButtons() is called by submitAction via chrome.disableActionButtons()
-        var future = submitAction(ACTION_CODE, input, () -> executeCodeCommand(modelToUse, input));
+        var future = submitAction(ACTION_CODE, input, () -> {
+            executeCodeCommand(modelToUse, input);
+            var cm2 = chrome.getContextManager();
+            return new TaskResult(
+                    cm2,
+                    "Code: " + input,
+                    List.copyOf(cm2.getIo().getLlmRawMessages(false)),
+                    Set.of(),
+                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
+        });
         setActionRunning(future);
     }
 
@@ -1955,6 +1966,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             } else {
                 chrome.llmOutput("Ask command finished with status: " + result.stopDetails(), ChatMessageType.CUSTOM);
             }
+            return result;
         });
         setActionRunning(future);
     }
@@ -1965,25 +1977,49 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             chrome.toolError("Please provide a search query");
             return;
         }
+        chrome.getProject().addToInstructionsHistory(input, 20);
+        clearCommandInput();
 
+        var future = executeSearchInternal(input);
+        if (future != null) {
+            setActionRunning(future);
+        }
+    }
+
+    private @Nullable Future<?> executeSearchInternal(String query) {
         final var modelToUse = selectDropdownModelOrShowError("Search", true);
         if (modelToUse == null) {
-            return;
+            return null;
         }
 
-        chrome.getProject().addToInstructionsHistory(input, 20);
         // Update the LLM output panel directly via Chrome
         chrome.llmOutput(
                 "# Please be patient\n\nBrokk makes multiple requests to the LLM while searching. Progress is logged in System Messages below.",
                 ChatMessageType.CUSTOM);
-        clearCommandInput();
+
         // Submit the action, calling the private execute method inside the lambda
-        var future = submitAction(ACTION_SEARCH, input, () -> executeSearchCommand(modelToUse, input));
-        setActionRunning(future);
+        return submitAction(ACTION_SEARCH, query, () -> {
+            executeSearchCommand(modelToUse, query);
+            var cm2 = chrome.getContextManager();
+            return new TaskResult(
+                    cm2,
+                    "Search: " + query,
+                    List.copyOf(cm2.getIo().getLlmRawMessages(false)),
+                    Set.of(),
+                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
+        });
+    }
+
+    public @Nullable Future<?> runSearchCommand(String query) {
+        if (query.isBlank()) {
+            chrome.toolError("Please provide a search query");
+            return null;
+        }
+        return executeSearchInternal(query);
     }
 
     /** sets the llm output to indicate the action has started, and submits the task on the user pool */
-    public Future<?> submitAction(String action, String input, Runnable task) {
+    public Future<TaskResult> submitAction(String action, String input, Callable<TaskResult> task) {
         var cm = chrome.getContextManager();
         // need to set the correct parser here since we're going to append to the same fragment during the action
         String finalAction = (action + " MODE").toUpperCase(Locale.ROOT);
@@ -2007,19 +2043,58 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var history = cm.topContext().getTaskHistory();
         chrome.setLlmAndHistoryOutput(history, new TaskEntry(-1, currentTaskFragment, null));
 
-        return cm.submitUserTask(finalAction, true, () -> {
+        // Adapt Runnable submission with LLM flag to return a Future<TaskResult>
+        final TaskResult[] holder = new TaskResult[1];
+
+        var underlying = cm.submitUserTask(finalAction, true, () -> {
             try {
                 chrome.showOutputSpinner("Executing " + displayAction + " command...");
-                task.run();
+                var result = task.call();
+                holder[0] = requireNonNull(result);
             } catch (CancellationException e) {
                 maybeAddInterruptedResult(action, input);
                 throw e; // propagate to ContextManager
+            } catch (Exception e) {
+                // Let unexpected exceptions propagate so the underlying Future completes exceptionally
+                throw new RuntimeException(e);
             } finally {
                 chrome.hideOutputSpinner();
                 contextManager.checkBalanceAndNotify();
                 notifyActionComplete(action);
             }
         });
+
+        // Return a delegating Future<TaskResult> that mirrors the underlying future,
+        // and yields the TaskResult computed by the callable.
+        return new Future<TaskResult>() {
+            @Override
+            public boolean cancel(boolean mayInterruptIfRunning) {
+                return underlying.cancel(mayInterruptIfRunning);
+            }
+
+            @Override
+            public boolean isCancelled() {
+                return underlying.isCancelled();
+            }
+
+            @Override
+            public boolean isDone() {
+                return underlying.isDone();
+            }
+
+            @Override
+            public TaskResult get() throws InterruptedException, ExecutionException {
+                underlying.get();
+                return requireNonNull(holder[0]);
+            }
+
+            @Override
+            public TaskResult get(long timeout, TimeUnit unit)
+                    throws InterruptedException, ExecutionException, TimeoutException {
+                underlying.get(timeout, unit);
+                return requireNonNull(holder[0]);
+            }
+        };
     }
 
     // Methods to disable and enable buttons.
@@ -2234,7 +2309,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         chrome.getProject().addToInstructionsHistory(goal, 20);
         clearCommandInput();
 
-        var future = submitAction("Scan Project", goal, () -> executeScanProjectCommand(modelToUse, goal));
+        var future = submitAction("Scan Project", goal, () -> {
+            executeScanProjectCommand(modelToUse, goal);
+            var cm2 = chrome.getContextManager();
+            return new TaskResult(
+                    cm2,
+                    "Scan Project: " + goal,
+                    List.copyOf(cm2.getIo().getLlmRawMessages(false)),
+                    Set.of(),
+                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
+        });
         setActionRunning(future);
     }
 

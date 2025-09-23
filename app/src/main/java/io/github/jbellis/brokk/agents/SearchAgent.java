@@ -56,6 +56,8 @@ import org.jetbrains.annotations.Nullable;
 public class SearchAgent {
     private static final Logger logger = LogManager.getLogger(SearchAgent.class);
 
+    public enum Terminal { TASK_LIST, ANSWER, WORKSPACE }
+
     // Keep thresholds consistent with other agents
     private static final int SUMMARIZE_THRESHOLD = 1_000; // ~120 LOC equivalent
     private static final double WORKSPACE_CRITICAL = 0.80; // 90% of input limit
@@ -67,6 +69,7 @@ public class SearchAgent {
     private final IConsoleIO io;
     // private final int ordinal; // TODO use this to disambiguate different search agents spawned by Architect
     private final String goal;
+    private final Set<Terminal> allowedTerminals;
 
     // Session-local conversation for this agent
     private final List<ChatMessage> sessionMessages = new ArrayList<>();
@@ -78,7 +81,7 @@ public class SearchAgent {
     // State toggles
     private boolean beastMode;
 
-    public SearchAgent(String goal, ContextManager contextManager, StreamingChatModel model, int ordinal) {
+    public SearchAgent(String goal, ContextManager contextManager, StreamingChatModel model, Set<Terminal> allowedTerminals) {
         this.goal = goal;
         this.cm = contextManager;
         this.model = model;
@@ -89,6 +92,7 @@ public class SearchAgent {
         this.llm.setOutput(io);
 
         this.beastMode = false;
+        this.allowedTerminals = Set.copyOf(allowedTerminals);
     }
 
     /** Entry point. Runs until answer/abort or interruption. */
@@ -119,7 +123,20 @@ public class SearchAgent {
             var messages = buildPrompt(workspaceTokens, inputLimit, workspaceMessages);
             var allowedToolNames = calculateAllowedToolNames();
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
-            toolSpecs.addAll(toolRegistry.getTools(this, List.of("answer", "createTaskList", "abortSearch")));
+
+            var terminalToolNames = new ArrayList<String>();
+            if (allowedTerminals.contains(Terminal.ANSWER)) {
+                terminalToolNames.add("answer");
+            }
+            if (allowedTerminals.contains(Terminal.TASK_LIST)) {
+                terminalToolNames.add("createTaskList");
+            }
+            if (allowedTerminals.contains(Terminal.WORKSPACE)) {
+                terminalToolNames.add("workspaceComplete");
+            }
+            // Always allow abort
+            terminalToolNames.add("abortSearch");
+            toolSpecs.addAll(toolRegistry.getTools(this, terminalToolNames));
 
             // Decide next action(s)
             io.llmOutput("\n# Planning", ChatMessageType.AI, true, false);
@@ -152,6 +169,7 @@ public class SearchAgent {
             var first = next.getFirst();
             if (first.name().equals("answer")
                     || first.name().equals("createTaskList")
+                    || first.name().equals("workspaceComplete")
                     || first.name().equals("abortSearch")) {
                 // Enforce singularity
                 if (next.size() > 1) {
@@ -295,6 +313,20 @@ public class SearchAgent {
             }
         }
 
+        var finals = new ArrayList<String>();
+        if (allowedTerminals.contains(Terminal.ANSWER)) {
+            finals.add("- Use answer(String) when the request is purely informational and you have enough information to answer.");
+        }
+        if (allowedTerminals.contains(Terminal.TASK_LIST)) {
+            finals.add("- Use createTaskList(List<String>) when the request involves code changes; produce a clear, minimal, incremental, and testable sequence of tasks that an Architect/Code agent can execute, once you understand where all the necessary pieces live.");
+        }
+        if (allowedTerminals.contains(Terminal.WORKSPACE)) {
+            finals.add("- Use workspaceComplete() when the Workspace contains all the information necessary to accomplish the goal.");
+        }
+        finals.add("- If we cannot find the answer or the request is out of scope for this codebase, use abortSearch with a clear explanation.");
+
+        String finalsStr = finals.stream().collect(Collectors.joining("\n"));
+
         String directive =
                 """
                         <goal>
@@ -310,13 +342,10 @@ public class SearchAgent {
                           - Expand the Workspace only after pruning; avoid re-adding irrelevant content.
 
                         Finalization options:
-                          - Use answer(String) when the request is purely informational and you have enough information to answer.
-                          - Use createTaskList(List<String>) when the request involves code changes; produce a clear, minimal, incremental, and testable sequence of tasks that an Architect/Code agent can execute,
-                            once you understand where all the necessary pieces live.
-                          - If we cannot find the answer or the request is out of scope for this codebase, use abortSearch with a clear explanation.
+                        %s
 
                         You can call multiple tools in a single turn. To do so, provide a list of separate tool calls, each with its own name and arguments (add summaries, drop fragments, etc).
-                        Do NOT invoke multiple final actions (answer/createTaskList/abortSearch). Do NOT write code.
+                        Do NOT invoke multiple final actions. Do NOT write code.
 
                         Task list guidance:
                           - Each task should be self-contained, verifiable, and as small as practical.
@@ -326,7 +355,7 @@ public class SearchAgent {
                         %s
                         """
                         .stripIndent()
-                        .formatted(goal, warning);
+                        .formatted(goal, finalsStr, warning);
 
         // Beast mode directive
         if (beastMode) {
@@ -410,6 +439,7 @@ public class SearchAgent {
         var firstFinal = raw.stream()
                 .filter(r -> r.name().equals("answer")
                         || r.name().equals("createTaskList")
+                        || r.name().equals("workspaceComplete")
                         || r.name().equals("abortSearch"))
                 .findFirst();
         return firstFinal.map(List::of).orElse(raw);
@@ -513,6 +543,12 @@ public class SearchAgent {
                 .mapToObj(i -> (i + 1) + ". " + tasks.get(i))
                 .collect(Collectors.joining("\n"));
         return "# Task List\n" + lines + "\n";
+    }
+
+    @Tool(value = "Signal that the Workspace now contains all the information necessary to accomplish the goal. Call this when you have finished gathering and pruning context.")
+    public String workspaceComplete() {
+        logger.debug("workspaceComplete selected");
+        return "Workspace marked complete for the current goal.";
     }
 
     @Tool(value = "Abort when you determine the question is not answerable from this codebase or is out of scope.")
@@ -690,7 +726,7 @@ public class SearchAgent {
                     listParamSignatures(toolName, args, "classNames");
                 case "getMethodSources" -> listParamSignatures(toolName, args, "methodNames");
                 case "searchGitCommitMessages" -> List.of(toolName + ":pattern=" + args.getOrDefault("pattern", ""));
-                case "answer", "createTaskList", "abortSearch" -> List.of(toolName + ":finalizing");
+                case "answer", "createTaskList", "workspaceComplete", "abortSearch" -> List.of(toolName + ":finalizing");
                 default -> List.of(toolName + ":unknown");
             };
         } catch (Exception e) {

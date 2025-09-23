@@ -65,7 +65,6 @@ public class ArchitectAgent {
     private final List<ChatMessage> architectMessages = new ArrayList<>();
 
     private TokenUsage totalUsage = new TokenUsage(0, 0);
-    private final AtomicInteger searchAgentId = new AtomicInteger(1);
     private final AtomicInteger planningStep = new AtomicInteger(1);
     private boolean offerUndoToolNext = false;
 
@@ -245,7 +244,7 @@ public class ArchitectAgent {
         // Instantiate and run SearchAgent
         var cursor = messageCursor();
         io.llmOutput("Search Agent engaged: " + query, ChatMessageType.CUSTOM);
-        var searchAgent = new SearchAgent(query, contextManager, planningModel, searchAgentId.getAndIncrement());
+        var searchAgent = new SearchAgent(query, contextManager, model, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
         var result = searchAgent.execute();
 
         var newMessages = messagesSince(cursor);
@@ -285,8 +284,30 @@ public class ArchitectAgent {
     public TaskResult execute() throws InterruptedException {
         io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
-        // Kick off with Context Agent
-        addInitialContextToWorkspace();
+        // First turn: try CodeAgent directly with the goal instructions
+        if (contextManager.liveContext().isEmpty()) {
+            throw new IllegalArgumentException(); // Architect should only be invoked by Task List harness
+        }
+
+        // run code agent first
+        try {
+            var initialSummary = callCodeAgent(goal, false);
+            architectMessages.add(new AiMessage("Initial CodeAgent attempt:\n" + initialSummary));
+        } catch (FatalLlmException e) {
+            var errorMessage = "Fatal LLM error executing initial Code Agent: %s".formatted(e.getMessage());
+            io.systemOutput(errorMessage);
+            return llmErrorResult(e.getMessage());
+        }
+
+        // If CodeAgent succeeded, immediately finish without entering planning loop
+        if (this.codeAgentJustSucceeded) {
+            var successMsg = Objects.requireNonNullElse(
+                    this.lastCodeAgentSuccessMessage, "CodeAgent indicated success. Finishing.");
+            var fragment = new ContextFragment.TaskFragment(
+                    contextManager, List.of(new AiMessage(successMsg)), goal);
+            var stopDetails = new StopDetails(StopReason.SUCCESS, successMsg);
+            return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
+        }
 
         var llm = contextManager.getLlm(planningModel, "Architect: " + goal);
         var modelsService = contextManager.getService();
@@ -556,49 +577,6 @@ public class ArchitectAgent {
                 var stopDetails = new StopDetails(StopReason.SUCCESS, successMsg);
                 return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
             }
-        }
-    }
-
-    private void addInitialContextToWorkspace() throws InterruptedException {
-        var contextAgent = new ContextAgent(contextManager, planningModel, goal, true);
-        io.llmOutput("\nExamining initial workspace", ChatMessageType.CUSTOM);
-
-        // Execute without a specific limit on recommendations, allowing skip-pruning
-        var recommendationResult = contextAgent.getRecommendations(true);
-        if (!recommendationResult.success() || recommendationResult.fragments().isEmpty()) {
-            io.llmOutput("\nNo additional recommended context found", ChatMessageType.CUSTOM);
-            // Display reasoning even if no fragments were found, if available
-            if (!recommendationResult.reasoning().isBlank()) {
-                io.llmOutput("\nReasoning: " + recommendationResult.reasoning(), ChatMessageType.CUSTOM);
-            }
-            return;
-        }
-
-        io.llmOutput(
-                "\nReasoning for recommendations: " + recommendationResult.reasoning(),
-                ChatMessageType.CUSTOM); // Final budget check
-        int totalTokens = contextAgent.calculateFragmentTokens(recommendationResult.fragments());
-        logger.debug("Total tokens for recommended context: {}", totalTokens);
-        int finalBudget = contextManager.getService().getMaxInputTokens(planningModel) / 2;
-        if (totalTokens > finalBudget) {
-            logger.debug(
-                    "Recommended context ({} tokens) exceeds final budget ({} tokens). Adding summary instead.",
-                    totalTokens,
-                    finalBudget);
-            var summaries = ContextFragment.getSummary(recommendationResult.fragments());
-            var messages = new ArrayList<>(List.of(
-                    new UserMessage("Scan for relevant files"),
-                    new AiMessage("Potentially relevant files:\n" + summaries)));
-            contextManager.addToHistory(
-                    new TaskResult(
-                            contextManager,
-                            "Scan for relevant files",
-                            messages,
-                            Set.of(),
-                            StopReason.SUCCESS),
-                    false);
-        } else {
-            WorkspaceTools.addToWorkspace(contextManager, recommendationResult);
         }
     }
 
