@@ -13,6 +13,7 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.agent.tool.ToolContext;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Service;
@@ -157,7 +158,7 @@ public final class MergeOneFile {
             if (Thread.interrupted()) throw new InterruptedException();
             io.llmOutput("\n# Merge %s (step %d)".formatted(file, step), ChatMessageType.AI, true, false);
 
-            var result = llm.sendRequest(List.copyOf(currentSessionMessages), toolSpecs, ToolChoice.REQUIRED, true);
+            var result = llm.sendRequest(List.copyOf(currentSessionMessages), new ToolContext(toolSpecs, ToolChoice.REQUIRED, this), true);
             if (result.error() != null || result.isEmpty()) {
                 var msg = result.error() != null ? result.error().getMessage() : "Empty response";
                 io.systemOutput("LLM error in merge loop: " + msg);

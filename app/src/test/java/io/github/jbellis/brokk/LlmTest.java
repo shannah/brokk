@@ -10,6 +10,7 @@ import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.agent.tool.ToolContext;
 import io.github.jbellis.brokk.testutil.NoOpConsoleIO;
 import io.github.jbellis.brokk.testutil.TestContextManager;
 import io.github.jbellis.brokk.util.Messages;
@@ -134,7 +135,7 @@ public class LlmTest {
 
                         var messages = new ArrayList<ChatMessage>();
                         messages.add(new UserMessage("What is the weather like in London?"));
-                        var result = coder.sendRequest(messages, toolSpecifications, ToolChoice.REQUIRED, false);
+                        var result = coder.sendRequest(messages, new ToolContext(toolSpecifications, ToolChoice.REQUIRED, weatherTool), false);
 
                         assertNotNull(result, "Result should not be null for model: " + modelName);
                         assertFalse(false, "Request should not be cancelled for model: " + modelName);

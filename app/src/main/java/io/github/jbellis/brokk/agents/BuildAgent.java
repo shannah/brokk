@@ -11,6 +11,7 @@ import dev.langchain4j.agent.tool.Tool;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.agent.tool.ToolContext;
 import eu.hansolo.fx.jdkmon.tools.Distro;
 import eu.hansolo.fx.jdkmon.tools.Finder;
 import io.github.jbellis.brokk.AnalyzerUtil;
@@ -158,7 +159,7 @@ public class BuildAgent {
             // Make the LLM request
             Llm.StreamingResult result;
             try {
-                result = llm.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
+                result = llm.sendRequest(messages, new ToolContext(tools, ToolChoice.REQUIRED, this), false);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.error("Unexpected request cancellation in build agent");

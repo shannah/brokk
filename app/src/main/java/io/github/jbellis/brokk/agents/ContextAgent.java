@@ -11,6 +11,7 @@ import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.agent.tool.ToolContext;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;
@@ -755,7 +756,7 @@ public class ContextAgent {
         debug("Invoking LLM to recommend context via tool call (prompt size ~{} tokens)", promptTokens);
 
         // *** Execute LLM call with required tool ***
-        var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, deepScan);
+        var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, contextTool), deepScan);
         var tokenUsage = result.tokenUsage();
         if (result.error() != null || result.isEmpty()) {
             var error = result.error();
