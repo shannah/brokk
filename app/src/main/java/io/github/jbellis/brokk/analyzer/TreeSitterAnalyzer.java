@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.analyzer;
 
 import com.google.common.base.Splitter;
 import io.github.jbellis.brokk.IProject;
+import io.github.jbellis.brokk.util.TextCanonicalizer;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;
@@ -57,6 +58,11 @@ public abstract class TreeSitterAnalyzer
     // Includes: '.' (Java/others), '$' (Java nested classes), '::' (C++/C#/Ruby), '->' (PHP), etc.
     private static final Set<String> COMMON_HIERARCHY_SEPARATORS = Set.of(".", "$", "::", "->");
 
+    // Definition priority constants - lower values are preferred for sorting
+    protected static final int PRIORITY_DEFAULT = 0;
+    protected static final int PRIORITY_HIGH = -1;
+    protected static final int PRIORITY_LOW = 1;
+
     private static boolean containsAnyHierarchySeparator(String s) {
         for (String sep : COMMON_HIERARCHY_SEPARATORS) {
             if (s.contains(sep)) {
@@ -65,6 +71,14 @@ public abstract class TreeSitterAnalyzer
         }
         return false;
     }
+
+    // Comparator for sorting CodeUnit definitions by priority
+    private final Comparator<CodeUnit> DEFINITION_COMPARATOR = Comparator.comparingInt(
+                    (CodeUnit cu) -> definitionOverridePriority(cu))
+            .thenComparingInt(this::firstStartByteForSelection)
+            .thenComparing(cu -> cu.source().toString(), String.CASE_INSENSITIVE_ORDER)
+            .thenComparing(CodeUnit::fqName, String.CASE_INSENSITIVE_ORDER)
+            .thenComparing(cu -> cu.kind().name());
 
     /* ---------- instance state ---------- */
     private final ThreadLocal<TSLanguage> threadLocalLanguage = ThreadLocal.withInitial(this::createTSLanguage);
@@ -383,15 +397,19 @@ public abstract class TreeSitterAnalyzer
 
     @Override
     public Optional<CodeUnit> getDefinition(String fqName) {
-        return uniqueCodeUnitList().stream()
-                .filter(cu -> {
-                    if (cu.isFunction()) {
-                        return cu.fqName().equals(nearestMethodName(fqName));
-                    } else {
-                        return cu.fqName().equals(fqName);
-                    }
-                })
-                .findFirst();
+        final String methodTarget = nearestMethodName(fqName);
+
+        List<CodeUnit> matches = uniqueCodeUnitList().stream()
+                .filter(cu -> cu.isFunction()
+                        ? cu.fqName().equals(methodTarget)
+                        : cu.fqName().equals(fqName))
+                .toList();
+
+        if (matches.isEmpty()) {
+            return Optional.empty();
+        }
+
+        return matches.stream().sorted(DEFINITION_COMPARATOR).findFirst();
     }
 
     @Override
@@ -655,6 +673,22 @@ public abstract class TreeSitterAnalyzer
         return fqName;
     }
 
+    /**
+     * Hook for language-specific preference when multiple CodeUnits share the same FQN. Lower values are preferred.
+     * Default is PRIORITY_DEFAULT (no preference).
+     */
+    protected int definitionOverridePriority(CodeUnit cu) {
+        return PRIORITY_DEFAULT;
+    }
+
+    /** Returns the earliest startByte among recorded ranges for deterministic ordering. */
+    private int firstStartByteForSelection(CodeUnit cu) {
+        return withReadLock(() -> sourceRanges.getOrDefault(cu, List.of()).stream()
+                .mapToInt(Range::startByte)
+                .min()
+                .orElse(Integer.MAX_VALUE));
+    }
+
     @Override
     public Optional<String> getClassSource(String fqName, boolean includeComments) {
         var cu = getDefinition(fqName)
@@ -674,7 +708,7 @@ public abstract class TreeSitterAnalyzer
         if (srcOpt.isEmpty()) {
             return Optional.empty();
         }
-        String src = srcOpt.get();
+        String src = TextCanonicalizer.stripUtf8Bom(srcOpt.get());
 
         // Choose start byte based on includeComments parameter
         int extractStartByte = includeComments ? range.commentStartByte() : range.startByte();
@@ -703,7 +737,7 @@ public abstract class TreeSitterAnalyzer
                         log.warn("Could not read source for CU {} (fqName {}): {}", cu, fqName, "unreadable");
                         return Optional.empty();
                     }
-                    String fileContent = fileContentOpt.get();
+                    String fileContent = TextCanonicalizer.stripUtf8Bom(fileContentOpt.get());
 
                     List<String> individualMethodSources = new ArrayList<>();
                     for (Range range : rangesForOverloads) {
@@ -912,16 +946,7 @@ public abstract class TreeSitterAnalyzer
     private FileAnalysisResult analyzeFileDeclarations(ProjectFile file, TSParser localParser) throws IOException {
         log.trace("analyzeFileDeclarations: Parsing file: {}", file);
         byte[] fileBytes = Files.readAllBytes(file.absPath());
-        // Strip UTF-8 BOM if present (EF BB BF)
-        if (fileBytes.length >= 3
-                && (fileBytes[0] & 0xFF) == 0xEF
-                && (fileBytes[1] & 0xFF) == 0xBB
-                && (fileBytes[2] & 0xFF) == 0xBF) {
-            byte[] bytesWithoutBom = new byte[fileBytes.length - 3];
-            System.arraycopy(fileBytes, 3, bytesWithoutBom, 0, fileBytes.length - 3);
-            fileBytes = bytesWithoutBom;
-            log.trace("Stripped UTF-8 BOM from file: {}", file);
-        }
+        fileBytes = TextCanonicalizer.stripUtf8Bom(fileBytes);
 
         String src = new String(fileBytes, StandardCharsets.UTF_8);
         final byte[] finalFileBytes = fileBytes; // For use in lambdas
@@ -1283,9 +1308,11 @@ public abstract class TreeSitterAnalyzer
                     node.getEndPoint().getRow(),
                     node.getStartByte()); // commentStartByte initially same as startByte
 
-            // Pre-expand range to include preceding comments for classes and functions
-            var finalRange =
-                    (cu.isClass() || cu.isFunction()) ? expandRangeWithComments(file, originalRange) : originalRange;
+            // Pre-expand range to include contiguous preceding comments and metadata for classes and functions.
+            // Always include contiguous leading comments and attribute-like nodes for both classes and functions.
+            var finalRange = (cu.isClass() || cu.isFunction())
+                    ? expandRangeWithComments(file, originalRange, false)
+                    : originalRange;
 
             localSourceRanges.computeIfAbsent(cu, k -> new ArrayList<>()).add(finalRange);
             localCuByFqName.put(cu.fqName(), cu); // Add/overwrite current CU by its FQ name
@@ -2404,6 +2431,23 @@ public abstract class TreeSitterAnalyzer
                 || nodeType.equals("documentation_comment");
     }
 
+    /** Returns true if the node is considered leading metadata (comments or attribute-like nodes). */
+    protected boolean isLeadingMetadataNode(TSNode node) {
+        if (isCommentNode(node)) {
+            return true;
+        }
+        String type = node.getType();
+        return getLeadingMetadataNodeTypes().contains(type);
+    }
+
+    /**
+     * Node types considered attribute-like metadata that should be included with leading comments. Default is empty;
+     * language-specific analyzers should override to add their own metadata node types.
+     */
+    protected Set<String> getLeadingMetadataNodeTypes() {
+        return Set.of();
+    }
+
     /** Finds a Tree-Sitter node by its byte range within the given tree. */
     protected Optional<TSNode> findNodeByRange(TSTree tree, int startByte, int endByte) {
         TSNode root = tree.getRootNode();
@@ -2470,25 +2514,17 @@ public abstract class TreeSitterAnalyzer
     }
 
     /**
-     * Expands a source range to include preceding comments. Re-parses the source file to get AST for comment detection.
+     * Expands a source range to include contiguous leading metadata (comments and attribute-like nodes) immediately
+     * preceding the declaration node. Reuses the cached AST; does not re-parse.
      */
-    protected Range expandRangeWithComments(ProjectFile file, Range originalRange) {
+    protected Range expandRangeWithComments(ProjectFile file, Range originalRange, boolean ignoredIncludeOnlyDocLike) {
         try {
-            // Re-parse the source file
-            var srcOpt = file.read();
-            if (srcOpt.isEmpty()) {
-                log.warn("Unable to read source file for comment expansion: {}", file);
+            // Reuse cached tree created during analyzeFileDeclarations
+            TSTree tree = getCachedTree(file);
+            if (tree == null) {
+                log.debug("No cached AST available for {} during comment expansion; keeping original range", file);
                 return originalRange;
             }
-            String src = srcOpt.get();
-
-            TSParser parser = new TSParser();
-            if (!parser.setLanguage(getTSLanguage())) {
-                log.warn("Failed to set language for comment expansion in file {}", file);
-                return originalRange;
-            }
-
-            TSTree tree = parser.parseString(null, src);
 
             // Find the declaration node by its range
             Optional<TSNode> declarationNode =
@@ -2502,14 +2538,26 @@ public abstract class TreeSitterAnalyzer
                 return originalRange;
             }
 
-            // Find preceding comments
-            List<TSNode> precedingComments = findPrecedingComments(declarationNode.get());
-            if (precedingComments.isEmpty()) {
+            TSNode decl = declarationNode.get();
+
+            // Walk preceding siblings and collect contiguous leading metadata nodes (comments, attributes)
+            List<TSNode> leading = new ArrayList<>();
+            TSNode current = decl.getPrevSibling();
+            while (current != null && !current.isNull()) {
+                if (isLeadingMetadataNode(current)) {
+                    leading.add(current);
+                    current = current.getPrevSibling();
+                    continue;
+                }
+                break;
+            }
+            // leading currently has closest-first order; reverse to earliest-first
+            if (leading.isEmpty()) {
                 return originalRange;
             }
+            Collections.reverse(leading);
 
-            // Calculate new start byte from earliest comment
-            int newStartByte = precedingComments.get(0).getStartByte();
+            int newStartByte = leading.get(0).getStartByte();
 
             Range expandedRange = new Range(
                     originalRange.startByte(),
@@ -2519,18 +2567,18 @@ public abstract class TreeSitterAnalyzer
                     newStartByte);
 
             log.trace(
-                    "Expanded range for file {} from [{}, {}] to [{}, {}] (added {} comment nodes)",
+                    "Expanded range for file {} from [{}, {}] to [{}, {}] (added {} preceding metadata nodes)",
                     file,
                     originalRange.startByte(),
                     originalRange.endByte(),
                     expandedRange.startByte(),
                     expandedRange.endByte(),
-                    precedingComments.size());
+                    leading.size());
 
             return expandedRange;
 
         } catch (Exception e) {
-            log.warn("Error during comment expansion for file {}: {}", file, e.getMessage());
+            log.warn("Error during comment/metadata expansion for file {}: {}", file, e.getMessage());
             return originalRange;
         }
     }
