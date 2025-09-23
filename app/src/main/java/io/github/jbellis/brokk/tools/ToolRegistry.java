@@ -216,6 +216,67 @@ public class ToolRegistry {
     // Internal record to hold method and the instance it belongs to
     private record ToolInvocationTarget(Method method, Object instance) {}
 
+    public record ValidatedInvocation(Method method, Object instance, List<Object> parameters) {}
+
+    public static class ToolValidationException extends RuntimeException {
+        public ToolValidationException(String message) {
+            super(message);
+        }
+    }
+
+    /** Validates a tool request against the provided instance's @Tool methods (falling back to globals). */
+    public ValidatedInvocation validateTool(Object instance, ToolExecutionRequest request) {
+        Objects.requireNonNull(instance, "toolInstance cannot be null");
+        Class<?> cls = instance.getClass();
+
+        Method targetMethod = Arrays.stream(cls.getDeclaredMethods())
+                .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
+                .filter(m -> !Modifier.isStatic(m.getModifiers()))
+                .filter(m -> {
+                    var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
+                    String name = toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
+                    return name.equals(request.name());
+                })
+                .findFirst()
+                .orElse(null);
+
+        ToolInvocationTarget target;
+        if (targetMethod == null) {
+            target = toolMap.get(request.name());
+        } else {
+            target = new ToolInvocationTarget(targetMethod, instance);
+        }
+
+        if (target == null) {
+            throw new ToolValidationException("Tool not found: " + request.name());
+        }
+
+        var args = parseArguments(request, target.method());
+        return new ValidatedInvocation(target.method(), target.instance(), args);
+    }
+
+    private List<Object> parseArguments(ToolExecutionRequest request, Method method) {
+        try {
+            Map<String, Object> argumentsMap =
+                    OBJECT_MAPPER.readValue(request.arguments(), new TypeReference<HashMap<String, Object>>() {});
+            Parameter[] jsonParams = method.getParameters();
+            var parameters = new ArrayList<Object>(jsonParams.length);
+
+            for (Parameter param : jsonParams) {
+                if (!argumentsMap.containsKey(param.getName())) {
+                    throw new ToolValidationException(
+                            "Missing required parameter: '%s' in arguments: %s"
+                                    .formatted(param.getName(), request.arguments()));
+                }
+                Object argValue = argumentsMap.get(param.getName());
+                parameters.add(OBJECT_MAPPER.convertValue(argValue, param.getType()));
+            }
+            return parameters;
+        } catch (JsonProcessingException | IllegalArgumentException e) {
+            throw new ToolValidationException("Error parsing arguments json: " + e.getMessage());
+        }
+    }
+
     /** Creates a new ToolRegistry and self-registers internal tools. */
     public ToolRegistry(ContextManager contextManagerIgnored) {
         // this.contextManager = contextManager; // contextManager field removed
@@ -323,80 +384,17 @@ public class ToolRegistry {
      * @return A ToolExecutionResult indicating success or failure.
      */
     public ToolExecutionResult executeTool(Object instance, ToolExecutionRequest request) throws InterruptedException {
-        Class<?> cls = instance.getClass();
-        String toolName = request.name();
-
-        // Look for the method matching the tool name within the instance's class
-        Method targetMethod = Arrays.stream(cls.getDeclaredMethods())
-                .filter(m -> m.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class))
-                .filter(m -> !Modifier.isStatic(m.getModifiers())) // Ensure it's an instance method
-                .filter(m -> {
-                    var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
-                    String name = toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
-                    return name.equals(toolName);
-                })
-                .findFirst()
-                .orElse(null);
-
-        ToolInvocationTarget target;
-        if (targetMethod == null) {
-            // check globally registered tools
-            target = toolMap.get(request.name());
-        } else {
-            target = new ToolInvocationTarget(targetMethod, instance);
+        ValidatedInvocation validated;
+        try {
+            validated = validateTool(instance, request);
+        } catch (ToolValidationException e) {
+            return ToolExecutionResult.failure(request, e.getMessage());
         }
-
-        if (target == null) {
-            logger.error("Tool not found: {}", request.name());
-            return ToolExecutionResult.failure(request, "Tool not found: " + request.name());
-        }
-        return executeTool(request, target);
-    }
-
-    /**
-     * Private helper to execute a tool given a request and a resolved target. Handles argument parsing and method
-     * invocation.
-     *
-     * @param request The execution request.
-     * @param target The resolved method and instance.
-     * @return The execution result.
-     */
-    private static ToolExecutionResult executeTool(ToolExecutionRequest request, ToolInvocationTarget target)
-            throws InterruptedException {
-        Method method = target.method();
-        Object instance = target.instance();
 
         try {
-            // 1. Parse JSON arguments from the request
-            Map<String, Object> argumentsMap =
-                    OBJECT_MAPPER.readValue(request.arguments(), new TypeReference<HashMap<String, Object>>() {});
-
-            // 2. Prepare the arguments array for Method.invoke
-            Parameter[] parameters = method.getParameters();
-            Object[] methodArgs = new Object[parameters.length];
-
-            for (int i = 0; i < parameters.length; i++) {
-                Parameter param = parameters[i];
-                if (!argumentsMap.containsKey(param.getName())) {
-                    return ToolExecutionResult.failure(
-                            request,
-                            "Missing required parameter: '%s' in arguments: %s"
-                                    .formatted(param.getName(), request.arguments()));
-                }
-
-                Object argValue = argumentsMap.get(param.getName());
-
-                // Convert the argument to the correct type expected by the method parameter
-                // Jackson might have already done some conversion (e.g., numbers), but lists/etc. might need care.
-                // Using ObjectMapper for type conversion.
-                methodArgs[i] = OBJECT_MAPPER.convertValue(argValue, param.getType());
-            }
-
-            // 3. Invoke the method
-            logger.debug("Invoking tool '{}' with args: {}", request.name(), List.of(methodArgs));
-            Object resultObject = method.invoke(instance, methodArgs);
+            logger.debug("Invoking tool '{}' with args: {}", request.name(), validated.parameters());
+            Object resultObject = validated.method().invoke(validated.instance(), validated.parameters().toArray());
             String resultString = resultObject != null ? resultObject.toString() : "";
-
             return ToolExecutionResult.success(request, resultString);
         } catch (InvocationTargetException e) {
             // some code paths will wrap IE in RuntimeException, so check the entire Cause hierarchy
@@ -406,12 +404,11 @@ public class ToolRegistry {
                 }
             }
             throw new RuntimeException(e);
-        } catch (JsonProcessingException | IllegalArgumentException e) {
-            return ToolExecutionResult.failure(request, "Error parsing arguments json: " + e.getMessage());
         } catch (IllegalAccessException e) {
             throw new RuntimeException(e);
         }
     }
+
 
     /**
      * Removes duplicate ToolExecutionRequests from an AiMessage. Duplicates are identified by having the same tool name

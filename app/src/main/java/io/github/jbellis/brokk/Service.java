@@ -221,6 +221,8 @@ public class Service {
     public static final String GPT_5 = "gpt-5";
 
     public static final String GEMINI_2_5_PRO = "gemini-2.5-pro";
+    public static final String GEMINI_2_0_FLASH = "gemini-2.0-flash";
+    public static final String GEMINI_2_5_FLASH = "gemini-2.5-flash";
     public static final String GPT_5_MINI = "gpt-5-mini";
 
     private static final OkHttpClient httpClient = new OkHttpClient.Builder()
@@ -277,7 +279,7 @@ public class Service {
         this.modelInfoMap = Map.copyOf(tempModelInfoMap);
 
         // these should always be available
-        var qm = getModel(new ModelConfig("gemini-2.0-flash", ReasoningLevel.DEFAULT));
+        var qm = getModel(new ModelConfig(GEMINI_2_0_FLASH, ReasoningLevel.DEFAULT));
         quickModel = qm == null ? new UnavailableStreamingModel() : qm;
         // hardcode quickest temperature to 0 so that Quick Context inference is reproducible
         var qqm = getModel(
@@ -456,7 +458,7 @@ public class Service {
             if (!response.isSuccessful()) {
                 String errorBody = response.body() != null ? response.body().string() : "(no body)";
                 throw new IOException("Failed to fetch model info: " + response.code() + " " + response.message()
-                        + " - " + errorBody);
+                                              + " - " + errorBody);
             }
 
             ResponseBody responseBodyObj = response.body();
@@ -1023,6 +1025,20 @@ public class Service {
     /** Returns the default speech-to-text model instance. */
     public SpeechToTextModel sttModel() {
         return sttModel;
+    }
+
+    /**
+     * Returns a model optimized for scanning tasks.
+     */
+    public StreamingChatModel getScanModel() {
+        // fall back to 2.0 if 2.5 is not available (user is on free tier)
+        var modelName = modelLocations.containsKey(GEMINI_2_5_FLASH) ? GEMINI_2_5_FLASH : GEMINI_2_0_FLASH;
+        var model = getModel(new ModelConfig(modelName, ReasoningLevel.DEFAULT));
+        if (model == null) {
+            logger.error("Failed to get scan model '{}'", modelName);
+            return new UnavailableStreamingModel();
+        }
+        return model;
     }
 
     /**

@@ -10,6 +10,7 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.GitHubAuth;
@@ -728,7 +729,7 @@ public class ArchitectAgent {
             }
 
             // Ask the LLM for the next step
-            var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, true);
+            var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, this), true);
 
             // If a successful non-undo tool was called, reset the undo flag
             if (!this.offerUndoToolNext) { // Only if it wasn't set to begin with

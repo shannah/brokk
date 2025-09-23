@@ -6,9 +6,11 @@ import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.TaskResult;
+import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.analyzer.SkeletonProvider;
+import io.github.jbellis.brokk.analyzer.SourceCodeProvider;
 import io.github.jbellis.brokk.context.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.context.ContextFragment.SkeletonFragment;
 import java.io.IOException;
@@ -223,10 +225,6 @@ public class Context {
             Map<ProjectFile, Double> weightedSeeds,
             Set<ProjectFile> ineligibleSources,
             int topK) {
-        var skp = analyzer.as(SkeletonProvider.class)
-                .orElseThrow(() -> new IllegalArgumentException(
-                        "Cannot find related classes: Code Intelligence is not available."));
-
         var pagerankResults = AnalyzerUtil.combinedRankingFor(contextManager.getProject(), weightedSeeds);
 
         List<String> targetFqns = new ArrayList<>();
@@ -234,7 +232,7 @@ public class Context {
             boolean eligible = !ineligibleSources.contains(sourceFile);
             if (!eligible) continue;
 
-            targetFqns.addAll(skp.getSkeletons(sourceFile).values());
+            targetFqns.addAll(analyzer.getDeclarationsInFile(sourceFile).stream().map(CodeUnit::fqName).toList());
             if (targetFqns.size() >= topK) break;
         }
         if (targetFqns.isEmpty()) {
