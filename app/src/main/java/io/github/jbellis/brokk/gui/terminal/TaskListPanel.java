@@ -818,11 +818,10 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         }
 
         try {
-            var options = c.getProject().getArchitectOptions();
-            c.getInstructionsPanel().runArchitectCommand(prompt, options);
+            c.getInstructionsPanel().runArchitectCommand(prompt);
 
             var cm = c.getContextManager();
-            var future = cm.submitBackgroundTask("TaskListPanel: Wait for Architect", (Callable<Boolean>) () -> {
+            var future = cm.submitBackgroundTask("TaskListPanel: Wait for Architect", () -> {
                 boolean sawBusy = false;
                 try {
                     // Phase 1: wait until busy (up to ~5 minutes)

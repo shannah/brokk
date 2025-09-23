@@ -301,15 +301,7 @@ public interface IProject extends AutoCloseable {
 
     default void setExecutorArgs(@Nullable String args) {}
 
-    default ArchitectAgent.ArchitectOptions getArchitectOptions() {
-        throw new UnsupportedOperationException();
-    }
-
     default boolean getArchitectRunInWorktree() {
-        throw new UnsupportedOperationException();
-    }
-
-    default void setArchitectOptions(ArchitectAgent.ArchitectOptions options, boolean runInWorktree) {
         throw new UnsupportedOperationException();
     }
 

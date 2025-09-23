@@ -23,12 +23,10 @@ import io.github.jbellis.brokk.context.ContextFragment.TaskFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.TableUtils.FileReferenceList.FileReferenceData;
-import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.components.ModelSelector;
 import io.github.jbellis.brokk.gui.components.OverlayPanel;
 import io.github.jbellis.brokk.gui.components.SplitButton;
 import io.github.jbellis.brokk.gui.components.SwitchIcon;
-import io.github.jbellis.brokk.gui.dialogs.ArchitectOptionsDialog;
 import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.gui.dialogs.SettingsGlobalPanel;
 import io.github.jbellis.brokk.gui.git.GitWorktreeTab;
@@ -103,7 +101,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JCheckBox modeSwitch;
     private final JCheckBox codeCheckBox;
     private final JCheckBox searchProjectCheckBox;
-    private final MaterialButton planOptionsLink;
     // Labels flanking the mode switch; bold the selected side
     private final JLabel codeModeLabel = new JLabel("Code");
     private final JLabel answerModeLabel = new JLabel("Ask");
@@ -242,21 +239,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }
                 }));
 
-        planOptionsLink = new MaterialButton("Plan Options");
-        planOptionsLink.setAlignmentY(Component.CENTER_ALIGNMENT);
-
-        // Action listener and shortcut for click/activation
-        Runnable openOptionsAction = () -> {
-            ArchitectOptionsDialog.showDialogAndWait(chrome);
-            javax.swing.SwingUtilities.invokeLater(() -> instructionsArea.requestFocusInWindow());
-        };
-        planOptionsLink.addActionListener(e -> openOptionsAction.run());
-
-        KeyStroke planOptionsKs =
-                io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_COMMA);
-        planOptionsLink.setToolTipText("Configure options for the Architect agent (Plan First)");
-        planOptionsLink.setShortcut(planOptionsKs, chrome.getFrame().getRootPane(), "PlanOptions", openOptionsAction);
-        planOptionsLink.setAppendShortcutToTooltip(true);
 
         // Load persisted checkbox states (default to checked)
         var proj = chrome.getProject();
@@ -283,8 +265,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     ((CardLayout) optionsPanel.getLayout()).show(optionsPanel, OPTIONS_CARD_ASK);
                 }
                 searchProjectCheckBox.setEnabled(true);
-                // Plan options are only relevant for CODE mode
-                planOptionsLink.setVisible(false);
                 // Checked => Search, Unchecked => Answer
                 storedAction = searchProjectCheckBox.isSelected() ? ACTION_SEARCH : ACTION_ASK;
             } else {
@@ -294,7 +274,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 }
                 // Enable the Code checkbox only when the project has a Git repository available
                 codeCheckBox.setEnabled(chrome.getProject().hasGit());
-                planOptionsLink.setVisible(codeCheckBox.isSelected());
                 // Inverted semantics: checked = Architect (Plan First)
                 storedAction = codeCheckBox.isSelected() ? ACTION_ARCHITECT : ACTION_CODE;
             }
@@ -313,8 +292,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 // Inverted semantics: checked = Architect (Plan First)
                 storedAction = codeCheckBox.isSelected() ? ACTION_ARCHITECT : ACTION_CODE;
             }
-            // Show Plan Options only when Plan First is selected
-            planOptionsLink.setVisible(codeCheckBox.isSelected());
             if (chrome.getProject() instanceof MainProject mp) {
                 mp.setPlanFirst(codeCheckBox.isSelected());
             }
@@ -1077,15 +1054,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Dynamic options depending on toggle selection — use a CardLayout so the checkbox occupies a stable slot.
         optionsPanel = new JPanel(new CardLayout());
 
-        // Create a CODE card that contains both the Plan First checkbox and the Plan Options button,
-        // so the Plan Options button stays visually adjacent to the checkbox only in CODE mode.
+        // Create a CODE card that contains the Plan First checkbox.
         JPanel codeOptionsPanel = new JPanel();
         codeOptionsPanel.setOpaque(false);
         codeOptionsPanel.setLayout(new BoxLayout(codeOptionsPanel, BoxLayout.LINE_AXIS));
         codeOptionsPanel.setAlignmentY(Component.CENTER_ALIGNMENT);
         codeOptionsPanel.add(codeCheckBox);
-        codeOptionsPanel.add(Box.createHorizontalStrut(6));
-        codeOptionsPanel.add(planOptionsLink);
 
         optionsPanel.add(codeOptionsPanel, OPTIONS_CARD_CODE);
         optionsPanel.add(searchProjectCheckBox, OPTIONS_CARD_ASK);
@@ -1096,22 +1070,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         optionGroup.setAlignmentY(Component.CENTER_ALIGNMENT);
         optionsPanel.setAlignmentY(Component.CENTER_ALIGNMENT);
 
-        // Size planOptionsLink to match the height of the actionButton and actionGroupPanel, avoid excessive width.
         int planFixedHeight = Math.max(
                 Math.max(actionButton.getPreferredSize().height, actionGroupPanel.getPreferredSize().height), 32);
-        var planPrefSize = planOptionsLink.getPreferredSize();
-        // Limit the button width to a reasonable maximum to prevent it from being too wide
-        int maxPlanWidth = 160;
-        int preferredPlanWidth = Math.min(planPrefSize.width + 4, maxPlanWidth);
-        var newPlanSize = new Dimension(preferredPlanWidth, planFixedHeight);
-        planOptionsLink.setPreferredSize(newPlanSize);
-        planOptionsLink.setMinimumSize(new Dimension(40, planFixedHeight));
-        // Allow some flexibility while preventing extreme growth
-        planOptionsLink.setMaximumSize(new Dimension(maxPlanWidth, planFixedHeight));
-        planOptionsLink.setAlignmentY(Component.CENTER_ALIGNMENT);
 
-        // Constrain the card panel so it won't stretch horizontally and create a gap between the checkbox and the plan
-        // button.
+        // Constrain the card panel height to align with other toolbar controls.
         var optPanelPref = optionsPanel.getPreferredSize();
         optionsPanel.setPreferredSize(new Dimension(optPanelPref.width, planFixedHeight));
         optionsPanel.setMaximumSize(new Dimension(optPanelPref.width, planFixedHeight));
@@ -1685,16 +1647,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * contextManager.submitAction.
      *
      * @param goal The initial user instruction passed to the agent.
-     * @param options The configured options for the agent's tools.
      */
     private void executeArchitectCommand(
             StreamingChatModel planningModel,
             StreamingChatModel codeModel,
-            String goal,
-            ArchitectAgent.ArchitectOptions options) {
+            String goal) {
         var contextManager = chrome.getContextManager();
         try {
-            var agent = new ArchitectAgent(contextManager, planningModel, codeModel, goal, options);
+            var agent = new ArchitectAgent(contextManager, planningModel, codeModel, goal);
             var result = agent.execute();
             chrome.systemOutput("Agent complete!");
             contextManager.addToHistory(result, false);
@@ -1740,18 +1700,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         clearCommandInput();
 
         var project = chrome.getProject();
-        var options = project.getArchitectOptions();
         var runInWorktree = project.getArchitectRunInWorktree();
 
         if (runInWorktree) {
-            runArchitectInNewWorktree(goal, options);
+            runArchitectInNewWorktree(goal);
         } else {
             // User confirmed options, now submit the actual agent execution to the background.
-            runArchitectCommand(goal, options);
+            runArchitectCommand(goal);
         }
     }
 
-    private void runArchitectInNewWorktree(String originalInstructions, ArchitectAgent.ArchitectOptions options) {
+    private void runArchitectInNewWorktree(String originalInstructions) {
         var currentProject = chrome.getProject();
         ContextManager cm = chrome.getContextManager();
 
@@ -1773,8 +1732,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 String generatedBranchName = cm.getRepo().sanitizeBranchName(rawBranchNameSuggestion);
 
                 // Check Git availability (original position relative to setup)
-                // This check is also done in ArchitectOptionsDialog for the checkbox,
-                // but good to have a safeguard here.
                 if (!currentProject.hasGit() || !currentProject.getRepo().supportsWorktrees()) {
                     chrome.hideOutputSpinner();
                     chrome.toolError(
@@ -1813,7 +1770,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 Consumer<Chrome> initialArchitectTask = newWorktreeChrome -> {
                     InstructionsPanel newWorktreeIP = newWorktreeChrome.getInstructionsPanel();
                     // Run the architect command directly with the original instructions and determined options
-                    newWorktreeIP.runArchitectCommand(originalInstructions, options);
+                    newWorktreeIP.runArchitectCommand(originalInstructions);
                 };
 
                 MainProject mainProject = (currentProject instanceof MainProject mainProj)
@@ -1856,12 +1813,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * or from the worktree setup.
      *
      * @param goal The user's goal/instructions.
-     * @param options The pre-configured ArchitectOptions.
      */
-    public void runArchitectCommand(String goal, ArchitectAgent.ArchitectOptions options) {
+    public void runArchitectCommand(String goal) {
         var future = submitAction(ACTION_ARCHITECT, goal, () -> {
             var service = chrome.getContextManager().getService();
-            var planningModel = service.getModel(options.planningModel());
+            var planningModel = service.getModel(Service.GEMINI_2_5_PRO);
             if (planningModel == null) {
                 planningModel = service.quickModel();
             }
@@ -1881,7 +1837,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 codeModel = service.quickModel();
             }
             // Proceed with execution using the selected options
-            executeArchitectCommand(planningModel, codeModel, goal, options);
+            executeArchitectCommand(planningModel, codeModel, goal);
         });
         setActionRunning(future);
     }
@@ -2103,14 +2059,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             if (optionsPanel != null) {
                 ((CardLayout) optionsPanel.getLayout()).show(optionsPanel, OPTIONS_CARD_CODE);
             }
-            planOptionsLink.setVisible(codeCheckBox.isSelected());
             codeCheckBox.setEnabled(gitAvailable);
         } else {
             // Show the ASK card
             if (optionsPanel != null) {
                 ((CardLayout) optionsPanel.getLayout()).show(optionsPanel, OPTIONS_CARD_ASK);
             }
-            planOptionsLink.setVisible(false);
             searchProjectCheckBox.setEnabled(true);
         }
 

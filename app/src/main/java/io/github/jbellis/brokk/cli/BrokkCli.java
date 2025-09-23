@@ -331,7 +331,7 @@ public final class BrokkCli implements Callable<Integer> {
                 var architectModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;
                 var codeModel = codeModelOverride == null ? cm.getCodeModel() : codeModelOverride;
                 var agent = new ArchitectAgent(
-                        cm, architectModel, codeModel, architectPrompt, ArchitectAgent.ArchitectOptions.DEFAULTS);
+                        cm, architectModel, codeModel, architectPrompt);
                 result = agent.execute();
             } else if (codePrompt != null) {
                 var effectiveModel = codeModelOverride == null

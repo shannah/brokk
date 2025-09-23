@@ -1,7 +1,5 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
-import static java.util.Objects.requireNonNull;
-
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
@@ -14,7 +12,6 @@ import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.TaskResult;
-import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.RelevanceClassifier;
@@ -29,19 +26,34 @@ import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.TokenAware;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
+
+import javax.swing.*;
 import java.awt.*;
 import java.io.StringReader;
 import java.io.StringWriter;
 import java.nio.file.Files;
-import java.util.*;
+import java.util.ArrayList;
+import java.util.Arrays;
+import java.util.Comparator;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
-import java.util.concurrent.*;
+import java.util.Map;
+import java.util.Set;
+import java.util.concurrent.Callable;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionService;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorCompletionService;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-import javax.swing.*;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
+
+import static java.util.Objects.requireNonNull;
 
 public class BlitzForgeProgressDialog extends JDialog {
 
@@ -611,9 +623,7 @@ public class BlitzForgeProgressDialog extends JDialog {
                     outputTextArea.append("Architect has been invoked. You can close this window.\n");
                     // Submit the Architect task; the updated BuildFragment is already in the session context.
                     contextManager.submitUserTask("Architect post-upgrade build fix", () -> {
-                        var options = new ArchitectAgent.ArchitectOptions(
-                                false, false, false, true, true, false, false, false, false, false);
-                        chrome.getInstructionsPanel().runArchitectCommand(agentInstructions, options);
+                        chrome.getInstructionsPanel().runArchitectCommand(agentInstructions);
                     });
                 }));
             }
