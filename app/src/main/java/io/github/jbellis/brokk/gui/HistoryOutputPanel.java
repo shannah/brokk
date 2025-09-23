@@ -585,6 +585,7 @@ public class HistoryOutputPanel extends JPanel {
             contextManager.getProject().getMainProject().sessionsListChanged();
             var resetEdges = contextManager.getContextHistory().getResetEdges();
             arrowLayerUI.setResetEdges(resetEdges);
+            updateUndoRedoButtonStates();
         });
     }
 
@@ -999,11 +1000,10 @@ public class HistoryOutputPanel extends JPanel {
     public void enableHistory() {
         SwingUtilities.invokeLater(() -> {
             historyTable.setEnabled(true);
-            undoButton.setEnabled(true);
-            redoButton.setEnabled(true);
             // Restore appearance
             historyTable.setForeground(UIManager.getColor("Table.foreground"));
             historyTable.setBackground(UIManager.getColor("Table.background"));
+            updateUndoRedoButtonStates();
         });
     }
 
