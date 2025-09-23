@@ -5,12 +5,12 @@ import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNul
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.model.output.TokenUsage;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.GitHubAuth;

@@ -5,13 +5,13 @@ import static java.util.Objects.requireNonNull;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import dev.langchain4j.agent.tool.ToolContext;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;

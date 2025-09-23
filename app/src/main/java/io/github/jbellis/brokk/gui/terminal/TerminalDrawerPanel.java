@@ -194,9 +194,7 @@ public class TerminalDrawerPanel extends JPanel implements ThemeAware {
         });
     }
 
-    /**
-     * Opens the task list in the drawer. If already open, ensures it has focus.
-     */
+    /** Opens the task list in the drawer. If already open, ensures it has focus. */
     public TaskListPanel openTaskList() {
         assert SwingUtilities.isEventDispatchThread();
         if (activeTaskList == null) {

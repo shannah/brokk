@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -16,19 +17,17 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import dev.langchain4j.agent.tool.ToolContext;
-import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.context.ContextFragment;
+import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
-import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import java.util.ArrayList;
@@ -43,7 +42,6 @@ import java.util.Set;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.IntStream;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -152,7 +150,9 @@ public class SearchAgent {
 
             // If the first is a finalizing action, execute it alone and finalize
             var first = next.getFirst();
-            if (first.name().equals("answer") || first.name().equals("createTaskList") || first.name().equals("abortSearch")) {
+            if (first.name().equals("answer")
+                    || first.name().equals("createTaskList")
+                    || first.name().equals("abortSearch")) {
                 // Enforce singularity
                 if (next.size() > 1) {
                     io.systemOutput("Final action returned with other tools; ignoring others and finalizing.");
@@ -400,7 +400,9 @@ public class SearchAgent {
 
         // If a final action is present, isolate it
         var firstFinal = raw.stream()
-                .filter(r -> r.name().equals("answer") || r.name().equals("createTaskList") || r.name().equals("abortSearch"))
+                .filter(r -> r.name().equals("answer")
+                        || r.name().equals("createTaskList")
+                        || r.name().equals("abortSearch"))
                 .findFirst();
         return firstFinal.map(List::of).orElse(raw);
     }
@@ -457,9 +459,12 @@ public class SearchAgent {
     // Answer/abort tools
     // =======================
 
-    @Tool(value = "Provide a final answer to a purely informational request. Use this when no code changes are required.")
+    @Tool(
+            value =
+                    "Provide a final answer to a purely informational request. Use this when no code changes are required.")
     public String answer(
-            @P("Comprehensive explanation that answers the query. Include relevant code snippets and how they relate, formatted in Markdown.")
+            @P(
+                            "Comprehensive explanation that answers the query. Include relevant code snippets and how they relate, formatted in Markdown.")
                     String explanation) {
         logger.debug("answer selected with explanation length {}", explanation.length());
         return explanation;
@@ -467,21 +472,22 @@ public class SearchAgent {
 
     @Tool(value = "Produce a numbered, incremental task list for implementing the requested code changes.")
     public String createTaskList(
-            @P("""
+            @P(
+                            """
             Produce an ordered list of coding tasks that are each 'right-sized': small enough to complete in one sitting, yet large enough to be meaningful.
-            
+
             Requirements (apply to EACH task):
             - Scope: one coherent goal; avoid multi-goal items joined by 'and/then'.
             - Size target: ~2 hours for an experienced contributor across < 10 files.
             - Testability: name the verification (unit test name or manual check) at the end in brackets: [Verify: ...].
             - Independence: runnable/reviewable on its own; at most one explicit dependency on a previous task.
             - Output: starts with a strong verb and names concrete artifact(s) (class/method/file, config, test).
-            
+
             Rubric for slicing:
             - TOO LARGE if it spans multiple subsystems, sweeping refactors, or ambiguous outcomes—split by subsystem or by 'behavior change' vs 'refactor'.
             - TOO SMALL if there is no distinct verification—merge into its nearest parent goal.
             - JUST RIGHT if the diff + test could be reviewed and landed as a single commit without coordination.
-            
+
             Aim for 8 tasks or fewer. Do not include "external" tasks like PRDs or manual testing.
             """)
                     List<String> tasks) {

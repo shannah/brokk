@@ -458,7 +458,7 @@ public class Service {
             if (!response.isSuccessful()) {
                 String errorBody = response.body() != null ? response.body().string() : "(no body)";
                 throw new IOException("Failed to fetch model info: " + response.code() + " " + response.message()
-                                              + " - " + errorBody);
+                        + " - " + errorBody);
             }
 
             ResponseBody responseBodyObj = response.body();
@@ -1027,9 +1027,7 @@ public class Service {
         return sttModel;
     }
 
-    /**
-     * Returns a model optimized for scanning tasks.
-     */
+    /** Returns a model optimized for scanning tasks. */
     public StreamingChatModel getScanModel() {
         // fall back to 2.0 if 2.5 is not available (user is on free tier)
         var modelName = modelLocations.containsKey(GEMINI_2_5_FLASH) ? GEMINI_2_5_FLASH : GEMINI_2_0_FLASH;

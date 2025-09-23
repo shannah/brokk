@@ -48,7 +48,6 @@ import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
-import java.util.regex.Pattern;
 import java.util.concurrent.Semaphore;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
@@ -380,11 +379,7 @@ public class Llm {
      * @return The final response from the LLM as a record containing ChatResponse, errors, etc.
      */
     public StreamingResult sendRequest(List<ChatMessage> messages, boolean echo) throws InterruptedException {
-        return sendMessageWithRetry(
-                messages,
-                ToolContext.empty(),
-                echo,
-                MAX_ATTEMPTS);
+        return sendMessageWithRetry(messages, ToolContext.empty(), echo, MAX_ATTEMPTS);
     }
 
     /** Sends messages to a given model, no tools, no streaming echo. */
@@ -393,8 +388,7 @@ public class Llm {
     }
 
     /** Sends messages to a model with possible tools and a chosen tool usage policy. */
-    public StreamingResult sendRequest(
-            List<ChatMessage> messages, ToolContext toolContext, boolean echo)
+    public StreamingResult sendRequest(List<ChatMessage> messages, ToolContext toolContext, boolean echo)
             throws InterruptedException {
 
         var result = sendMessageWithRetry(messages, toolContext, echo, MAX_ATTEMPTS);
@@ -426,10 +420,7 @@ public class Llm {
      * Responsible for writeToHistory.
      */
     private StreamingResult sendMessageWithRetry(
-            List<ChatMessage> rawMessages,
-            ToolContext toolContext,
-            boolean echo,
-            int maxAttempts)
+            List<ChatMessage> rawMessages, ToolContext toolContext, boolean echo, int maxAttempts)
             throws InterruptedException {
         Throwable lastError = null;
         int attempt = 0;
@@ -500,10 +491,7 @@ public class Llm {
      * history file.
      */
     private StreamingResult doSingleSendMessage(
-            StreamingChatModel model,
-            List<ChatMessage> messages,
-            ToolContext toolContext,
-            boolean echo)
+            StreamingChatModel model, List<ChatMessage> messages, ToolContext toolContext, boolean echo)
             throws InterruptedException {
         // Note: writeRequestToHistory is now called *within* this method,
         // right before doSingleStreamingCall, to ensure it uses the final `messagesToSend`.
@@ -583,10 +571,7 @@ public class Llm {
      * instructions
      */
     private StreamingResult emulateTools(
-            StreamingChatModel model,
-            List<ChatMessage> messages,
-            ToolContext toolContext,
-            boolean echo)
+            StreamingChatModel model, List<ChatMessage> messages, ToolContext toolContext, boolean echo)
             throws InterruptedException {
         var tools = toolContext.toolSpecifications();
         var enhancedTools = ensureThinkToolPresent(tools);
@@ -658,7 +643,8 @@ public class Llm {
                 // Validate tool call arguments using ToolRegistry; on failure, retry with error feedback
                 var registry = contextManager.getToolRegistry();
                 var validationErrors = new ArrayList<String>();
-                Object toolOwner = requireNonNull(requireNonNull(toolContext).toolOwner(),
+                Object toolOwner = requireNonNull(
+                        requireNonNull(toolContext).toolOwner(),
                         "ToolContext.toolOwner() must be provided for tool validation");
                 for (var ter : parseResult.toolRequests()) {
                     try {
@@ -682,9 +668,8 @@ public class Llm {
                                 ChatMessageType.CUSTOM);
                     }
                     attemptMessages.add(new AiMessage(rawResult.text()));
-                    attemptMessages.add(new UserMessage(retryInstructionsProvider.apply(
-                            new IllegalArgumentException(
-                                    "Tool call validation failed: " + String.join("; ", validationErrors)))));
+                    attemptMessages.add(new UserMessage(retryInstructionsProvider.apply(new IllegalArgumentException(
+                            "Tool call validation failed: " + String.join("; ", validationErrors)))));
                     continue;
                 }
 
@@ -827,7 +812,11 @@ public class Llm {
 
     /** Emulates function calling for models that support structured output with JSON schema */
     private StreamingResult emulateToolsUsingJsonSchema(
-            List<ChatMessage> messages, List<ToolSpecification> tools, ToolChoice toolChoice, boolean echo, ToolContext toolContext)
+            List<ChatMessage> messages,
+            List<ToolSpecification> tools,
+            ToolChoice toolChoice,
+            boolean echo,
+            ToolContext toolContext)
             throws InterruptedException {
         // Build a top-level JSON schema with "tool_calls" as an array of objects
         var toolNames = tools.stream().map(ToolSpecification::name).distinct().toList();
@@ -875,12 +864,17 @@ public class Llm {
                 .parameters(requestParams)
                 .build();
 
-        return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider, toolContext);
+        return emulateToolsCommon(
+                initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider, toolContext);
     }
 
     /** Emulates function calling for models that don't support schema but can output JSON based on text instructions */
     private StreamingResult emulateToolsUsingJsonObject(
-            List<ChatMessage> messages, List<ToolSpecification> tools, ToolChoice toolChoice, boolean echo, ToolContext toolContext)
+            List<ChatMessage> messages,
+            List<ToolSpecification> tools,
+            ToolChoice toolChoice,
+            boolean echo,
+            ToolContext toolContext)
             throws InterruptedException {
         Function<Throwable, String> retryInstructionsProvider = (@Nullable Throwable e) ->
                 """
@@ -942,7 +936,8 @@ public class Llm {
                         .build())
                 .build();
 
-        return emulateToolsCommon(initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider, toolContext);
+        return emulateToolsCommon(
+                initialMessages, tools, toolChoice, echo, requestBuilder, retryInstructionsProvider, toolContext);
     }
 
     /**
@@ -1215,7 +1210,9 @@ public class Llm {
         return originalTools;
     }
 
-    /** Writes response history (.log) to task-specific files, pairing with pre-sent request JSON via a shared base path. */
+    /**
+     * Writes response history (.log) to task-specific files, pairing with pre-sent request JSON via a shared base path.
+     */
     private synchronized void logResult(
             StreamingChatModel model, ChatRequest request, @Nullable StreamingResult result) {
         try {
@@ -1233,9 +1230,10 @@ public class Llm {
             String fileTimestamp = logFileTimestamp();
             String shortDesc =
                     result == null ? "Cancelled" : LogDescription.getShortDescription(result.getDescription());
-            var filePath = taskHistoryDir.resolve(String.format("%s %03d-%s.log", fileTimestamp, requestSequence++, shortDesc));
+            var filePath = taskHistoryDir.resolve(
+                    String.format("%s %03d-%s.log", fileTimestamp, requestSequence++, shortDesc));
             var options = new StandardOpenOption[] {
-                    StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE
+                StandardOpenOption.CREATE, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE
             };
             logger.trace("Writing history to file {}", filePath);
             Files.writeString(filePath, formattedRequest + formattedTools + formattedResponse, options);

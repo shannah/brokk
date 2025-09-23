@@ -9,8 +9,6 @@ import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import io.github.jbellis.brokk.analyzer.SkeletonProvider;
-import io.github.jbellis.brokk.analyzer.SourceCodeProvider;
 import io.github.jbellis.brokk.context.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.context.ContextFragment.SkeletonFragment;
 import java.io.IOException;
@@ -232,7 +230,9 @@ public class Context {
             boolean eligible = !ineligibleSources.contains(sourceFile);
             if (!eligible) continue;
 
-            targetFqns.addAll(analyzer.getDeclarationsInFile(sourceFile).stream().map(CodeUnit::fqName).toList());
+            targetFqns.addAll(analyzer.getDeclarationsInFile(sourceFile).stream()
+                    .map(CodeUnit::fqName)
+                    .toList());
             if (targetFqns.size() >= topK) break;
         }
         if (targetFqns.isEmpty()) {

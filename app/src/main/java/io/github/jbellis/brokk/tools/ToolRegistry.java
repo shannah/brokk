@@ -264,9 +264,8 @@ public class ToolRegistry {
 
             for (Parameter param : jsonParams) {
                 if (!argumentsMap.containsKey(param.getName())) {
-                    throw new ToolValidationException(
-                            "Missing required parameter: '%s' in arguments: %s"
-                                    .formatted(param.getName(), request.arguments()));
+                    throw new ToolValidationException("Missing required parameter: '%s' in arguments: %s"
+                            .formatted(param.getName(), request.arguments()));
                 }
                 Object argValue = argumentsMap.get(param.getName());
                 parameters.add(OBJECT_MAPPER.convertValue(argValue, param.getType()));
@@ -393,7 +392,9 @@ public class ToolRegistry {
 
         try {
             logger.debug("Invoking tool '{}' with args: {}", request.name(), validated.parameters());
-            Object resultObject = validated.method().invoke(validated.instance(), validated.parameters().toArray());
+            Object resultObject = validated
+                    .method()
+                    .invoke(validated.instance(), validated.parameters().toArray());
             String resultString = resultObject != null ? resultObject.toString() : "";
             return ToolExecutionResult.success(request, resultString);
         } catch (InvocationTargetException e) {
@@ -408,7 +409,6 @@ public class ToolRegistry {
             throw new RuntimeException(e);
         }
     }
-
 
     /**
      * Removes duplicate ToolExecutionRequests from an AiMessage. Duplicates are identified by having the same tool name
