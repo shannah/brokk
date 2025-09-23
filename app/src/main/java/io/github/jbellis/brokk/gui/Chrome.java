@@ -24,6 +24,7 @@ import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import io.github.jbellis.brokk.gui.search.GenericSearchBar;
 import io.github.jbellis.brokk.gui.search.MarkdownSearchableComponent;
 import io.github.jbellis.brokk.gui.terminal.TerminalDrawerPanel;
+import io.github.jbellis.brokk.gui.terminal.TaskListPanel;
 import io.github.jbellis.brokk.gui.util.BadgedIcon;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.issues.IssueProviderType;
@@ -2099,6 +2100,16 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     public TerminalDrawerPanel getTerminalDrawer() {
         return terminalDrawer;
+    }
+
+    /**
+     * Append tasks to the Task List panel, if present. Tasks are appended to the current session's list.
+     */
+    public void appendTasksToTaskList(List<String> tasks) {
+        SwingUtilities.invokeLater(() -> {
+            var taskPanel = terminalDrawer.openTaskList();
+            taskPanel.appendTasks(tasks);
+        });
     }
 
     public Action getGlobalUndoAction() {

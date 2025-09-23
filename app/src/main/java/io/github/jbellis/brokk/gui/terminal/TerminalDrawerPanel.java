@@ -194,40 +194,21 @@ public class TerminalDrawerPanel extends JPanel implements ThemeAware {
         });
     }
 
-    /** Opens the task list in the drawer. If already open, ensures it has focus. */
-    public void openTaskList() {
-        SwingUtilities.invokeLater(() -> {
-            try {
-                if (activeTaskList == null) {
-                    activeTaskList = new TaskListPanel(console);
-                }
-                // Ensure mutual exclusivity with the terminal
-                terminalToggle.setSelected(false);
+    /**
+     * Opens the task list in the drawer. If already open, ensures it has focus.
+     */
+    public TaskListPanel openTaskList() {
+        assert SwingUtilities.isEventDispatchThread();
+        if (activeTaskList == null) {
+            activeTaskList = new TaskListPanel(console);
+        }
+        // Ensure mutual exclusivity with the terminal
+        terminalToggle.setSelected(false);
 
-                showDrawer();
-                taskListToggle.setSelected(true);
-            } catch (Exception ex) {
-                logger.debug("Failed to open task list", ex);
-                taskListToggle.setSelected(false);
-            }
-        });
-    }
+        showDrawer();
+        taskListToggle.setSelected(true);
 
-    /** Closes the task list and collapses the drawer if empty. */
-    public void closeTaskList() {
-        SwingUtilities.invokeLater(() -> {
-            if (activeTaskList != null) {
-                try {
-                    drawerContentPanel.remove(activeTaskList);
-                    drawerContentPanel.revalidate();
-                    drawerContentPanel.repaint();
-                } catch (Exception ex) {
-                    logger.debug("Error removing task list panel", ex);
-                }
-            }
-            taskListToggle.setSelected(false);
-            collapseIfEmpty();
-        });
+        return activeTaskList;
     }
 
     private void hideTaskListDrawer() {

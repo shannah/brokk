@@ -700,6 +700,28 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         }
     }
 
+    /**
+     * Append a collection of tasks to the end of the current list and persist them for the active session.
+     */
+    public void appendTasks(List<String> tasks) {
+        if (tasks == null || tasks.isEmpty()) {
+            return;
+        }
+        boolean added = false;
+        for (var t : tasks) {
+            if (t == null) continue;
+            var text = t.strip();
+            if (!text.isEmpty()) {
+                model.addElement(new TaskItem(text, false));
+                added = true;
+            }
+        }
+        if (added) {
+            saveTasksForCurrentSession();
+            updateButtonStates();
+        }
+    }
+
     private void runArchitectOnSelected() {
         int[] selected = list.getSelectedIndices();
         if (selected.length == 0) {
