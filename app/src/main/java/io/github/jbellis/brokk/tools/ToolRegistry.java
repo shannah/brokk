@@ -181,8 +181,12 @@ public class ToolRegistry {
 
     /** Validates a tool request against the provided instance's @Tool methods (falling back to globals). */
     public ValidatedInvocation validateTool(Object instance, ToolExecutionRequest request) {
-        // first check the instance
         String toolName = request.name();
+        if (toolName.isBlank()) {
+            throw new ToolValidationException("Tool name cannot be empty");
+        }
+
+        // first check the instance
         Class<?> cls = instance.getClass();
         Method targetMethod = Arrays.stream(cls.getDeclaredMethods())
                 .filter(m -> m.isAnnotationPresent(Tool.class))
