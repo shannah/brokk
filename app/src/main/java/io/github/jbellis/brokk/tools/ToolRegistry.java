@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.tools;
 
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.JavaType;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.*;
 import dev.langchain4j.data.message.AiMessage;
@@ -261,14 +262,52 @@ public class ToolRegistry {
                     OBJECT_MAPPER.readValue(request.arguments(), new TypeReference<HashMap<String, Object>>() {});
             Parameter[] jsonParams = method.getParameters();
             var parameters = new ArrayList<Object>(jsonParams.length);
+            var typeFactory = OBJECT_MAPPER.getTypeFactory();
 
             for (Parameter param : jsonParams) {
                 if (!argumentsMap.containsKey(param.getName())) {
                     throw new ToolValidationException("Missing required parameter: '%s' in arguments: %s"
                             .formatted(param.getName(), request.arguments()));
                 }
+
                 Object argValue = argumentsMap.get(param.getName());
-                parameters.add(OBJECT_MAPPER.convertValue(argValue, param.getType()));
+                Object converted;
+
+                var paramType = param.getParameterizedType();
+                if (paramType instanceof java.lang.reflect.ParameterizedType) {
+                    // Preserve generic information (e.g., List<String>) when converting
+                    JavaType javaType = typeFactory.constructType(paramType);
+                    converted = OBJECT_MAPPER.convertValue(argValue, javaType);
+
+                    // If this is a collection-like type with a specific element type, validate element types
+                    if (javaType.isCollectionLikeType()) {
+                        JavaType contentType = javaType.getContentType();
+                        Class<?> contentClass = contentType.getRawClass();
+                        if (contentClass != Object.class) {
+                            if (converted instanceof java.util.Collection<?> coll) {
+                                for (Object elem : coll) {
+                                    if (elem != null && !contentClass.isInstance(elem)) {
+                                        throw new ToolValidationException(
+                                                "Parameter '%s' expected elements of type %s but got %s"
+                                                        .formatted(param.getName(), contentClass.getName(),
+                                                                elem.getClass().getName()));
+                                    }
+                                }
+                            } else if (converted != null && !contentClass.isInstance(converted)) {
+                                // Handle non-collection cases conservatively
+                                throw new ToolValidationException(
+                                        "Parameter '%s' expected value of type %s but got %s"
+                                                .formatted(param.getName(), contentClass.getName(),
+                                                        converted.getClass().getName()));
+                            }
+                        }
+                    }
+                } else {
+                    // Non-parameterized types (or primitives) - fall back to raw type conversion
+                    converted = OBJECT_MAPPER.convertValue(argValue, param.getType());
+                }
+
+                parameters.add(converted);
             }
             return parameters;
         } catch (JsonProcessingException | IllegalArgumentException e) {
