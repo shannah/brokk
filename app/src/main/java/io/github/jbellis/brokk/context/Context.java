@@ -2,10 +2,10 @@ package io.github.jbellis.brokk.context;
 
 import com.github.f4b6a3.uuid.UuidCreator;
 import com.google.common.collect.Streams;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskEntry;
-import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;

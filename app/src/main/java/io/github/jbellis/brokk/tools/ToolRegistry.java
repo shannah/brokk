@@ -178,16 +178,14 @@ public class ToolRegistry {
     }
 
     /**
-     * Minimal atomic signature unit for duplicate detection:
-     * - toolName: the tool being invoked
-     * - paramName: the list parameter that was sliced
-     * - item: the single item from that list parameter
+     * Minimal atomic signature unit for duplicate detection: - toolName: the tool being invoked - paramName: the list
+     * parameter that was sliced - item: the single item from that list parameter
      */
     public record SignatureUnit(String toolName, String paramName, Object item) {}
 
     /**
-     * Returns true if the given tool is a workspace-mutation tool that should never be deduplicated.
-     * This is an explicit whitelist so new tools are safe-by-default.
+     * Returns true if the given tool is a workspace-mutation tool that should never be deduplicated. This is an
+     * explicit whitelist so new tools are safe-by-default.
      */
     public boolean isWorkspaceMutationTool(String toolName) {
         return Set.of(
@@ -206,12 +204,11 @@ public class ToolRegistry {
     }
 
     /**
-     * Produces a list of SignatureUnit objects for the provided request by validating the request
-     * against the target method and inspecting the typed parameters.
+     * Produces a list of SignatureUnit objects for the provided request by validating the request against the target
+     * method and inspecting the typed parameters.
      *
-     * Constraints for dedupe:
-     *  - The target method must have exactly one parameter whose runtime value is a Collection.
-     *  - Each element in that collection must be a primitive wrapper, String, or other simple scalar.
+     * <p>Constraints for dedupe: - The target method must have exactly one parameter whose runtime value is a
+     * Collection. - Each element in that collection must be a primitive wrapper, String, or other simple scalar.
      * Otherwise, throws IllegalArgumentException to signal unsupported pattern for dedupe.
      */
     public List<SignatureUnit> signatureUnits(Object instance, ToolExecutionRequest request) {
@@ -232,9 +229,8 @@ public class ToolRegistry {
         }
 
         if (collectionIndices.size() != 1) {
-            throw new IllegalArgumentException(
-                    "Tool '" + toolName + "' must have exactly one list parameter for dedupe; found "
-                            + collectionIndices.size());
+            throw new IllegalArgumentException("Tool '" + toolName
+                    + "' must have exactly one list parameter for dedupe; found " + collectionIndices.size());
         }
 
         int sliceIdx = collectionIndices.get(0);
@@ -257,8 +253,8 @@ public class ToolRegistry {
     }
 
     /**
-     * Build a new ToolExecutionRequest from a set of SignatureUnit items that came from the same original
-     * request. This rewrites the single list parameter to the provided items while preserving other arguments.
+     * Build a new ToolExecutionRequest from a set of SignatureUnit items that came from the same original request. This
+     * rewrites the single list parameter to the provided items while preserving other arguments.
      */
     public ToolExecutionRequest buildRequestFromUnits(ToolExecutionRequest original, List<SignatureUnit> units) {
         if (units.isEmpty()) return original;
@@ -267,7 +263,8 @@ public class ToolRegistry {
         String paramName = units.get(0).paramName();
 
         // Ensure all units belong to the same tool/param
-        boolean consistent = units.stream().allMatch(u -> u.toolName().equals(toolName) && u.paramName().equals(paramName));
+        boolean consistent = units.stream()
+                .allMatch(u -> u.toolName().equals(toolName) && u.paramName().equals(paramName));
         if (!consistent) {
             logger.error("Inconsistent SignatureUnits when rebuilding request for {}: {}", toolName, units);
             return original;
@@ -293,10 +290,7 @@ public class ToolRegistry {
 
     private static boolean isSimpleScalar(@Nullable Object v) {
         if (v == null) return true;
-        return v instanceof String
-                || v instanceof Number
-                || v instanceof Boolean
-                || v instanceof Character;
+        return v instanceof String || v instanceof Number || v instanceof Boolean || v instanceof Character;
     }
 
     /** Validates a tool request against the provided instance's @Tool methods (falling back to globals). */

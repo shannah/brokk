@@ -32,7 +32,10 @@ class ToolRegistryTest {
     void signatureUnits_ListOfStrings() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("getClassSources", List.class, String.class);
         String json = jsonArgs(m, List.of("com.a.A", "com.b.B"), "why not");
-        var req = ToolExecutionRequest.builder().name("getClassSources").arguments(json).build();
+        var req = ToolExecutionRequest.builder()
+                .name("getClassSources")
+                .arguments(json)
+                .build();
 
         var units = registry.signatureUnits(tools, req);
         assertEquals(2, units.size());
@@ -47,7 +50,10 @@ class ToolRegistryTest {
     void buildRequestFromUnits_PreservesScalars() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("getClassSources", List.class, String.class);
         String json = jsonArgs(m, List.of("A", "B", "C"), "reason");
-        var req = ToolExecutionRequest.builder().name("getClassSources").arguments(json).build();
+        var req = ToolExecutionRequest.builder()
+                .name("getClassSources")
+                .arguments(json)
+                .build();
 
         var allUnits = registry.signatureUnits(tools, req);
         // choose a subset to simulate "new" items
@@ -66,7 +72,10 @@ class ToolRegistryTest {
     void signatureUnits_ThrowsOnNonListTool() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("getCallGraphTo", String.class, int.class);
         String json = jsonArgs(m, "com.a.A.m", 3);
-        var req = ToolExecutionRequest.builder().name("getCallGraphTo").arguments(json).build();
+        var req = ToolExecutionRequest.builder()
+                .name("getCallGraphTo")
+                .arguments(json)
+                .build();
 
         assertThrows(IllegalArgumentException.class, () -> registry.signatureUnits(tools, req));
     }
@@ -75,7 +84,8 @@ class ToolRegistryTest {
     void signatureUnits_ListOfIntegers() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("listInts", List.class, String.class);
         String json = jsonArgs(m, List.of(1, 2, 3), "r");
-        var req = ToolExecutionRequest.builder().name("listInts").arguments(json).build();
+        var req =
+                ToolExecutionRequest.builder().name("listInts").arguments(json).build();
 
         var units = registry.signatureUnits(tools, req);
         assertEquals(3, units.size());
@@ -88,7 +98,8 @@ class ToolRegistryTest {
     void buildRequestFromUnits_ListOfIntegers() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("listInts", List.class, String.class);
         String json = jsonArgs(m, List.of(10, 20), "why");
-        var req = ToolExecutionRequest.builder().name("listInts").arguments(json).build();
+        var req =
+                ToolExecutionRequest.builder().name("listInts").arguments(json).build();
 
         var units = registry.signatureUnits(tools, req);
         // reorder to ensure order follows provided units (caller-controlled)
@@ -104,7 +115,8 @@ class ToolRegistryTest {
     void signatureUnits_ThrowsOnMultiListTool() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("multiList", List.class, List.class);
         String json = jsonArgs(m, List.of("a"), List.of("b"));
-        var req = ToolExecutionRequest.builder().name("multiList").arguments(json).build();
+        var req =
+                ToolExecutionRequest.builder().name("multiList").arguments(json).build();
 
         assertThrows(IllegalArgumentException.class, () -> registry.signatureUnits(tools, req));
     }
@@ -113,7 +125,10 @@ class ToolRegistryTest {
     void validateTool_Succeeds_WithTypedListAndScalar() throws Exception {
         Method m = TestTools.class.getDeclaredMethod("getClassSources", List.class, String.class);
         String json = jsonArgs(m, List.of("com.a.A", "com.b.B"), "why not");
-        var req = ToolExecutionRequest.builder().name("getClassSources").arguments(json).build();
+        var req = ToolExecutionRequest.builder()
+                .name("getClassSources")
+                .arguments(json)
+                .build();
 
         var vi = registry.validateTool(tools, req);
         assertEquals("getClassSources", vi.method().getName());
@@ -134,14 +149,20 @@ class ToolRegistryTest {
         map.put("classNames", List.of("com.a.A", "com.b.B"));
         var json = MAPPER.writeValueAsString(map);
 
-        var req = ToolExecutionRequest.builder().name("getClassSources").arguments(json).build();
+        var req = ToolExecutionRequest.builder()
+                .name("getClassSources")
+                .arguments(json)
+                .build();
         var ex = assertThrows(ToolRegistry.ToolValidationException.class, () -> registry.validateTool(tools, req));
         assertTrue(ex.getMessage().contains("Missing required parameter: 'reasoning'"));
     }
 
     @Test
     void validateTool_ThrowsOnToolNotFound() {
-        var req = ToolExecutionRequest.builder().name("noSuchTool").arguments("{}").build();
+        var req = ToolExecutionRequest.builder()
+                .name("noSuchTool")
+                .arguments("{}")
+                .build();
         var ex = assertThrows(ToolRegistry.ToolValidationException.class, () -> registry.validateTool(tools, req));
         assertTrue(ex.getMessage().contains("Tool not found"));
     }
@@ -161,7 +182,8 @@ class ToolRegistryTest {
         bad.put("reason", "r");
         var json = MAPPER.writeValueAsString(bad);
 
-        var req = ToolExecutionRequest.builder().name("listInts").arguments(json).build();
+        var req =
+                ToolExecutionRequest.builder().name("listInts").arguments(json).build();
         assertThrows(ToolRegistry.ToolValidationException.class, () -> registry.validateTool(tools, req));
     }
 
@@ -180,8 +202,7 @@ class ToolRegistryTest {
     // Local tool provider for testing
     static class TestTools {
         @Tool("Fetch class sources for testing")
-        public String getClassSources(
-                @P("classes") List<String> classNames, @P("reason") String reasoning) {
+        public String getClassSources(@P("classes") List<String> classNames, @P("reason") String reasoning) {
             return "ok";
         }
 
