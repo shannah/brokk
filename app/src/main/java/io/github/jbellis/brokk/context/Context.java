@@ -5,6 +5,7 @@ import com.google.common.collect.Streams;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskEntry;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
@@ -440,6 +441,15 @@ public class Context {
     @Nullable
     public ContextFragment.TaskFragment getParsedOutput() {
         return parsedOutput;
+    }
+
+    /** Returns true if the parsedOutput contains AI messages (useful for UI decisions). */
+    public boolean isAiResult() {
+        var parsed = getParsedOutput();
+        if (parsed == null) {
+            return false;
+        }
+        return parsed.messages().stream().anyMatch(m -> m.type() == ChatMessageType.AI);
     }
 
     /** Creates a new (live) Context that copies specific elements from the provided context. */

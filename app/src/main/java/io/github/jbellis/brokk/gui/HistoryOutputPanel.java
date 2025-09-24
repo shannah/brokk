@@ -1388,11 +1388,7 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     private boolean isGroupingBoundary(Context ctx) {
-        if (ActivityTableRenderers.DROPPED_ALL_CONTEXT.equalsIgnoreCase(ctx.getAction())) {
-            return true;
-        }
-        return ctx.getParsedOutput() != null
-                && ctx.getParsedOutput().messages().stream().anyMatch(m -> m.type() == ChatMessageType.AI);
+        return ctx.isAiResult() || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction());
     }
 
     private static String firstWord(String text) {
