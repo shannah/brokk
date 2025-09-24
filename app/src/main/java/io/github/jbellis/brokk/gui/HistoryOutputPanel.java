@@ -665,7 +665,7 @@ public class HistoryOutputPanel extends JPanel {
                     if (ActivityTableRenderers.DROPPED_ALL_CONTEXT.equalsIgnoreCase(ctx.getAction())) {
                         icon = null;
                     } else {
-                        icon = Icons.AI_ROBOT;
+                        icon = Icons.CHAT_BUBBLE;
                     }
                     historyModel.addRow(new Object[] {icon, ctx.getAction(), ctx});
                     if (ctx.equals(contextToSelect)) {

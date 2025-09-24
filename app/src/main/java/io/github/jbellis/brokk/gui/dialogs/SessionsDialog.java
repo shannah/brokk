@@ -335,7 +335,7 @@ public class SessionsDialog extends JDialog {
             boolean hasAiMessages = ctx.getParsedOutput() != null
                     && ctx.getParsedOutput().messages().stream()
                             .anyMatch(chatMessage -> chatMessage.type() == ChatMessageType.AI);
-            Icon iconEmoji = hasAiMessages ? Icons.AI_ROBOT : null;
+            Icon iconEmoji = hasAiMessages ? Icons.CHAT_BUBBLE : null;
             activityTableModel.addRow(
                     new Object[] {iconEmoji, ctx.getAction(), ctx // Store the actual context object in hidden column
                     });
