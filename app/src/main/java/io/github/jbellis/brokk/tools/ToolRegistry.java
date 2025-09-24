@@ -7,7 +7,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.*;
 import dev.langchain4j.data.message.AiMessage;
 import io.github.jbellis.brokk.ContextManager;
-import java.io.IOException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;
 import java.lang.reflect.Modifier;
@@ -29,21 +28,6 @@ public class ToolRegistry {
     // Maps tool name to its invocation target (method + instance)
     private final Map<String, ToolInvocationTarget> toolMap = new ConcurrentHashMap<>();
 
-    /** Gets human-readable parameter information from a tool call */
-    public static String formatListParameter(Map<String, Object> arguments, String paramName) {
-        @SuppressWarnings("unchecked")
-        List<String> items = (List<String>) arguments.get(paramName);
-        if (items != null && !items.isEmpty()) {
-            // turn it back into a JSON list or the LLM will be lazy too
-            try {
-                return "%s=%s".formatted(paramName, OBJECT_MAPPER.writeValueAsString(items));
-            } catch (IOException e) {
-                logger.error("Error formatting list parameter", e);
-            }
-        }
-        return "";
-    }
-
     /** Generates a user-friendly explanation for a tool request as a Markdown code fence with YAML formatting. */
     public String getExplanationForToolRequest(Object toolOwner, ToolExecutionRequest request) {
         var displayMeta = ToolDisplayMeta.fromToolName(request.name());
@@ -61,7 +45,8 @@ public class ToolRegistry {
                ### %s %s
                ```yaml
                %s```
-               """.formatted(displayMeta.getIcon(), displayMeta.getHeadline(), argsYaml);
+               """
+                .formatted(displayMeta.getIcon(), displayMeta.getHeadline(), argsYaml);
     }
 
     // Helper to render a simple YAML block from a map of arguments
@@ -93,6 +78,8 @@ public class ToolRegistry {
         }
         return sb.toString();
     }
+
+    // Helper to find a @Tool instance method by effective tool name on the provided instance
 
     /** Enum that defines display metadata for each tool */
     private enum ToolDisplayMeta {
@@ -201,16 +188,15 @@ public class ToolRegistry {
                 .filter(m -> m.isAnnotationPresent(Tool.class))
                 .filter(m -> !Modifier.isStatic(m.getModifiers()))
                 .filter(m -> {
-                    var toolAnnotation = m.getAnnotation(Tool.class);
-                    String name = toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
+                    String name = m.getName();
                     return name.equals(toolName);
                 })
-                .findFirst().orElse(null);
+                .findFirst()
+                .orElse(null);
 
         // then check the global tool map
-        ToolInvocationTarget target = (targetMethod != null)
-                ? new ToolInvocationTarget(targetMethod, instance)
-                : toolMap.get(request.name());
+        ToolInvocationTarget target =
+                (targetMethod != null) ? new ToolInvocationTarget(targetMethod, instance) : toolMap.get(request.name());
         if (target == null) {
             throw new ToolValidationException("Tool not found: " + request.name());
         }
@@ -249,7 +235,7 @@ public class ToolRegistry {
                         if (contentClass != Object.class) {
                             if (converted instanceof java.util.Collection<?> coll) {
                                 for (Object elem : coll) {
-                                    if (elem != null && !contentClass.isInstance(elem)) {
+                                    if (!contentClass.isInstance(elem)) {
                                         throw new ToolValidationException(
                                                 "Parameter '%s' expected elements of type %s but got %s"
                                                         .formatted(
@@ -292,8 +278,7 @@ public class ToolRegistry {
      * process explicitly.
      */
     @Tool(
-            value =
-                    """
+            """
     Think carefully step by step about a complex problem. Use this tool to reason through difficult questions
     or break problems into smaller pieces. Call it concurrently with other tools.
     """)
@@ -313,10 +298,7 @@ public class ToolRegistry {
 
         for (Method method : clazz.getMethods()) {
             if (method.isAnnotationPresent(dev.langchain4j.agent.tool.Tool.class)) {
-                dev.langchain4j.agent.tool.Tool toolAnnotation =
-                        method.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
-                String toolName = toolAnnotation.name().isEmpty() ? method.getName() : toolAnnotation.name();
-
+                String toolName = method.getName();
                 if (toolMap.containsKey(toolName)) {
                     throw new IllegalArgumentException(
                             "Duplicate tool name registration attempted: '%s'".formatted(toolName));
@@ -369,8 +351,7 @@ public class ToolRegistry {
         return toolNames.stream()
                 .map(toolName -> annotatedMethods.stream()
                         .filter(m -> {
-                            var toolAnnotation = m.getAnnotation(dev.langchain4j.agent.tool.Tool.class);
-                            String name = toolAnnotation.name().isEmpty() ? m.getName() : toolAnnotation.name();
+                            String name = m.getName();
                             return name.equals(toolName);
                         })
                         .findFirst()

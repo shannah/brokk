@@ -3,41 +3,37 @@ package io.github.jbellis.brokk.gui.dialogs;
 import static io.github.jbellis.brokk.gui.Constants.*;
 import static java.util.Objects.requireNonNull;
 
+import com.google.common.base.Splitter;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.agents.BuildAgent;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog.ParallelOutputMode;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog.PostProcessingOption;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.util.ScaledIcon;
-import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.Messages;
 import java.awt.*;
+import java.awt.datatransfer.DataFlavor;
 import java.awt.event.*;
-import java.io.File;
-import java.nio.file.Path;
 import java.util.*;
 import java.util.List;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.*;
 import javax.swing.RowSorter;
 import javax.swing.SortOrder;
 import javax.swing.table.DefaultTableModel;
 import javax.swing.table.TableRowSorter;
-import org.jetbrains.annotations.Nullable;
-import io.github.jbellis.brokk.context.ContextFragment;
-import java.awt.datatransfer.DataFlavor;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import com.google.common.base.Splitter;
+import org.jetbrains.annotations.Nullable;
 
 public class BlitzForgeDialog extends JDialog {
     private static final Logger logger = LogManager.getLogger(BlitzForgeDialog.class);
@@ -72,12 +68,16 @@ public class BlitzForgeDialog extends JDialog {
 
     @SuppressWarnings("NullAway.Init")
     private JComboBox<String> languageComboBox;
+
     @SuppressWarnings("NullAway.Init")
     private JTable selectedFilesTable;
+
     @SuppressWarnings("NullAway.Init")
     private DefaultTableModel tableModel;
+
     @SuppressWarnings("NullAway.Init")
     private TableRowSorter<DefaultTableModel> selectedFilesSorter;
+
     private JLabel selectedFilesCountLabel;
 
     private static final Icon smallInfoIcon;
@@ -701,7 +701,8 @@ public class BlitzForgeDialog extends JDialog {
     private JPanel createScopePanel() {
         JPanel scopePanel = new JPanel(new BorderLayout(H_GAP, V_GAP));
         var scopeTitle = BorderFactory.createTitledBorder("Scope");
-        scopePanel.setBorder(BorderFactory.createCompoundBorder(scopeTitle, BorderFactory.createEmptyBorder(5, 5, 5, 5)));
+        scopePanel.setBorder(
+                BorderFactory.createCompoundBorder(scopeTitle, BorderFactory.createEmptyBorder(5, 5, 5, 5)));
 
         JPanel scopeMain = new JPanel(new GridBagLayout());
 
@@ -767,9 +768,8 @@ public class BlitzForgeDialog extends JDialog {
             @Override
             public void actionPerformed(java.awt.event.ActionEvent e) {
                 try {
-                    var content = (String) Toolkit.getDefaultToolkit()
-                            .getSystemClipboard()
-                            .getData(DataFlavor.stringFlavor);
+                    var content = (String)
+                            Toolkit.getDefaultToolkit().getSystemClipboard().getData(DataFlavor.stringFlavor);
                     addRelPathsFromText(content);
                 } catch (Exception ex) {
                     logger.debug("Failed to paste files from clipboard", ex);
@@ -794,7 +794,8 @@ public class BlitzForgeDialog extends JDialog {
             String langSel = Objects.toString(languageComboBox.getSelectedItem(), ALL_LANGUAGES_OPTION);
             var filtered = ALL_LANGUAGES_OPTION.equals(langSel)
                     ? files
-                    : files.filter(pf -> langSel.equals(Languages.fromExtension(pf.extension()).toString()));
+                    : files.filter(pf -> langSel.equals(
+                            Languages.fromExtension(pf.extension()).toString()));
             addProjectFilesToTable(filtered.toList());
         });
         attachFilesButton.addActionListener(e -> openAttachFilesDialog());
@@ -928,7 +929,6 @@ public class BlitzForgeDialog extends JDialog {
         }
     }
 
-
     /* ---------------- existing method ------------------------------ */
     private void updateTokenWarningLabel() {
         if (!includeWorkspaceCheckbox.isSelected()) {
@@ -986,7 +986,6 @@ public class BlitzForgeDialog extends JDialog {
         java.awt.event.ActionListener actionListener = e -> setVisible(false);
         rootPane.registerKeyboardAction(actionListener, escapeStroke, JComponent.WHEN_IN_FOCUSED_WINDOW);
     }
-
 
     private void removeSelectedFilesFromTable() {
         int[] selectedRows = selectedFilesTable.getSelectedRows();
@@ -1052,7 +1051,6 @@ public class BlitzForgeDialog extends JDialog {
         }
     }
 
-
     private void openAttachFilesDialog() {
         var dlg = new AttachContextDialog(chrome.getFrame(), chrome.getContextManager(), false);
         dlg.setLocationRelativeTo(this);
@@ -1066,7 +1064,6 @@ public class BlitzForgeDialog extends JDialog {
         cm.submitBackgroundTask("Attach files", () -> new ArrayList<>(fragment.files()))
                 .thenAccept(files -> SwingUtil.runOnEdt(() -> addProjectFilesToTable(files)));
     }
-
 
     private void onOK() {
         String instructions = instructionsArea.getText().trim();

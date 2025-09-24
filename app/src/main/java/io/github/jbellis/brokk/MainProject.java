@@ -144,7 +144,7 @@ public final class MainProject extends AbstractProject {
             - Does it conform to the project coding standards?
             - What parts are the trickiest and how could they be simplified?
             - What additional tests, if any, would add the most value?
-            
+
             Conclude with a summary of:
             - Blockers (serious functional or design issues)
             - Additional areas for improvement, ordered by priority
