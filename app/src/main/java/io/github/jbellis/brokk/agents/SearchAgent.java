@@ -225,9 +225,11 @@ public class SearchAgent {
                           - never write code yourself.
 
                         Critical rules:
-                          1) At EVERY TURN, drop irrelevant fragments from the Workspace.
-                             Prefer summaries over full files. Replace long fragments with concise summaries of content related to the goal first,
-                             then drop the originals.
+                          1) PRUNE FIRST at every turn.
+                             - Remove fragments that are not directly useful for the goal.
+                             - Prefer concise, goal-focused summaries over full files.
+                             - When you pull information from a long fragment, first add your extraction, then drop the original.
+                             - Keep the Workspace focused on answering/solving the goal.
                           2) Use search and inspection tools to discover relevant code, including classes/methods/usages/call graphs.
                           3) The symbol-based tools only have visibility into the following file types: %s
                              Use text-based tools if you need to search other file types.
@@ -235,6 +237,7 @@ public class SearchAgent {
                           5) Make multiple tool calls at once when searching for different types of code.
 
                         Output discipline:
+                          - Start each turn by pruning and summarizing before any new exploration.
                           - Think before calling tools.
                           - If you already know what to add, use Workspace tools directly; do not search redundantly.
                         """
@@ -300,6 +303,11 @@ public class SearchAgent {
 
                         Decide the next tool action(s) to make progress toward answering the question and preparing the Workspace
                         for follow-on code changes.
+
+                        Pruning mandate:
+                          - Before any new exploration, prune the Workspace.
+                          - Replace full text with concise, goal-focused summaries and drop the originals.
+                          - Expand the Workspace only after pruning; avoid re-adding irrelevant content.
 
                         Finalization options:
                           - Use answer(String) when the request is purely informational and you have enough information to answer.
