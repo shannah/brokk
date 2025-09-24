@@ -16,6 +16,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Discovers, registers, provides specifications for, and executes tools. Tools are methods annotated with @Tool on
@@ -78,8 +79,6 @@ public class ToolRegistry {
         }
         return sb.toString();
     }
-
-    // Helper to find a @Tool instance method by effective tool name on the provided instance
 
     /** Enum that defines display metadata for each tool */
     private enum ToolDisplayMeta {
@@ -166,7 +165,6 @@ public class ToolRegistry {
             };
         }
     }
-    // private final ContextManager contextManager; // Unused field removed
 
     // Internal record to hold method and the instance it belongs to
     private record ToolInvocationTarget(Method method, Object instance) {}
@@ -177,6 +175,128 @@ public class ToolRegistry {
         public ToolValidationException(String message) {
             super(message);
         }
+    }
+
+    /**
+     * Minimal atomic signature unit for duplicate detection:
+     * - toolName: the tool being invoked
+     * - paramName: the list parameter that was sliced
+     * - item: the single item from that list parameter
+     */
+    public record SignatureUnit(String toolName, String paramName, Object item) {}
+
+    /**
+     * Returns true if the given tool is a workspace-mutation tool that should never be deduplicated.
+     * This is an explicit whitelist so new tools are safe-by-default.
+     */
+    public boolean isWorkspaceMutationTool(String toolName) {
+        return Set.of(
+                        "addFilesToWorkspace",
+                        "addClassesToWorkspace",
+                        "addUrlContentsToWorkspace",
+                        "addTextToWorkspace",
+                        "addSymbolUsagesToWorkspace",
+                        "addClassSummariesToWorkspace",
+                        "addFileSummariesToWorkspace",
+                        "addMethodsToWorkspace",
+                        "addCallGraphInToWorkspace",
+                        "addCallGraphOutToWorkspace",
+                        "dropWorkspaceFragments")
+                .contains(toolName);
+    }
+
+    /**
+     * Produces a list of SignatureUnit objects for the provided request by validating the request
+     * against the target method and inspecting the typed parameters.
+     *
+     * Constraints for dedupe:
+     *  - The target method must have exactly one parameter whose runtime value is a Collection.
+     *  - Each element in that collection must be a primitive wrapper, String, or other simple scalar.
+     * Otherwise, throws IllegalArgumentException to signal unsupported pattern for dedupe.
+     */
+    public List<SignatureUnit> signatureUnits(Object instance, ToolExecutionRequest request) {
+        Objects.requireNonNull(request, "request cannot be null");
+        String toolName = request.name();
+
+        ValidatedInvocation vi = validateTool(instance, request);
+        Method method = vi.method();
+        Parameter[] params = method.getParameters();
+        List<Object> values = vi.parameters();
+
+        // Identify collection-like parameters (by runtime value)
+        List<Integer> collectionIndices = new ArrayList<>();
+        for (int i = 0; i < values.size(); i++) {
+            if (values.get(i) instanceof Collection<?>) {
+                collectionIndices.add(i);
+            }
+        }
+
+        if (collectionIndices.size() != 1) {
+            throw new IllegalArgumentException(
+                    "Tool '" + toolName + "' must have exactly one list parameter for dedupe; found "
+                            + collectionIndices.size());
+        }
+
+        int sliceIdx = collectionIndices.get(0);
+        String sliceName = params[sliceIdx].getName();
+        Collection<?> coll = (Collection<?>) values.get(sliceIdx);
+
+        // Validate element shape (primitives/simple scalars)
+        for (Object elem : coll) {
+            if (!isSimpleScalar(elem)) {
+                throw new IllegalArgumentException(
+                        "Tool '" + toolName + "' list parameter '" + sliceName + "' contains non-scalar element: "
+                                + (elem == null ? "null" : elem.getClass().getName()));
+            }
+        }
+
+        // Create a unit per element
+        return coll.stream()
+                .map(item -> new SignatureUnit(toolName, sliceName, item))
+                .collect(Collectors.toList());
+    }
+
+    /**
+     * Build a new ToolExecutionRequest from a set of SignatureUnit items that came from the same original
+     * request. This rewrites the single list parameter to the provided items while preserving other arguments.
+     */
+    public ToolExecutionRequest buildRequestFromUnits(ToolExecutionRequest original, List<SignatureUnit> units) {
+        if (units.isEmpty()) return original;
+
+        String toolName = original.name();
+        String paramName = units.get(0).paramName();
+
+        // Ensure all units belong to the same tool/param
+        boolean consistent = units.stream().allMatch(u -> u.toolName().equals(toolName) && u.paramName().equals(paramName));
+        if (!consistent) {
+            logger.error("Inconsistent SignatureUnits when rebuilding request for {}: {}", toolName, units);
+            return original;
+        }
+
+        // Parse original arguments, replace the list parameter with our new items, preserve others
+        try {
+            Map<String, Object> args = OBJECT_MAPPER.readValue(
+                    original.arguments(), new TypeReference<LinkedHashMap<String, Object>>() {});
+            var items = units.stream().map(SignatureUnit::item).collect(Collectors.toList());
+            if (!args.containsKey(paramName)) {
+                logger.error("Parameter '{}' not found in original arguments for tool {}", paramName, toolName);
+                return original;
+            }
+            args.put(paramName, items);
+            String json = OBJECT_MAPPER.writeValueAsString(args);
+            return ToolExecutionRequest.builder().name(toolName).arguments(json).build();
+        } catch (JsonProcessingException e) {
+            logger.error("Error rebuilding request from units for {}: {}", toolName, e.getMessage(), e);
+            return original;
+        }
+    }
+
+    private static boolean isSimpleScalar(@Nullable Object v) {
+        if (v == null) return true;
+        return v instanceof String
+                || v instanceof Number
+                || v instanceof Boolean
+                || v instanceof Character;
     }
 
     /** Validates a tool request against the provided instance's @Tool methods (falling back to globals). */
@@ -273,7 +393,6 @@ public class ToolRegistry {
 
     /** Creates a new ToolRegistry and self-registers internal tools. */
     public ToolRegistry(ContextManager contextManagerIgnored) {
-        // this.contextManager = contextManager; // contextManager field removed
         register(this);
     }
 

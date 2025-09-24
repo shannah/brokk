@@ -27,6 +27,7 @@ import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.tools.ToolRegistry.SignatureUnit;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
@@ -79,7 +80,7 @@ public class SearchAgent {
     private final List<ChatMessage> sessionMessages = new ArrayList<>();
 
     // Duplicate detection and linkage discovery
-    private final Set<String> toolCallSignatures = new HashSet<>();
+    private final Set<SignatureUnit> toolCallSignatures = new HashSet<>();
     private final Set<String> trackedClassNames = new HashSet<>();
 
     // State toggles
@@ -681,15 +682,41 @@ public class SearchAgent {
         if (!cm.getAnalyzerWrapper().providesInterproceduralAnalysis()) {
             return request;
         }
-        var requestSignatures = createToolCallSignatures(request);
-        if (toolCallSignatures.stream().anyMatch(requestSignatures::contains)) {
+
+        // Workspace mutation tools are never deduplicated
+        if (toolRegistry.isWorkspaceMutationTool(request.name())) {
+            return request;
+        }
+
+        var requestUnits = createToolCallSignatures(request);
+        if (requestUnits.isEmpty()) {
+            // Could not determine units; conservatively allow execution
+            return request;
+        }
+
+        var newUnits = requestUnits.stream()
+                .filter(u -> !toolCallSignatures.contains(u))
+                .toList();
+
+        if (newUnits.isEmpty()) {
+            // Nothing new in this request: treat as duplicate and consider forging getRelatedClasses
             logger.debug("Duplicate call detected for {}; forging getRelatedClasses", request.name());
             request = createRelatedClassesRequest();
-            if (toolCallSignatures.containsAll(createToolCallSignatures(request))) {
+            var forgedUnits = createToolCallSignatures(request);
+            if (toolCallSignatures.containsAll(forgedUnits)) {
                 logger.debug("Forged getRelatedClasses would also be duplicate; switching to beast mode");
                 beastMode = true;
             }
+            return request;
         }
+
+        // Some items are new: rewrite the request to contain only the new items (avoid losing new work)
+        if (newUnits.size() < requestUnits.size()) {
+            var rewritten = toolRegistry.buildRequestFromUnits(request, newUnits);
+            return rewritten;
+        }
+
+        // All units are new: execute original request
         return request;
     }
 
@@ -720,37 +747,14 @@ public class SearchAgent {
         }
     }
 
-    private List<String> createToolCallSignatures(ToolExecutionRequest request) {
-        String toolName = request.name();
+    private List<SignatureUnit> createToolCallSignatures(ToolExecutionRequest request) {
+        // Delegate to ToolRegistry which has validation/typing knowledge.
         try {
-            var args = getArgumentsMap(request);
-            return switch (toolName) {
-                case "searchSymbols", "searchSubstrings", "searchFilenames" ->
-                    listParamSignatures(toolName, args, "patterns");
-                case "getFileContents" -> listParamSignatures(toolName, args, "filenames");
-                case "getFileSummaries" -> listParamSignatures(toolName, args, "filePaths");
-                case "getUsages" -> listParamSignatures(toolName, args, "symbols");
-                case "getRelatedClasses", "getClassSkeletons", "getClassSources" ->
-                    listParamSignatures(toolName, args, "classNames");
-                case "getMethodSources" -> listParamSignatures(toolName, args, "methodNames");
-                case "searchGitCommitMessages" -> List.of(toolName + ":pattern=" + args.getOrDefault("pattern", ""));
-                case "answer", "createTaskList", "workspaceComplete", "abortSearch" ->
-                    List.of(toolName + ":finalizing");
-                default -> List.of(toolName + ":unknown");
-            };
+            return toolRegistry.signatureUnits(this, request);
         } catch (Exception e) {
-            logger.error("Error creating signature for {}: {}", toolName, e.getMessage());
-            return List.of(toolName + ":error");
+            logger.error("Error creating signature units for {}: {}", request.name(), e.getMessage(), e);
+            return List.of();
         }
-    }
-
-    private List<String> listParamSignatures(String toolName, Map<String, Object> args, String listParam) {
-        @SuppressWarnings("unchecked")
-        List<String> items = (List<String>) args.get(listParam);
-        if (items != null && !items.isEmpty()) {
-            return items.stream().map(i -> toolName + ":" + listParam + "=" + i).toList();
-        }
-        return List.of(toolName + ":" + listParam + "=empty");
     }
 
     private void trackClassNamesFromToolCall(ToolExecutionRequest request) {
