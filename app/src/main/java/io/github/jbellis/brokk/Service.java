@@ -842,6 +842,13 @@ public class Service {
     }
 
     public boolean requiresEmulatedTools(StreamingChatModel model) {
+        // Dev-mode override via Settings: respect checkbox only when -Dbrokk.devmode=true
+        if (Boolean.getBoolean("brokk.devmode")) {
+            boolean force = MainProject.getForceToolEmulation();
+            logger.debug("Dev mode enabled; requiresEmulatedTools overridden by setting: {}", force);
+            return force;
+        }
+
         var location = model.defaultRequestParameters().modelName();
 
         var info = getModelInfo(location);

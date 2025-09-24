@@ -1061,6 +1061,7 @@ public final class MainProject extends AbstractProject {
     private static final String MOP_ZOOM_KEY = "mopZoom";
     private static final String TERMINAL_FONT_SIZE_KEY = "terminalFontSize";
     private static final String STARTUP_OPEN_MODE_KEY = "startupOpenMode";
+    private static final String FORCE_TOOL_EMULATION_KEY = "forceToolEmulation";
 
     public static String getUiScalePref() {
         var props = loadGlobalProperties();
@@ -1119,6 +1120,21 @@ public final class MainProject extends AbstractProject {
             props.remove(TERMINAL_FONT_SIZE_KEY);
         } else {
             props.setProperty(TERMINAL_FONT_SIZE_KEY, Float.toString(size));
+        }
+        saveGlobalProperties(props);
+    }
+
+    public static boolean getForceToolEmulation() {
+        var props = loadGlobalProperties();
+        return Boolean.parseBoolean(props.getProperty(FORCE_TOOL_EMULATION_KEY, "false"));
+    }
+
+    public static void setForceToolEmulation(boolean force) {
+        var props = loadGlobalProperties();
+        if (force) {
+            props.setProperty(FORCE_TOOL_EMULATION_KEY, "true");
+        } else {
+            props.remove(FORCE_TOOL_EMULATION_KEY);
         }
         saveGlobalProperties(props);
     }

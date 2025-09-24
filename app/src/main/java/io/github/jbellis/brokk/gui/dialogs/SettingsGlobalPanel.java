@@ -72,6 +72,9 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
     private BrowserLabel signupLabel = new BrowserLabel("", ""); // Initialized with dummy values
 
     @Nullable
+    private JCheckBox forceToolEmulationCheckbox; // Dev-only
+
+    @Nullable
     private GitHubSettingsPanel gitHubSettingsPanel; // Null if GitHub tab not shown
 
     private DefaultListModel<McpServer> mcpServersListModel = new DefaultListModel<>();
@@ -239,6 +242,17 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
             gbc.gridy = row++;
             servicePanel.add(restartLabel, gbc);
             gbc.insets = new Insets(2, 5, 2, 5);
+        }
+
+        // Dev-only: Force tool emulation checkbox
+        if (Boolean.getBoolean("brokk.devmode")) {
+            forceToolEmulationCheckbox = new JCheckBox("Force tool emulation");
+            forceToolEmulationCheckbox.setToolTipText("Development override: emulate tool calls instead of native function calling.");
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+            gbc.weightx = 1.0;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            servicePanel.add(forceToolEmulationCheckbox, gbc);
         }
 
         gbc.gridy = row;
@@ -557,6 +571,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
             }
         }
 
+        if (forceToolEmulationCheckbox != null) {
+            forceToolEmulationCheckbox.setSelected(MainProject.getForceToolEmulation());
+        }
+
         // Appearance Tab
         if (MainProject.getTheme().equals("dark")) {
             darkThemeRadio.setSelected(true);
@@ -674,6 +692,11 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
                 logger.debug("Applied LLM Proxy Setting: {}", proxySetting);
                 // Consider notifying user about restart if changed. Dialog does this.
             }
+        }
+
+        if (forceToolEmulationCheckbox != null) {
+            MainProject.setForceToolEmulation(forceToolEmulationCheckbox.isSelected());
+            logger.debug("Applied Force Tool Emulation: {}", forceToolEmulationCheckbox.isSelected());
         }
 
         // Appearance Tab
