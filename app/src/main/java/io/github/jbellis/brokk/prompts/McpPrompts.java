@@ -26,8 +26,7 @@ public class McpPrompts {
         }
 
         final var byServer = selected.stream()
-                .collect(
-                        Collectors.groupingBy(McpTool::server, LinkedHashMap::new, Collectors.toList()));
+                .collect(Collectors.groupingBy(McpTool::server, LinkedHashMap::new, Collectors.toList()));
 
         var sections = byServer.entrySet().stream()
                 .map(entry -> {

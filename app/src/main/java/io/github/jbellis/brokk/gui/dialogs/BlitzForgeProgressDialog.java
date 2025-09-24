@@ -1,5 +1,7 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import static java.util.Objects.requireNonNull;
+
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
@@ -26,11 +28,6 @@ import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.TokenAware;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
-
-import javax.swing.*;
 import java.awt.*;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -52,8 +49,10 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-
-import static java.util.Objects.requireNonNull;
+import javax.swing.*;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 public class BlitzForgeProgressDialog extends JDialog {
 

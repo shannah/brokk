@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk;
 
 import com.jakewharton.disklrucache.DiskLruCache;
-import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.ProjectFile;

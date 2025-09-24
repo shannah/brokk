@@ -28,8 +28,8 @@ import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
-import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.LogDescription;
+import io.github.jbellis.brokk.util.Messages;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.EnumSet;
@@ -42,8 +42,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
-
-import io.github.jbellis.brokk.util.Messages;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -56,7 +54,7 @@ public class ArchitectAgent {
     // Helper record to associate a SearchAgent task Future with its request
     private record SearchTask(ToolExecutionRequest request, Future<ToolExecutionResult> future) {}
 
-    private final ContextManager contextManager;
+    private final ContextManager cm;
     private final StreamingChatModel planningModel;
     private final StreamingChatModel codeModel;
     private final ToolRegistry toolRegistry;
@@ -70,7 +68,9 @@ public class ArchitectAgent {
 
     // When CodeAgent succeeds, we immediately declare victory without another LLM round.
     private boolean codeAgentJustSucceeded = false;
-    @Nullable private String lastCodeAgentSuccessMessage = null;
+
+    @Nullable
+    private String lastCodeAgentSuccessMessage = null;
 
     /**
      * Constructs a BrokkAgent that can handle multi-step tasks and sub-tasks.
@@ -83,7 +83,7 @@ public class ArchitectAgent {
             StreamingChatModel planningModel,
             StreamingChatModel codeModel,
             String goal) {
-        this.contextManager = contextManager;
+        this.cm = contextManager;
         this.planningModel = planningModel;
         this.codeModel = codeModel;
         this.toolRegistry = contextManager.getToolRegistry();
@@ -96,7 +96,7 @@ public class ArchitectAgent {
             "Provide a final answer to the multi-step project. Use this when you're done or have everything you need. Do not combine with other tools.")
     public String projectFinished(
             @P("A final explanation or summary addressing all tasks. Format it in Markdown if desired.")
-            String finalExplanation) {
+                    String finalExplanation) {
         var msg = "# Architect complete\n\n%s".formatted(finalExplanation);
         logger.debug(msg);
         io.llmOutput(msg, ChatMessageType.AI, true, false);
@@ -129,18 +129,18 @@ public class ArchitectAgent {
             "Invoke the Code Agent to solve or implement the current task. Provide complete instructions. Only the Workspace and your instructions are visible to the Code Agent, NOT the entire chat history; you must therefore provide appropriate context for your instructions. If you expect your changes to temporarily break the build and plan to fix them in later steps, set 'deferBuild' to true to defer build/verification.")
     public String callCodeAgent(
             @P(
-                    "Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
-            String instructions,
+                            "Detailed instructions for the CodeAgent referencing the current project. Code Agent can figure out how to change the code at the syntax level but needs clear instructions of what exactly you want changed")
+                    String instructions,
             @P(
-                    "Defer build/verification for this CodeAgent call. Set to true when your changes are an intermediate step that will temporarily break the build")
-            boolean deferBuild)
+                            "Defer build/verification for this CodeAgent call. Set to true when your changes are an intermediate step that will temporarily break the build")
+                    boolean deferBuild)
             throws FatalLlmException, InterruptedException {
         logger.debug("callCodeAgent invoked with instructions: {}, deferBuild={}", instructions, deferBuild);
 
         var cursor = messageCursor();
         // TODO label this Architect
         io.llmOutput("Code Agent engaged: " + instructions, ChatMessageType.CUSTOM, true, false);
-        var agent = new CodeAgent(contextManager, codeModel);
+        var agent = new CodeAgent(cm, codeModel);
         var opts = EnumSet.of(CodeAgent.Option.PRESERVE_RAW_MESSAGES);
         if (deferBuild) {
             opts.add(CodeAgent.Option.DEFER_BUILD);
@@ -154,12 +154,12 @@ public class ArchitectAgent {
             var buildText = (reason == TaskResult.StopReason.SUCCESS)
                     ? "Build succeeded."
                     : ("Build failed.\n\n" + stopDetails.explanation());
-            contextManager.updateBuildFragment(buildText);
+            cm.updateBuildFragment(buildText);
         }
 
         var newMessages = messagesSince(cursor);
-        var historyResult = new TaskResult(result, newMessages, contextManager);
-        var entry = contextManager.addToHistory(historyResult, true);
+        var historyResult = new TaskResult(result, newMessages, cm);
+        var entry = cm.addToHistory(historyResult, true);
 
         if (reason == TaskResult.StopReason.SUCCESS) {
             var entrySummary = entry.summary();
@@ -216,7 +216,7 @@ public class ArchitectAgent {
     public String undoLastChanges() {
         logger.debug("undoLastChanges invoked");
         io.systemOutput("Undoing last CodeAgent changes...");
-        if (contextManager.undoContext()) {
+        if (cm.undoContext()) {
             var resultMsg = "Successfully reverted the last CodeAgent changes.";
             logger.debug(resultMsg);
             io.systemOutput(resultMsg);
@@ -244,12 +244,12 @@ public class ArchitectAgent {
         // Instantiate and run SearchAgent
         var cursor = messageCursor();
         io.llmOutput("Search Agent engaged: " + query, ChatMessageType.CUSTOM);
-        var searchAgent = new SearchAgent(query, contextManager, model, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+        var searchAgent = new SearchAgent(query, cm, planningModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
         var result = searchAgent.execute();
 
         var newMessages = messagesSince(cursor);
-        var historyResult = new TaskResult(result, newMessages, contextManager);
-        contextManager.addToHistory(historyResult, false);
+        var historyResult = new TaskResult(result, newMessages, cm);
+        cm.addToHistory(historyResult, false);
 
         if (result.stopDetails().reason() == TaskResult.StopReason.LLM_ERROR) {
             throw new FatalLlmException(result.stopDetails().explanation());
@@ -285,7 +285,7 @@ public class ArchitectAgent {
         io.systemOutput("Architect Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
 
         // First turn: try CodeAgent directly with the goal instructions
-        if (contextManager.liveContext().isEmpty()) {
+        if (cm.liveContext().isEmpty()) {
             throw new IllegalArgumentException(); // Architect should only be invoked by Task List harness
         }
 
@@ -303,14 +303,13 @@ public class ArchitectAgent {
         if (this.codeAgentJustSucceeded) {
             var successMsg = Objects.requireNonNullElse(
                     this.lastCodeAgentSuccessMessage, "CodeAgent indicated success. Finishing.");
-            var fragment = new ContextFragment.TaskFragment(
-                    contextManager, List.of(new AiMessage(successMsg)), goal);
+            var fragment = new ContextFragment.TaskFragment(cm, List.of(new AiMessage(successMsg)), goal);
             var stopDetails = new StopDetails(StopReason.SUCCESS, successMsg);
             return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
         }
 
-        var llm = contextManager.getLlm(planningModel, "Architect: " + goal);
-        var modelsService = contextManager.getService();
+        var llm = cm.getLlm(planningModel, "Architect: " + goal);
+        var modelsService = cm.getService();
 
         while (true) {
             var planningCursor = messageCursor();
@@ -333,16 +332,17 @@ public class ArchitectAgent {
 
             // Calculate current workspace token size
             var workspaceContentMessages =
-                    new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(contextManager.liveContext()));
+                    new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()));
             int workspaceTokenSize = Messages.getApproximateTokens(workspaceContentMessages);
 
             // Build the prompt messages, including history and conditional warnings
             var messages = buildPrompt(workspaceTokenSize, minInputTokenLimit, workspaceContentMessages);
 
-            // Figure out which tools are allowed in this step (hard-coded: Workspace, CodeAgent, Search (only with Undo), Undo, Finish/Abort)
+            // Figure out which tools are allowed in this step (hard-coded: Workspace, CodeAgent, Search (only with
+            // Undo), Undo, Finish/Abort)
             var toolSpecs = new ArrayList<ToolSpecification>();
             var criticalWorkspaceSize = minInputTokenLimit < Integer.MAX_VALUE
-                                        && workspaceTokenSize > (ArchitectPrompts.WORKSPACE_CRITICAL_THRESHOLD * minInputTokenLimit);
+                    && workspaceTokenSize > (ArchitectPrompts.WORKSPACE_CRITICAL_THRESHOLD * minInputTokenLimit);
 
             if (criticalWorkspaceSize) {
                 io.systemOutput(String.format(
@@ -416,14 +416,14 @@ public class ArchitectAgent {
             io.llmOutput(
                     "\nTool call(s): %s"
                             .formatted(deduplicatedRequests.stream()
-                                               .map(req -> "`" + req.name() + "`")
-                                               .collect(Collectors.joining(", "))),
+                                    .map(req -> "`" + req.name() + "`")
+                                    .collect(Collectors.joining(", "))),
                     ChatMessageType.AI);
 
             var planningMessages = messagesSince(planningCursor);
-            contextManager.addToHistory(
+            cm.addToHistory(
                     new TaskResult(
-                            contextManager,
+                            cm,
                             "Architect planning step " + planningStep.getAndIncrement(),
                             planningMessages,
                             Set.of(),
@@ -468,7 +468,7 @@ public class ArchitectAgent {
                     var toolResult = toolRegistry.executeTool(this, answerReq);
                     logger.debug("Project final answer: {}", toolResult.resultText());
                     var fragment = new ContextFragment.TaskFragment(
-                            contextManager, List.of(new AiMessage(toolResult.resultText())), goal);
+                            cm, List.of(new AiMessage(toolResult.resultText())), goal);
                     var stopDetails = new StopDetails(StopReason.SUCCESS, toolResult.resultText());
                     return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
                 }
@@ -485,7 +485,7 @@ public class ArchitectAgent {
                     var toolResult = toolRegistry.executeTool(this, abortReq);
                     logger.debug("Project aborted: {}", toolResult.resultText());
                     var fragment = new ContextFragment.TaskFragment(
-                            contextManager, List.of(new AiMessage(toolResult.resultText())), goal);
+                            cm, List.of(new AiMessage(toolResult.resultText())), goal);
                     var stopDetails = new StopDetails(StopReason.LLM_ABORTED, toolResult.resultText());
                     return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
                 }
@@ -508,7 +508,7 @@ public class ArchitectAgent {
                     return toolResult;
                 };
                 var taskDescription = "SearchAgent: " + LogDescription.getShortDescription(req.arguments());
-                var future = contextManager.submitBackgroundTask(taskDescription, task);
+                var future = cm.submitBackgroundTask(taskDescription, task);
                 searchAgentTasks.add(new SearchTask(req, future));
             }
 
@@ -572,8 +572,8 @@ public class ArchitectAgent {
             if (this.codeAgentJustSucceeded) {
                 var successMsg = Objects.requireNonNullElse(
                         this.lastCodeAgentSuccessMessage, "CodeAgent indicated success. Finishing.");
-                var fragment = new ContextFragment.TaskFragment(
-                        contextManager, List.of(new AiMessage(successMsg)), goal);
+                var fragment =
+                        new ContextFragment.TaskFragment(cm, List.of(new AiMessage(successMsg)), goal);
                 var stopDetails = new StopDetails(StopReason.SUCCESS, successMsg);
                 return new TaskResult("Architect: " + goal, fragment, Set.of(), stopDetails);
             }
@@ -585,7 +585,7 @@ public class ArchitectAgent {
             message = "LLM returned an error with no explanation";
         }
         return new TaskResult(
-                contextManager,
+                cm,
                 "Architect: " + goal,
                 List.of(Messages.create(message, ChatMessageType.CUSTOM)),
                 Set.of(),
@@ -626,14 +626,14 @@ public class ArchitectAgent {
             throws InterruptedException {
         var messages = new ArrayList<ChatMessage>();
         // System message defines the agent's role and general instructions
-        var reminder = CodePrompts.instance.architectReminder(contextManager.getService(), planningModel);
-        messages.add(ArchitectPrompts.instance.systemMessage(contextManager, reminder));
+        var reminder = CodePrompts.instance.architectReminder(cm.getService(), planningModel);
+        messages.add(ArchitectPrompts.instance.systemMessage(cm, reminder));
 
         // Workspace contents are added directly
         messages.addAll(precomputedWorkspaceMessages);
 
         // Add auto-context as a separate message/ack pair
-        var topClassesRaw = contextManager.liveContext().buildAutoContext(10).text();
+        var topClassesRaw = cm.liveContext().buildAutoContext(10).text();
         if (!topClassesRaw.isBlank()) {
             var topClassesText =
                     """
@@ -652,12 +652,12 @@ public class ArchitectAgent {
         }
 
         // History from previous tasks/sessions
-        messages.addAll(contextManager.getHistoryMessages());
+        messages.addAll(cm.getHistoryMessages());
         // This agent's own conversational history for the current goal
         messages.addAll(architectMessages);
         // Final user message with the goal and specific instructions for this turn, including workspace warnings
         messages.add(new UserMessage(ArchitectPrompts.instance.getFinalInstructions(
-                contextManager, goal, workspaceTokenSize, minInputTokenLimit)));
+                cm, goal, workspaceTokenSize, minInputTokenLimit)));
         return messages;
     }
 }

@@ -56,7 +56,11 @@ import org.jetbrains.annotations.Nullable;
 public class SearchAgent {
     private static final Logger logger = LogManager.getLogger(SearchAgent.class);
 
-    public enum Terminal { TASK_LIST, ANSWER, WORKSPACE }
+    public enum Terminal {
+        TASK_LIST,
+        ANSWER,
+        WORKSPACE
+    }
 
     // Keep thresholds consistent with other agents
     private static final int SUMMARIZE_THRESHOLD = 1_000; // ~120 LOC equivalent
@@ -81,7 +85,8 @@ public class SearchAgent {
     // State toggles
     private boolean beastMode;
 
-    public SearchAgent(String goal, ContextManager contextManager, StreamingChatModel model, Set<Terminal> allowedTerminals) {
+    public SearchAgent(
+            String goal, ContextManager contextManager, StreamingChatModel model, Set<Terminal> allowedTerminals) {
         this.goal = goal;
         this.cm = contextManager;
         this.model = model;
@@ -315,15 +320,19 @@ public class SearchAgent {
 
         var finals = new ArrayList<String>();
         if (allowedTerminals.contains(Terminal.ANSWER)) {
-            finals.add("- Use answer(String) when the request is purely informational and you have enough information to answer.");
+            finals.add(
+                    "- Use answer(String) when the request is purely informational and you have enough information to answer.");
         }
         if (allowedTerminals.contains(Terminal.TASK_LIST)) {
-            finals.add("- Use createTaskList(List<String>) when the request involves code changes; produce a clear, minimal, incremental, and testable sequence of tasks that an Architect/Code agent can execute, once you understand where all the necessary pieces live.");
+            finals.add(
+                    "- Use createTaskList(List<String>) when the request involves code changes; produce a clear, minimal, incremental, and testable sequence of tasks that an Architect/Code agent can execute, once you understand where all the necessary pieces live.");
         }
         if (allowedTerminals.contains(Terminal.WORKSPACE)) {
-            finals.add("- Use workspaceComplete() when the Workspace contains all the information necessary to accomplish the goal.");
+            finals.add(
+                    "- Use workspaceComplete() when the Workspace contains all the information necessary to accomplish the goal.");
         }
-        finals.add("- If we cannot find the answer or the request is out of scope for this codebase, use abortSearch with a clear explanation.");
+        finals.add(
+                "- If we cannot find the answer or the request is out of scope for this codebase, use abortSearch with a clear explanation.");
 
         String finalsStr = finals.stream().collect(Collectors.joining("\n"));
 
@@ -545,7 +554,9 @@ public class SearchAgent {
         return "# Task List\n" + lines + "\n";
     }
 
-    @Tool(value = "Signal that the Workspace now contains all the information necessary to accomplish the goal. Call this when you have finished gathering and pruning context.")
+    @Tool(
+            value =
+                    "Signal that the Workspace now contains all the information necessary to accomplish the goal. Call this when you have finished gathering and pruning context.")
     public String workspaceComplete() {
         logger.debug("workspaceComplete selected");
         return "Workspace marked complete for the current goal.";
@@ -726,7 +737,8 @@ public class SearchAgent {
                     listParamSignatures(toolName, args, "classNames");
                 case "getMethodSources" -> listParamSignatures(toolName, args, "methodNames");
                 case "searchGitCommitMessages" -> List.of(toolName + ":pattern=" + args.getOrDefault("pattern", ""));
-                case "answer", "createTaskList", "workspaceComplete", "abortSearch" -> List.of(toolName + ":finalizing");
+                case "answer", "createTaskList", "workspaceComplete", "abortSearch" ->
+                    List.of(toolName + ":finalizing");
                 default -> List.of(toolName + ":unknown");
             };
         } catch (Exception e) {

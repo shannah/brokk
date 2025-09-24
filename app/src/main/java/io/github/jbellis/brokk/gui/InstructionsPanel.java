@@ -239,7 +239,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }
                 }));
 
-
         // Load persisted checkbox states (default to checked)
         var proj = chrome.getProject();
         modeSwitch.setSelected(proj.getInstructionsAskMode());
@@ -1649,9 +1648,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * @param goal The initial user instruction passed to the agent.
      */
     private TaskResult executeArchitectCommand(
-            StreamingChatModel planningModel,
-            StreamingChatModel codeModel,
-            String goal) {
+            StreamingChatModel planningModel, StreamingChatModel codeModel, String goal) {
         var contextManager = chrome.getContextManager();
         try {
             var agent = new ArchitectAgent(contextManager, planningModel, codeModel, goal);
@@ -1676,7 +1673,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var contextManager = chrome.getContextManager();
         try {
-            SearchAgent agent = new SearchAgent(query, contextManager, model, EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST));
+            SearchAgent agent = new SearchAgent(
+                    query,
+                    contextManager,
+                    model,
+                    EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST));
             var result = agent.execute();
 
             // Search does not stream to llmOutput, so add the final answer here

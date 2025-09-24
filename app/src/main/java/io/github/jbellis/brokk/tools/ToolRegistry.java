@@ -289,16 +289,19 @@ public class ToolRegistry {
                                     if (elem != null && !contentClass.isInstance(elem)) {
                                         throw new ToolValidationException(
                                                 "Parameter '%s' expected elements of type %s but got %s"
-                                                        .formatted(param.getName(), contentClass.getName(),
+                                                        .formatted(
+                                                                param.getName(),
+                                                                contentClass.getName(),
                                                                 elem.getClass().getName()));
                                     }
                                 }
                             } else if (converted != null && !contentClass.isInstance(converted)) {
                                 // Handle non-collection cases conservatively
-                                throw new ToolValidationException(
-                                        "Parameter '%s' expected value of type %s but got %s"
-                                                .formatted(param.getName(), contentClass.getName(),
-                                                        converted.getClass().getName()));
+                                throw new ToolValidationException("Parameter '%s' expected value of type %s but got %s"
+                                        .formatted(
+                                                param.getName(),
+                                                contentClass.getName(),
+                                                converted.getClass().getName()));
                             }
                         }
                     }

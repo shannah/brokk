@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jakewharton.disklrucache.DiskLruCache;
 import io.github.jbellis.brokk.Service.ModelConfig;
-import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.Languages;

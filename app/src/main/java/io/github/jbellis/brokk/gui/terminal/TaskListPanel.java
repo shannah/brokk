@@ -376,10 +376,9 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
     }
 
     /**
-     * Automatically commits any modified files with a message that incorporates the provided task description.
-     * - Suggests a commit message via GitWorkflow and combines it with the taskDescription.
-     * - Commits all modified files as a single commit.
-     * - Reports success/failure on the EDT and refreshes relevant Git UI.
+     * Automatically commits any modified files with a message that incorporates the provided task description. -
+     * Suggests a commit message via GitWorkflow and combines it with the taskDescription. - Commits all modified files
+     * as a single commit. - Reports success/failure on the EDT and refreshes relevant Git UI.
      */
     public static void autoCommitChanges(Chrome chrome, String taskDescription) {
         var cm = chrome.getContextManager();
@@ -400,7 +399,8 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         cm.submitUserTask("Auto-committing task result", () -> {
             try {
                 var workflowService = new GitWorkflow(cm);
-                var filesToCommit = modified.stream().map(GitRepo.ModifiedFile::file).collect(Collectors.toList());
+                var filesToCommit =
+                        modified.stream().map(GitRepo.ModifiedFile::file).collect(Collectors.toList());
 
                 String suggested = workflowService.suggestCommitMessage(filesToCommit);
                 String message;
