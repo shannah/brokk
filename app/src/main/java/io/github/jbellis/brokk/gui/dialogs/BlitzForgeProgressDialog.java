@@ -17,6 +17,7 @@ import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.RelevanceClassifier;
+import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.gui.Chrome;
@@ -36,6 +37,7 @@ import java.nio.file.Files;
 import java.util.ArrayList;
 import java.util.Arrays;
 import java.util.Comparator;
+import java.util.EnumSet;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
@@ -621,8 +623,27 @@ public class BlitzForgeProgressDialog extends JDialog {
                     }
 
                     outputTextArea.append("Architect has been invoked. You can close this window.\n");
-                    // Submit the Architect task; the updated BuildFragment is already in the session context.
+                    // Submit the Architect task after running a Search for relevant information
                     contextManager.submitUserTask("Architect post-upgrade build fix", () -> {
+                        var scanModel = contextManager.getService().getScanModel();
+                        SearchAgent agent = new SearchAgent(
+                                agentInstructions,
+                                contextManager,
+                                scanModel,
+                                EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+                        TaskResult searchResult;
+                        try {
+                            searchResult = agent.execute();
+                        } catch (InterruptedException e) {
+                            return;
+                        }
+                        if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
+                            logger.debug("Search failed: {}", searchResult.stopDetails());
+                            mainIo.toolError(
+                                    "Search phase failed; not invoking Architect. " + searchResult.stopDetails(),
+                                    "Post-processing");
+                        }
+
                         chrome.getInstructionsPanel().runArchitectCommand(agentInstructions);
                     });
                 }));

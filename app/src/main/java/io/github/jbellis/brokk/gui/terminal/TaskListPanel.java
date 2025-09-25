@@ -883,12 +883,18 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         try {
             var cm = c.getContextManager();
             var future = cm.submitBackgroundTask("Execute Task " + (idx + 1), () -> {
-                var model = cm.getService().getScanModel();
-                SearchAgent agent = new SearchAgent(prompt, cm, model, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
-                var searchResult = agent.execute();
-                if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
-                    logger.debug("Search failed: {}", searchResult.stopDetails());
-                    return false;
+                boolean skipSearch = idx == 0 && !cm.liveContext().isEmpty();
+
+                if (skipSearch) {
+                    logger.debug("Skipping SearchAgent for first task since workspace is not empty");
+                } else {
+                    var model = cm.getService().getScanModel();
+                    SearchAgent agent = new SearchAgent(prompt, cm, model, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+                    var searchResult = agent.execute();
+                    if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
+                        logger.debug("Search failed: {}", searchResult.stopDetails());
+                        return false;
+                    }
                 }
 
                 var archFuture = c.getInstructionsPanel().runArchitectCommand(prompt);
