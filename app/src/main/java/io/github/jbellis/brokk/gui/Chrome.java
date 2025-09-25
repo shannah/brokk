@@ -1102,6 +1102,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     @Override
     public void close() {
         logger.info("Closing Chrome UI");
+
         contextManager.close();
         frame.dispose();
         // Unregister this instance
