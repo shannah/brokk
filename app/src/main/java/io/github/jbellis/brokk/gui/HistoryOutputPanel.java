@@ -1770,9 +1770,7 @@ public class HistoryOutputPanel extends JPanel {
             timeLabel.setText(formatModified(value.modified()));
 
             var cnt = sessionAiResponseCounts.get(value.id());
-            countLabel.setText(cnt != null
-                    ? String.format("%d %s", cnt, cnt == 1 ? "task" : "tasks")
-                    : "");
+            countLabel.setText(cnt != null ? String.format("%d %s", cnt, cnt == 1 ? "task" : "tasks") : "");
             if (cnt == null) {
                 triggerAiCountLoad(value);
             }
