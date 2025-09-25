@@ -15,6 +15,8 @@
   --shiki-token-punctuation: #9eacba;
   --shiki-token-link: #4ec9b0;
   --code-block-font-weight: initial;
+  --ai-reasoning-header-foreground: #ffffff;
+  --message-border-ai-reasoning: #8c52c9;
 }
 
 /* Shiki CSS variables for light theme */
@@ -31,6 +33,8 @@
   --shiki-token-punctuation: #131313;
   --shiki-token-link: #3200f9;
   --code-block-font-weight: 700;
+  --ai-reasoning-header-foreground: #333333;
+  --message-border-ai-reasoning: #8c52c9;
 }
 
 h1, h2, h3, h4, h5, h6 {
