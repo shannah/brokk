@@ -45,7 +45,8 @@ public class ContentDiffUtils {
      * @param newName filename label for "to"
      * @return DiffComputationResult containing unified diff text and counts
      */
-    public static DiffComputationResult computeDiffResult(String oldContent, String newContent, String oldName, String newName) {
+    public static DiffComputationResult computeDiffResult(
+            String oldContent, String newContent, String oldName, String newName) {
         var oldLines = oldContent.lines().toList();
         var newLines = newContent.lines().toList();
 
@@ -54,7 +55,10 @@ public class ContentDiffUtils {
             if (logger.isDebugEnabled()) {
                 logger.debug(
                         "computeDiffResult: {} -> {} | no changes (oldLines={}, newLines={})",
-                        oldName, newName, oldLines.size(), newLines.size());
+                        oldName,
+                        newName,
+                        oldLines.size(),
+                        newLines.size());
             }
             return new DiffComputationResult("", 0, 0);
         }
@@ -75,7 +79,13 @@ public class ContentDiffUtils {
         if (logger.isDebugEnabled()) {
             logger.debug(
                     "computeDiffResult: {} -> {} | deltas={} added={} deleted={} (oldLines={}, newLines={})",
-                    oldName, newName, patch.getDeltas().size(), added, deleted, oldLines.size(), newLines.size());
+                    oldName,
+                    newName,
+                    patch.getDeltas().size(),
+                    added,
+                    deleted,
+                    oldLines.size(),
+                    newLines.size());
         }
 
         var diffLines = UnifiedDiffUtils.generateUnifiedDiff(oldName, newName, oldLines, patch, 0);

@@ -1,44 +1,33 @@
 package io.github.jbellis.brokk.gui;
 
-import com.github.f4b6a3.uuid.UuidCreator;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.SessionManager;
-import io.github.jbellis.brokk.TaskEntry;
-import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
-import io.github.jbellis.brokk.context.ContextHistory;
 import io.github.jbellis.brokk.context.FrozenFragment;
-import dev.langchain4j.data.message.ChatMessage;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
-
-import javax.swing.*;
-import javax.swing.border.EmptyBorder;
-import javax.swing.table.AbstractTableModel;
-import javax.swing.table.DefaultTableCellRenderer;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.ArrayList;
-import java.util.Collections;
 import java.util.List;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
-import java.util.concurrent.Future;
-import java.util.stream.Stream;
+import javax.swing.*;
+import javax.swing.border.EmptyBorder;
+import javax.swing.table.AbstractTableModel;
+import javax.swing.table.DefaultTableCellRenderer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * A standalone Swing GUI for exploring Brokk context sessions.
- * It displays a list of sessions, the contexts and fragments within a selected session,
- * and the content of a selected fragment.
+ * A standalone Swing GUI for exploring Brokk context sessions. It displays a list of sessions, the contexts and
+ * fragments within a selected session, and the content of a selected fragment.
  */
 public final class ContextExplorer extends JFrame {
     private static final Logger logger = LogManager.getLogger(ContextExplorer.class);
@@ -132,12 +121,20 @@ public final class ContextExplorer extends JFrame {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     logger.error("Session list loading interrupted", e);
-                    JOptionPane.showMessageDialog(ContextExplorer.this, "Session list loading interrupted.", "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(
+                            ContextExplorer.this,
+                            "Session list loading interrupted.",
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE);
                 } catch (ExecutionException e) {
                     logger.error("Failed to list sessions", e);
                     var cause = e.getCause();
                     var msg = (cause != null && cause.getMessage() != null) ? cause.getMessage() : e.toString();
-                    JOptionPane.showMessageDialog(ContextExplorer.this, "Failed to list sessions: " + msg, "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(
+                            ContextExplorer.this,
+                            "Failed to list sessions: " + msg,
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -183,7 +180,8 @@ public final class ContextExplorer extends JFrame {
             protected List<TableRow> doInBackground() throws Exception {
                 var ch = sessionManager.loadHistory(info.id(), contextManager);
                 if (ch == null) {
-                    throw new IOException("Unable to load history for session " + info.name() + " (ID: " + info.id() + ")");
+                    throw new IOException(
+                            "Unable to load history for session " + info.name() + " (ID: " + info.id() + ")");
                 }
 
                 List<TableRow> rows = new ArrayList<>();
@@ -209,12 +207,20 @@ public final class ContextExplorer extends JFrame {
                 } catch (InterruptedException e) {
                     Thread.currentThread().interrupt();
                     logger.error("Session history loading interrupted for session {}", info.id(), e);
-                    JOptionPane.showMessageDialog(ContextExplorer.this, "Session history loading interrupted.", "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(
+                            ContextExplorer.this,
+                            "Session history loading interrupted.",
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE);
                 } catch (ExecutionException e) {
                     logger.error("Failed to load session history for session {}", info.id(), e);
                     var cause = e.getCause();
                     var msg = (cause != null && cause.getMessage() != null) ? cause.getMessage() : e.toString();
-                    JOptionPane.showMessageDialog(ContextExplorer.this, "Failed to load session history: " + msg, "Error", JOptionPane.ERROR_MESSAGE);
+                    JOptionPane.showMessageDialog(
+                            ContextExplorer.this,
+                            "Failed to load session history: " + msg,
+                            "Error",
+                            JOptionPane.ERROR_MESSAGE);
                 }
             }
         }.execute();
@@ -253,8 +259,12 @@ public final class ContextExplorer extends JFrame {
         clearPreview(); // Clear before loading new content
 
         new SwingWorker<Void, Void>() {
-            @Nullable String textContent = null;
-            @Nullable Image imageContent = null;
+            @Nullable
+            String textContent = null;
+
+            @Nullable
+            Image imageContent = null;
+
             boolean failed = false;
 
             @Override
@@ -274,7 +284,8 @@ public final class ContextExplorer extends JFrame {
                             imageContent = aif.image();
                         } else {
                             // If it's another non-text type, we can't display it directly as image or text
-                            textContent = "Fragment type " + fragment.getType() + " is not a displayable image or text.";
+                            textContent =
+                                    "Fragment type " + fragment.getType() + " is not a displayable image or text.";
                         }
                     }
                 } catch (Exception e) {
@@ -358,7 +369,9 @@ public final class ContextExplorer extends JFrame {
     /** Custom TableModel for displaying Contexts and their Fragments. */
     private static final class ContextFragmentsTableModel extends AbstractTableModel {
         private final List<TableRow> rows = new ArrayList<>();
-        private static final String[] COLUMN_NAMES = {"Type", "Context Info", "Fragment ID", "FragType", "Description", "Lines", "Dynamic", "Syntax"};
+        private static final String[] COLUMN_NAMES = {
+            "Type", "Context Info", "Fragment ID", "FragType", "Description", "Lines", "Dynamic", "Syntax"
+        };
 
         public void clear() {
             rows.clear();
@@ -430,11 +443,12 @@ public final class ContextExplorer extends JFrame {
     /** Custom ListCellRenderer for SessionInfo objects in the JList. */
     private static final class SessionInfoListCellRenderer extends DefaultListCellRenderer {
         @Override
-        public Component getListCellRendererComponent(JList<?> list, Object value, int index,
-                                                      boolean isSelected, boolean cellHasFocus) {
+        public Component getListCellRendererComponent(
+                JList<?> list, Object value, int index, boolean isSelected, boolean cellHasFocus) {
             super.getListCellRendererComponent(list, value, index, isSelected, cellHasFocus);
             if (value instanceof SessionManager.SessionInfo info) {
-                setText(String.format("%s (%s)", info.name(), info.id().toString().substring(0, 8)));
+                setText(String.format(
+                        "%s (%s)", info.name(), info.id().toString().substring(0, 8)));
             }
             return this;
         }
@@ -449,8 +463,8 @@ public final class ContextExplorer extends JFrame {
         }
 
         @Override
-        public Component getTableCellRendererComponent(JTable table, Object value,
-                                                       boolean isSelected, boolean hasFocus, int row, int column) {
+        public Component getTableCellRendererComponent(
+                JTable table, Object value, boolean isSelected, boolean hasFocus, int row, int column) {
             var c = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
             var modelRow = table.convertRowIndexToModel(row);
             var item = model.getRow(modelRow);

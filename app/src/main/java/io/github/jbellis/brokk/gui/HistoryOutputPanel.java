@@ -12,29 +12,27 @@ import io.github.jbellis.brokk.TaskEntry;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.ContextHistory;
-import io.github.jbellis.brokk.difftool.utils.ColorUtil;
-import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel;
 import io.github.jbellis.brokk.difftool.ui.BufferSource;
+import io.github.jbellis.brokk.difftool.utils.ColorUtil;
+import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.components.SpinnerIconUtil;
 import io.github.jbellis.brokk.gui.components.SplitButton;
 import io.github.jbellis.brokk.gui.dialogs.SessionsDialog;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
-import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
+import io.github.jbellis.brokk.gui.util.Icons;
 import java.awt.*;
-import java.time.Instant;
-import java.time.LocalDate;
-import java.time.ZoneId;
-import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.ConcurrentHashMap;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.geom.Path2D;
+import java.time.Instant;
+import java.time.LocalDate;
+import java.time.ZoneId;
 import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
@@ -42,12 +40,14 @@ import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.ConcurrentHashMap;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.plaf.LayerUI;
-import javax.swing.table.DefaultTableModel;
 import javax.swing.table.DefaultTableCellRenderer;
+import javax.swing.table.DefaultTableModel;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -74,6 +74,7 @@ public class HistoryOutputPanel extends JPanel {
     private JLabel sessionSwitchSpinner;
 
     private JLayeredPane historyLayeredPane;
+
     @SuppressWarnings("NullAway.Init") // Initialized in constructor
     private JScrollPane historyScrollPane;
 
@@ -1192,17 +1193,13 @@ public class HistoryOutputPanel extends JPanel {
 
     /** A renderer that shows the action text and, for AI result contexts, a diff summary under it. */
     private class DiffAwareActionRenderer extends DefaultTableCellRenderer {
-        private final ActivityTableRenderers.ActionCellRenderer fallback = new ActivityTableRenderers.ActionCellRenderer();
+        private final ActivityTableRenderers.ActionCellRenderer fallback =
+                new ActivityTableRenderers.ActionCellRenderer();
         private final Font smallFont = new Font(Font.DIALOG, Font.PLAIN, 11);
 
         @Override
         public Component getTableCellRendererComponent(
-                JTable table,
-                @Nullable Object value,
-                boolean isSelected,
-                boolean hasFocus,
-                int row,
-                int column) {
+                JTable table, @Nullable Object value, boolean isSelected, boolean hasFocus, int row, int column) {
             // Separator handling delegates to existing painter
             if (ActivityTableRenderers.isSeparatorAction(value)) {
                 var comp = fallback.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
@@ -1304,9 +1301,8 @@ public class HistoryOutputPanel extends JPanel {
         }
 
         /**
-         * Adjust the row height to the preferred height of the rendered component.
-         * This keeps rows compact when there is no diff and expands only as needed
-         * when a diff summary is present.
+         * Adjust the row height to the preferred height of the rendered component. This keeps rows compact when there
+         * is no diff and expands only as needed when a diff summary is present.
          */
         private Component adjustRowHeight(JTable table, int row, int column, Component comp) {
             int colWidth = table.getColumnModel().getColumn(column).getWidth();
@@ -1675,7 +1671,7 @@ public class HistoryOutputPanel extends JPanel {
 
         updateHistoryTable(null);
     }
- 
+
     private static Point clampViewportPosition(JScrollPane sp, Point desired) {
         JViewport vp = sp.getViewport();
         if (vp == null) return desired;
@@ -1689,8 +1685,8 @@ public class HistoryOutputPanel extends JPanel {
         int y = Math.max(0, Math.min(desired.y, maxY));
         return new Point(x, y);
     }
- 
-     private String formatModified(long modifiedMillis) {
+
+    private String formatModified(long modifiedMillis) {
         var instant = Instant.ofEpochMilli(modifiedMillis);
         return GitUiUtil.formatRelativeDate(instant, LocalDate.now(ZoneId.systemDefault()));
     }
@@ -1702,22 +1698,23 @@ public class HistoryOutputPanel extends JPanel {
         }
         sessionCountLoading.add(id);
         CompletableFuture.supplyAsync(() -> {
-            try {
-                var sm = contextManager.getProject().getSessionManager();
-                var ch = sm.loadHistory(id, contextManager);
-                if (ch == null) return 0;
-                return countAiResponses(ch);
-            } catch (Exception e) {
-                logger.warn("Failed to load history for session {}", id, e);
-                return 0;
-            }
-        }).thenAccept(count -> {
-            sessionAiResponseCounts.put(id, count);
-            sessionCountLoading.remove(id);
-            SwingUtilities.invokeLater(() -> {
-                sessionComboBox.repaint();
-            });
-        });
+                    try {
+                        var sm = contextManager.getProject().getSessionManager();
+                        var ch = sm.loadHistory(id, contextManager);
+                        if (ch == null) return 0;
+                        return countAiResponses(ch);
+                    } catch (Exception e) {
+                        logger.warn("Failed to load history for session {}", id, e);
+                        return 0;
+                    }
+                })
+                .thenAccept(count -> {
+                    sessionAiResponseCounts.put(id, count);
+                    sessionCountLoading.remove(id);
+                    SwingUtilities.invokeLater(() -> {
+                        sessionComboBox.repaint();
+                    });
+                });
     }
 
     private int countAiResponses(ContextHistory ch) {
