@@ -527,12 +527,10 @@ public final class MOPBridge {
                         var projectFiles = new ArrayList<ProjectFile>();
 
                         var project = contextManager.getProject();
-                        if (project != null) {
-                            for (var match : matches) {
-                                String relativePath = (String) match.get("relativePath");
-                                if (relativePath != null) {
-                                    projectFiles.add(new ProjectFile(project.getRoot(), relativePath));
-                                }
+                        for (var match : matches) {
+                            String relativePath = (String) match.get("relativePath");
+                            if (relativePath != null) {
+                                projectFiles.add(new ProjectFile(project.getRoot(), relativePath));
                             }
                         }
 
@@ -651,7 +649,7 @@ public final class MOPBridge {
                             .filter(s -> !s.isEmpty())
                             .distinct()
                             .toList();
-                } else if (langs != null && langs.getClass().isArray()) {
+                } else if (langs.getClass().isArray()) {
                     var arr = (Object[]) langs;
                     analyzerLanguages = Arrays.stream(arr)
                             .map(String::valueOf)
@@ -659,7 +657,7 @@ public final class MOPBridge {
                             .filter(s -> !s.isEmpty())
                             .distinct()
                             .toList();
-                } else if (langs != null) {
+                } else {
                     var s = String.valueOf(langs).trim();
                     analyzerLanguages = s.isEmpty() ? List.of() : List.of(s);
                 }

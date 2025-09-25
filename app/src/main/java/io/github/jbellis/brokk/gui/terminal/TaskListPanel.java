@@ -718,9 +718,9 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                 if (json != null && !json.isBlank()) {
                     TaskListData data = Json.fromJson(json, TaskListData.class);
                     model.clear();
-                    if (data != null && data.tasks != null) {
+                    if (data != null) {
                         for (TaskEntryDto dto : data.tasks) {
-                            if (dto != null && dto.text != null && !dto.text.isBlank()) {
+                            if (dto != null && !dto.text.isBlank()) {
                                 model.addElement(new TaskItem(dto.text, dto.done));
                             }
                         }
@@ -765,7 +765,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
 
     /** Append a collection of tasks to the end of the current list and persist them for the active session. */
     public void appendTasks(List<String> tasks) {
-        if (tasks == null || tasks.isEmpty()) {
+        if (tasks.isEmpty()) {
             return;
         }
         boolean added = false;
@@ -859,7 +859,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         }
 
         String prompt = item.text();
-        if (prompt == null || prompt.isBlank()) {
+        if (prompt.isBlank()) {
             startNextIfAny();
             return;
         }
@@ -1201,10 +1201,8 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         } finally {
             registeredContextManager = null;
         }
-        if (llmStateTimer != null) {
-            llmStateTimer.stop();
-        }
-        if (runningFadeTimer != null) runningFadeTimer.stop();
+        llmStateTimer.stop();
+        runningFadeTimer.stop();
         super.removeNotify();
     }
 

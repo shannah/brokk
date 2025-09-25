@@ -381,9 +381,7 @@ public class TerminalDrawerPanel extends JPanel implements ThemeAware {
                 Path cwd = null;
                 if (console instanceof Chrome c) {
                     var project = c.getProject();
-                    if (project != null) {
-                        cwd = project.getRoot();
-                    }
+                    cwd = project.getRoot();
                 }
                 if (cwd == null) {
                     cwd = Path.of(System.getProperty("user.dir"));
@@ -450,10 +448,7 @@ public class TerminalDrawerPanel extends JPanel implements ThemeAware {
 
     private @Nullable AbstractProject getCurrentProject() {
         if (console instanceof Chrome c) {
-            AbstractProject proj = c.getProject();
-            if (proj != null) {
-                return proj;
-            }
+            return c.getProject();
         }
         return null;
     }
@@ -591,9 +586,7 @@ public class TerminalDrawerPanel extends JPanel implements ThemeAware {
             Path cwd = null;
             if (console instanceof Chrome c) {
                 var project = c.getProject();
-                if (project != null) {
-                    cwd = project.getRoot();
-                }
+                cwd = project.getRoot();
             }
             if (cwd == null) {
                 cwd = Path.of(System.getProperty("user.dir"));

@@ -266,9 +266,7 @@ public class TerminalPanel extends JPanel implements ThemeAware {
                 var lines = new ArrayList<String>();
                 for (int i = 0; i < buffer.getHeight(); i++) {
                     var line = buffer.getLine(i);
-                    if (line != null) {
-                        lines.add(line.getText());
-                    }
+                    lines.add(line.getText());
                 }
 
                 String content =
