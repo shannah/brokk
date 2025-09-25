@@ -7,15 +7,12 @@ import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import java.io.IOException;
 import java.nio.file.Files;
-import java.nio.file.Path;
 import java.util.ArrayDeque;
 import java.util.ArrayList;
 import java.util.Deque;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
 import java.util.Optional;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -200,47 +197,11 @@ public class ContextHistory {
         var fr = liveContext.freezeAndCleanup();
         if (!topContext().workspaceContentEquals(fr.frozenContext())) {
             var topCtx = topContext();
-
-            // Compute list of filenames that changed (added, removed, or modified)
-            var oldMap = new HashMap<String, String>();
-            topCtx.getEditableFragments()
-                    .filter(fragment -> fragment.getType() == ContextFragment.FragmentType.PROJECT_PATH)
-                    .forEach(fragment -> {
-                        var pf = fragment.files().iterator().next();
-                        var key = pf.getRelPath().toString();
-                        oldMap.put(key, fragment.text());
-                    });
-
-            var newMap = new HashMap<String, String>();
-            fr.frozenContext()
-                    .getEditableFragments()
-                    .filter(fragment -> fragment.getType() == ContextFragment.FragmentType.PROJECT_PATH)
-                    .forEach(fragment -> {
-                        var pf = fragment.files().iterator().next();
-                        var key = pf.getRelPath().toString();
-                        newMap.put(key, fragment.text());
-                    });
-
-            var keys = new HashSet<String>();
-            keys.addAll(oldMap.keySet());
-            keys.addAll(newMap.keySet());
-            var changedNames = new ArrayList<String>();
-            for (var key : keys) {
-                var oldText = oldMap.get(key);
-                var newText = newMap.get(key);
-                if (!Objects.equals(oldText, newText)) {
-                    var filename = Path.of(key).getFileName().toString();
-                    changedNames.add(filename);
-                }
-            }
-            var filesSuffix = changedNames.isEmpty() ? "" : ": " + String.join(", ", changedNames);
-
             var previousAction = topCtx.getAction();
             if (!previousAction.startsWith("Load external changes")) {
                 // If the previous action is not about external changes, push a new context
-                var newAction = "Load external changes" + filesSuffix;
-                var newLiveContext =
-                        fr.liveContext().withParsedOutput(null, CompletableFuture.completedFuture(newAction));
+                var newLiveContext = fr.liveContext()
+                        .withParsedOutput(null, CompletableFuture.completedFuture("Loaded external changes"));
                 var cleaned = newLiveContext.freezeAndCleanup();
                 pushLiveAndFrozen(cleaned.liveContext(), cleaned.frozenContext());
                 return cleaned.frozenContext();
@@ -262,8 +223,7 @@ public class ContextHistory {
             }
 
             // Form the new action string with the updated count
-            var newAction = (newCount > 1 ? "Load external changes (%d)".formatted(newCount) : "Load external changes")
-                    + filesSuffix;
+            var newAction = newCount > 1 ? "Load external changes (%d)".formatted(newCount) : "Load external changes";
             var newLiveContext = fr.liveContext().withParsedOutput(null, CompletableFuture.completedFuture(newAction));
             var cleaned = newLiveContext.freezeAndCleanup();
             replaceTop(cleaned.liveContext(), cleaned.frozenContext());
