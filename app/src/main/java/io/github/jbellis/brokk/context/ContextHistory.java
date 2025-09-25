@@ -201,7 +201,7 @@ public class ContextHistory {
             if (!previousAction.startsWith("Load external changes")) {
                 // If the previous action is not about external changes, push a new context
                 var newLiveContext = fr.liveContext()
-                        .withParsedOutput(null, CompletableFuture.completedFuture("Loaded external changes"));
+                        .withParsedOutput(null, CompletableFuture.completedFuture("Load external changes"));
                 var cleaned = newLiveContext.freezeAndCleanup();
                 pushLiveAndFrozen(cleaned.liveContext(), cleaned.frozenContext());
                 return cleaned.frozenContext();
