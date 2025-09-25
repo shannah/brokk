@@ -907,7 +907,10 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                 }
 
                 if (archResult.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {
-                    autoCommitChanges(c, prompt);
+                    // Only auto-commit if we're processing multiple tasks as part of a queue
+                    if (queueActive) {
+                        autoCommitChanges(c, prompt);
+                    }
                     return true;
                 }
                 return false;
