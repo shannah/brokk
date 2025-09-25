@@ -392,19 +392,21 @@ public class SearchAgent {
 
         var names = new ArrayList<String>();
 
-        // Analyzer-backed exploration
-        names.add("searchSymbols");
-        var analyzerWrapper = cm.getAnalyzerWrapper();
+        // Any Analyzer at all provides these
+        if (!cm.getProject().getAnalyzerLanguages().equals(Set.of(Languages.NONE))) {
+            names.add("searchSymbols");
+            names.add("getFiles");
+        }
 
+        // Fine-grained Analyzer capabilities
+        var analyzerWrapper = cm.getAnalyzerWrapper();
         if (analyzerWrapper.providesSummaries()) {
             names.add("getClassSkeletons");
         }
-
         if (analyzerWrapper.providesSourceCode()) {
             names.add("getClassSources");
             names.add("getMethodSources");
         }
-
         if (analyzerWrapper.providesInterproceduralAnalysis()) {
             names.add("getUsages");
             names.add("getRelatedClasses");
@@ -430,7 +432,6 @@ public class SearchAgent {
         names.add("addCallGraphOutToWorkspace");
         names.add("addTextToWorkspace");
         names.add("dropWorkspaceFragments");
-        names.add("getFiles");
 
         logger.debug("Allowed tool names: {}", names);
         return names;
