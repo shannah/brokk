@@ -103,6 +103,10 @@ public class HistoryOutputPanel extends JPanel {
     private PendingSelectionType pendingSelectionType = PendingSelectionType.NONE;
     private @Nullable UUID pendingSelectionGroupKey = null;
 
+    // Viewport preservation flags for group expand/collapse operations
+    private boolean suppressScrollOnNextUpdate = false;
+    private @Nullable Point pendingViewportPosition = null;
+
     // Session AI response counts and in-flight loaders
     private final Map<UUID, Integer> sessionAiResponseCounts = new ConcurrentHashMap<>();
     private final java.util.Set<UUID> sessionCountLoading = ConcurrentHashMap.newKeySet();
@@ -541,6 +545,9 @@ public class HistoryOutputPanel extends JPanel {
 
             if (!expandedNow) {
                 groupExpandedState.put(key, true);
+                // Preserve viewport while expanding so the view doesn't jump
+                pendingViewportPosition = historyScrollPane.getViewport().getViewPosition();
+                suppressScrollOnNextUpdate = true;
                 updateHistoryTable(null);
                 // Ensure the table is rebuilt first, then select and show the popup
                 SwingUtilities.invokeLater(showAfterExpand);
@@ -728,21 +735,35 @@ public class HistoryOutputPanel extends JPanel {
                 }
             }
 
+            boolean suppress = suppressScrollOnNextUpdate;
+
             if (pendingSelectionType == PendingSelectionType.CLEAR) {
                 historyTable.clearSelection();
                 // Do not auto-select any row when collapsing a group
             } else if (rowToSelect >= 0) {
                 historyTable.setRowSelectionInterval(rowToSelect, rowToSelect);
-                historyTable.scrollRectToVisible(historyTable.getCellRect(rowToSelect, 0, true));
-            } else if (historyModel.getRowCount() > 0) {
+                if (!suppress) {
+                    historyTable.scrollRectToVisible(historyTable.getCellRect(rowToSelect, 0, true));
+                }
+            } else if (!suppress && historyModel.getRowCount() > 0) {
                 int lastRow = historyModel.getRowCount() - 1;
                 historyTable.setRowSelectionInterval(lastRow, lastRow);
                 historyTable.scrollRectToVisible(historyTable.getCellRect(lastRow, 0, true));
             }
 
+            // Restore viewport if requested
+            if (suppress && pendingViewportPosition != null) {
+                Point desired = pendingViewportPosition;
+                SwingUtilities.invokeLater(() -> {
+                    historyScrollPane.getViewport().setViewPosition(clampViewportPosition(historyScrollPane, desired));
+                });
+            }
+
             // Reset directive after applying
             pendingSelectionType = PendingSelectionType.NONE;
             pendingSelectionGroupKey = null;
+            suppressScrollOnNextUpdate = false;
+            pendingViewportPosition = null;
 
             contextManager.getProject().getMainProject().sessionsListChanged();
             var resetEdges = contextManager.getContextHistory().getResetEdges();
@@ -1640,37 +1661,36 @@ public class HistoryOutputPanel extends JPanel {
         boolean newState = !groupExpandedState.getOrDefault(groupRow.key(), groupRow.expanded());
         groupExpandedState.put(groupRow.key(), newState);
 
+        // Set selection directive
         if (newState) {
-            // Expanding: select first entry in the group after rebuild
             pendingSelectionType = PendingSelectionType.FIRST_IN_GROUP;
-            pendingSelectionGroupKey = groupRow.key();
-
-            updateHistoryTable(null);
-
-            // After expanding, keep current UX: ensure the header is visible
-            int headerRow = findGroupHeaderRow(groupRow.key());
-            if (headerRow >= 0) {
-                historyTable.scrollRectToVisible(historyTable.getCellRect(headerRow, 0, true));
-            }
         } else {
-            // Collapsing: clear selection and do not auto-select any row
             pendingSelectionType = PendingSelectionType.CLEAR;
-            pendingSelectionGroupKey = groupRow.key();
-
-            // Try to preserve the current viewport position
-            JScrollPane sp = historyScrollPane;
-            Point oldPos = sp != null ? sp.getViewport().getViewPosition() : null;
-
-            updateHistoryTable(null);
-
-            if (sp != null && oldPos != null) {
-                SwingUtilities.invokeLater(() -> sp.getViewport().setViewPosition(oldPos));
-            }
         }
+        pendingSelectionGroupKey = groupRow.key();
+
+        // Preserve viewport and suppress any scroll caused by table rebuild
+        pendingViewportPosition = historyScrollPane.getViewport().getViewPosition();
+        suppressScrollOnNextUpdate = true;
+
+        updateHistoryTable(null);
     }
-
-
-    private String formatModified(long modifiedMillis) {
+ 
+    private static Point clampViewportPosition(JScrollPane sp, Point desired) {
+        JViewport vp = sp.getViewport();
+        if (vp == null) return desired;
+        Component view = vp.getView();
+        if (view == null) return desired;
+        Dimension viewSize = view.getSize();
+        Dimension extent = vp.getExtentSize();
+        int maxX = Math.max(0, viewSize.width - extent.width);
+        int maxY = Math.max(0, viewSize.height - extent.height);
+        int x = Math.max(0, Math.min(desired.x, maxX));
+        int y = Math.max(0, Math.min(desired.y, maxY));
+        return new Point(x, y);
+    }
+ 
+     private String formatModified(long modifiedMillis) {
         var instant = Instant.ofEpochMilli(modifiedMillis);
         return GitUiUtil.formatRelativeDate(instant, LocalDate.now(ZoneId.systemDefault()));
     }
