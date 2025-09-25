@@ -49,7 +49,9 @@ public final class BrokkCli implements Callable<Integer> {
     @Nullable
     private Path projectPath;
 
-    @CommandLine.Option(names = "--edit", description = "Add a file to the workspace for editing. Can be repeated.")
+    @CommandLine.Option(
+            names = {"--edit", "--read"},
+            description = "Add a file to the workspace for editing. Can be repeated.")
     private List<String> editFiles = new ArrayList<>();
 
     @CommandLine.Option(
@@ -517,7 +519,7 @@ public final class BrokkCli implements Callable<Integer> {
                 matches.stream().map(s -> "  - " + s).collect(Collectors.joining("\n")));
     }
 
-    /**
+    /*
      * If the prompt begins with '@', treat the remainder as a filename and return the file's contents; otherwise return
      * the original prompt.
      */
