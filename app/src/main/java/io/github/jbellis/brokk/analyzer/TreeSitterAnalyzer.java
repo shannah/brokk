@@ -2,6 +2,7 @@ package io.github.jbellis.brokk.analyzer;
 
 import com.google.common.base.Splitter;
 import io.github.jbellis.brokk.IProject;
+import io.github.jbellis.brokk.util.ExecutorServiceUtil;
 import io.github.jbellis.brokk.util.TextCanonicalizer;
 import java.io.IOException;
 import java.io.InputStream;
@@ -27,9 +28,12 @@ import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentSkipListMap;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.concurrent.atomic.AtomicLong;
 import java.util.concurrent.locks.ReentrantReadWriteLock;
 import java.util.function.Function;
 import java.util.function.Predicate;
@@ -82,6 +86,15 @@ public abstract class TreeSitterAnalyzer
 
     /* ---------- instance state ---------- */
     private final ThreadLocal<TSLanguage> threadLocalLanguage = ThreadLocal.withInitial(this::createTSLanguage);
+    private final ThreadLocal<TSParser> threadLocalParser = ThreadLocal.withInitial(() -> {
+        var parser = new TSParser();
+        if (!parser.setLanguage(getTSLanguage())) {
+            log.error(
+                    "Failed to set language on TSParser for {}",
+                    getTSLanguage().getClass().getSimpleName());
+        }
+        return parser;
+    });
     private final ThreadLocal<TSQuery> query;
     private final Map<ProjectFile, List<CodeUnit>> topLevelDeclarations =
             new ConcurrentHashMap<>(); // package-private for testing
@@ -210,6 +223,38 @@ public abstract class TreeSitterAnalyzer
             List<String> importStatements // Added for module-level imports
             ) {}
 
+    // Timing metrics for constructor-run analysis are tracked via a local Timing record instance.
+    private record ConstructionTiming(
+            AtomicLong readStageNanos,
+            AtomicLong parseStageNanos,
+            AtomicLong processStageNanos,
+            AtomicLong mergeStageNanos,
+            AtomicLong readStageFirstStartNanos,
+            AtomicLong readStageLastEndNanos,
+            AtomicLong parseStageFirstStartNanos,
+            AtomicLong parseStageLastEndNanos,
+            AtomicLong processStageFirstStartNanos,
+            AtomicLong processStageLastEndNanos,
+            AtomicLong mergeStageFirstStartNanos,
+            AtomicLong mergeStageLastEndNanos) {
+
+        static ConstructionTiming create() {
+            return new ConstructionTiming(
+                    new AtomicLong(),
+                    new AtomicLong(),
+                    new AtomicLong(),
+                    new AtomicLong(),
+                    new AtomicLong(Long.MAX_VALUE),
+                    new AtomicLong(0L),
+                    new AtomicLong(Long.MAX_VALUE),
+                    new AtomicLong(0L),
+                    new AtomicLong(Long.MAX_VALUE),
+                    new AtomicLong(0L),
+                    new AtomicLong(Long.MAX_VALUE),
+                    new AtomicLong(0L));
+        }
+    }
+
     /* ---------- constructor ---------- */
     protected TreeSitterAnalyzer(IProject project, Language language, Set<String> excludedFiles) {
         this.project = project;
@@ -248,12 +293,11 @@ public abstract class TreeSitterAnalyzer
         var successfullyProcessed = new AtomicInteger(0);
         var failedFiles = new AtomicInteger(0);
 
-        project.getAllFiles().stream()
+        // Collect files to process
+        List<ProjectFile> filesToProcess = project.getAllFiles().stream()
                 .filter(pf -> {
-                    // Normalize the file path once
                     var filePath = pf.absPath().toAbsolutePath().normalize();
 
-                    // Check if file is under any excluded path
                     var excludedBy = normalizedExcludedPaths.stream()
                             .filter(filePath::startsWith)
                             .findFirst();
@@ -263,59 +307,58 @@ public abstract class TreeSitterAnalyzer
                         return false;
                     }
 
-                    // Check extension using proper file extension matching
                     var extension = pf.extension();
                     return validExtensions.contains(extension);
                 })
-                .parallel()
-                .forEach(pf -> {
-                    totalFilesAttempted.incrementAndGet();
-                    log.trace("Processing file: {}", pf);
-                    // TSParser is not threadsafe, so we create a parser per thread
-                    var localParser = new TSParser();
-                    try {
-                        if (!localParser.setLanguage(getTSLanguage())) {
-                            log.error(
-                                    "Failed to set language on thread-local TSParser for language {} in file {}",
-                                    getTSLanguage().getClass().getSimpleName(),
-                                    pf);
-                            return; // Skip this file if parser setup fails
-                        }
-                        var analysisResult = analyzeFileDeclarations(pf, localParser);
-                        if (!analysisResult.topLevelCUs().isEmpty()
-                                || !analysisResult.signatures().isEmpty()
-                                || !analysisResult.sourceRanges().isEmpty()) {
-                            // Use the centralized ingestion logic so that the symbol index and codeUnitsBySymbol
-                            // are populated consistently for initial project analysis as well as updates.
-                            ingestAnalysisResult(pf, analysisResult);
+                .toList();
 
-                            log.trace(
-                                    "Processed file {} via ingestAnalysisResult: {} top-level CUs, {} signatures, {} parent-child relationships, {} source range entries.",
-                                    pf,
-                                    analysisResult.topLevelCUs().size(),
-                                    analysisResult.signatures().size(),
-                                    analysisResult.children().size(),
-                                    analysisResult.sourceRanges().size());
-                        } else {
-                            log.trace("analyzeFileDeclarations returned empty result for file: {}", pf);
-                        }
-                        successfullyProcessed.incrementAndGet();
-                    } catch (OutOfMemoryError e) {
-                        // Critical JVM issues that should terminate processing
-                        throw e;
-                    } catch (IOException e) {
-                        failedFiles.incrementAndGet();
-                        log.warn("IO error analyzing {}: {}", pf, e.getMessage());
-                    } catch (Exception e) {
-                        // Handle all other exceptions (including RuntimeException) by logging and continuing
-                        failedFiles.incrementAndGet();
-                        if (e instanceof RuntimeException) {
-                            log.error("Runtime error analyzing {}: {}", pf, e.getMessage(), e);
-                        } else {
-                            log.warn("Error analyzing {}: {}", pf, e.getMessage(), e);
-                        }
-                    }
-                });
+        var timing = ConstructionTiming.create();
+        List<CompletableFuture<?>> futures = new ArrayList<>();
+        // Executors: virtual threads for I/O/parsing, single-thread for ingestion
+        try (var ioExecutor = ExecutorServiceUtil.newVirtualThreadExecutor("ts-io-", 1000);
+                var parseExecutor = ExecutorServiceUtil.newFixedThreadExecutor(
+                        Runtime.getRuntime().availableProcessors(), "ts-parse-");
+                var ingestExecutor = ExecutorServiceUtil.newFixedThreadExecutor(
+                        Runtime.getRuntime().availableProcessors(), "ts-ingest-")) {
+            for (var pf : filesToProcess) {
+                CompletableFuture<Void> future = CompletableFuture.supplyAsync(
+                                () -> readFileBytes(pf, timing), ioExecutor)
+                        .thenApplyAsync(
+                                fileBytes -> {
+                                    totalFilesAttempted.incrementAndGet();
+                                    return analyzeFile(pf, fileBytes, timing);
+                                },
+                                parseExecutor)
+                        .thenAcceptAsync(
+                                analysisResult -> mergeAnalysisResult(pf, analysisResult, timing), ingestExecutor)
+                        .whenComplete((Void ignored, @Nullable Throwable ex) -> {
+                            if (ex == null) {
+                                successfullyProcessed.incrementAndGet();
+                            } else {
+                                failedFiles.incrementAndGet();
+                                Throwable cause = (ex instanceof CompletionException ce && ce.getCause() != null)
+                                        ? ce.getCause()
+                                        : ex;
+
+                                if (cause instanceof UncheckedIOException uioe) {
+                                    var ioe = uioe.getCause();
+                                    log.warn(
+                                            "IO error analyzing {}: {}",
+                                            pf,
+                                            ioe != null ? ioe.getMessage() : uioe.getMessage());
+                                } else if (cause instanceof RuntimeException re) {
+                                    log.error("Runtime error analyzing {}: {}", pf, re.getMessage(), re);
+                                } else {
+                                    log.warn("Error analyzing {}: {}", pf, cause.getMessage(), cause);
+                                }
+                            }
+                        });
+
+                futures.add(future);
+            }
+
+            CompletableFuture.allOf(futures.toArray(new CompletableFuture[0])).join();
+        }
 
         // Log summary of file processing results
         int totalAttempted = totalFilesAttempted.get();
@@ -332,8 +375,42 @@ public abstract class TreeSitterAnalyzer
             log.info("File processing summary: {} files processed successfully", successful);
         }
 
+        // Wall-clock timings per stage (coverage windows; stages overlap)
+        long readWall = wallDuration(timing.readStageFirstStartNanos(), timing.readStageLastEndNanos());
+        long parseWall = wallDuration(timing.parseStageFirstStartNanos(), timing.parseStageLastEndNanos());
+        long processWall = wallDuration(timing.processStageFirstStartNanos(), timing.processStageLastEndNanos());
+        long mergeWall = wallDuration(timing.mergeStageFirstStartNanos(), timing.mergeStageLastEndNanos());
+
+        // Total wall clock derived from stage coverage: min(firstStart) .. max(lastEnd)
+        long totalStart = Math.min(
+                Math.min(
+                        timing.readStageFirstStartNanos().get(),
+                        timing.parseStageFirstStartNanos().get()),
+                Math.min(
+                        timing.processStageFirstStartNanos().get(),
+                        timing.mergeStageFirstStartNanos().get()));
+        long totalEnd = Math.max(
+                Math.max(
+                        timing.readStageLastEndNanos().get(),
+                        timing.parseStageLastEndNanos().get()),
+                Math.max(
+                        timing.processStageLastEndNanos().get(),
+                        timing.mergeStageLastEndNanos().get()));
+        long totalWall =
+                (totalStart == Long.MAX_VALUE || totalEnd == 0L || totalEnd < totalStart) ? 0L : totalEnd - totalStart;
+
         log.debug(
-                "TreeSitter analysis complete - topLevelDeclarations: {}, childrenByParent: {}, signatures: {}",
+                "[{}] Stage timing (wall clock coverage; stages overlap): Read Files={}, Parse Files={}, Process Files={}, Merge Results={}, Total={}",
+                language.name(),
+                formatSecondsMillis(readWall),
+                formatSecondsMillis(parseWall),
+                formatSecondsMillis(processWall),
+                formatSecondsMillis(mergeWall),
+                formatSecondsMillis(totalWall));
+
+        log.debug(
+                "[{}] TreeSitter analysis complete - topLevelDeclarations: {}, childrenByParent: {}, signatures: {}",
+                language.name(),
                 topLevelDeclarations.size(),
                 childrenByParent.size(),
                 signatures.size());
@@ -841,6 +918,10 @@ public abstract class TreeSitterAnalyzer
         return threadLocalLanguage.get();
     }
 
+    protected TSParser getTSParser() {
+        return threadLocalParser.get();
+    }
+
     /**
      * Returns the cached parsed tree for the given file if available, or null if not cached. This method allows
      * subclasses to reuse already-parsed trees instead of re-parsing files.
@@ -942,10 +1023,13 @@ public abstract class TreeSitterAnalyzer
 
     /* ---------- core parsing ---------- */
 
-    /** Analyzes a single file and extracts declaration information. */
-    private FileAnalysisResult analyzeFileDeclarations(ProjectFile file, TSParser localParser) throws IOException {
-        log.trace("analyzeFileDeclarations: Parsing file: {}", file);
-        byte[] fileBytes = Files.readAllBytes(file.absPath());
+    /** Analyzes a single file and extracts declaration information from provided bytes. */
+    private FileAnalysisResult analyzeFileContent(
+            ProjectFile file,
+            byte[] fileBytes,
+            TSParser localParser,
+            @Nullable TreeSitterAnalyzer.ConstructionTiming timing) {
+        log.trace("analyzeFileContent: Parsing file: {}", file);
         fileBytes = TextCanonicalizer.stripUtf8Bom(fileBytes);
 
         String src = new String(fileBytes, StandardCharsets.UTF_8);
@@ -962,12 +1046,26 @@ public abstract class TreeSitterAnalyzer
         Map<String, CodeUnit> localCuByFqName = new HashMap<>(); // For parent lookup within the file
         List<String> localImportStatements = new ArrayList<>(); // For collecting import lines
 
+        long __parseStart = System.nanoTime();
         TSTree tree = localParser.parseString(null, src);
+        long __parseEnd = System.nanoTime();
+        if (timing != null) {
+            timing.parseStageNanos().addAndGet(__parseEnd - __parseStart);
+            timing.parseStageFirstStartNanos().accumulateAndGet(__parseStart, Math::min);
+            timing.parseStageLastEndNanos().accumulateAndGet(__parseEnd, Math::max);
+        }
         // Cache the parsed tree for later use to avoid redundant parsing
         parsedTreeCache.put(file, tree);
         TSNode rootNode = tree.getRootNode();
+        long __processStart = System.nanoTime();
         if (rootNode.isNull()) {
             log.warn("Parsing failed or produced null root node for {}", file);
+            long __processEnd = System.nanoTime();
+            if (timing != null) {
+                timing.processStageNanos().addAndGet(__processEnd - __processStart);
+                timing.processStageFirstStartNanos().accumulateAndGet(__processStart, Math::min);
+                timing.processStageLastEndNanos().accumulateAndGet(__processEnd, Math::max);
+            }
             return new FileAnalysisResult(List.of(), Map.of(), Map.of(), Map.of(), Map.of(), List.of());
         }
         // Log root node type
@@ -1222,7 +1320,7 @@ public abstract class TreeSitterAnalyzer
             }
 
             String signature =
-                    buildSignatureString(node, simpleName, fileBytes, primaryCaptureName, modifierKeywords, file);
+                    buildSignatureString(node, simpleName, src, fileBytes, primaryCaptureName, modifierKeywords, file);
             log.trace(
                     "Built signature for '{}': [{}]",
                     simpleName,
@@ -1310,9 +1408,7 @@ public abstract class TreeSitterAnalyzer
 
             // Pre-expand range to include contiguous preceding comments and metadata for classes and functions.
             // Always include contiguous leading comments and attribute-like nodes for both classes and functions.
-            var finalRange = (cu.isClass() || cu.isFunction())
-                    ? expandRangeWithComments(file, originalRange, false)
-                    : originalRange;
+            var finalRange = (cu.isClass() || cu.isFunction()) ? expandRangeWithComments(node, false) : originalRange;
 
             localSourceRanges.computeIfAbsent(cu, k -> new ArrayList<>()).add(finalRange);
             localCuByFqName.put(cu.fqName(), cu); // Add/overwrite current CU by its FQ name
@@ -1398,6 +1494,12 @@ public abstract class TreeSitterAnalyzer
         Map<CodeUnit, List<Range>> finalLocalSourceRanges = new HashMap<>();
         localSourceRanges.forEach((c, ranges) -> finalLocalSourceRanges.put(c, Collections.unmodifiableList(ranges)));
 
+        long __processEnd = System.nanoTime();
+        if (timing != null) {
+            timing.processStageNanos().addAndGet(__processEnd - __processStart);
+            timing.processStageFirstStartNanos().accumulateAndGet(__processStart, Math::min);
+            timing.processStageLastEndNanos().accumulateAndGet(__processEnd, Math::max);
+        }
         return new FileAnalysisResult(
                 Collections.unmodifiableList(localTopLevelCUs),
                 finalLocalChildren,
@@ -1418,6 +1520,7 @@ public abstract class TreeSitterAnalyzer
     private String buildSignatureString(
             TSNode definitionNode,
             String simpleName,
+            String src,
             byte[] srcBytes,
             String primaryCaptureName,
             List<String> capturedModifierKeywords,
@@ -1425,9 +1528,6 @@ public abstract class TreeSitterAnalyzer
         List<String> signatureLines = new ArrayList<>();
         var profile = getLanguageSyntaxProfile();
         SkeletonType skeletonType = getSkeletonTypeForCapture(primaryCaptureName); // Get skeletonType early
-
-        // Convert to String for compatibility with existing method signatures
-        String src = new String(srcBytes, StandardCharsets.UTF_8);
 
         TSNode nodeForContent = definitionNode;
         TSNode nodeForSignature = definitionNode; // Keep original for signature text slicing
@@ -2145,6 +2245,22 @@ public abstract class TreeSitterAnalyzer
         }
     }
 
+    private static String formatSecondsMillis(long nanos) {
+        long seconds = nanos / 1_000_000_000L;
+        long millis = (nanos % 1_000_000_000L) / 1_000_000L;
+        return seconds + "s " + millis + "ms";
+    }
+
+    /** Compute wall-clock duration from firstStart/lastEnd AtomicLongs, returning 0 if not recorded. */
+    private static long wallDuration(AtomicLong firstStart, AtomicLong lastEnd) {
+        long start = firstStart.get();
+        long end = lastEnd.get();
+        if (start == Long.MAX_VALUE || end == 0L || end < start) {
+            return 0L;
+        }
+        return end - start;
+    }
+
     /**
      * Fallback to extract a simple name from a declaration node when an explicit `.name` capture isn't found. Tries
      * finding a child node with field name specified in LanguageSyntaxProfile. Needs the source string `src` for
@@ -2244,6 +2360,52 @@ public abstract class TreeSitterAnalyzer
         return files.stream().filter(this::isRelevantFile).collect(Collectors.toSet());
     }
 
+    /* ---------- async stage helpers ---------- */
+
+    private byte[] readFileBytes(ProjectFile pf, ConstructionTiming timing) {
+        long __readStart = System.nanoTime();
+        try {
+            return Files.readAllBytes(pf.absPath());
+        } catch (IOException e) {
+            throw new UncheckedIOException(e);
+        } finally {
+            long __readEnd = System.nanoTime();
+            timing.readStageFirstStartNanos().accumulateAndGet(__readStart, Math::min);
+            timing.readStageLastEndNanos().accumulateAndGet(__readEnd, Math::max);
+            timing.readStageNanos().addAndGet(__readEnd - __readStart);
+        }
+    }
+
+    private FileAnalysisResult analyzeFile(ProjectFile pf, byte[] fileBytes, ConstructionTiming timing) {
+        log.trace("Processing file: {}", pf);
+        var parser = getTSParser();
+        return analyzeFileContent(pf, fileBytes, parser, timing);
+    }
+
+    private void mergeAnalysisResult(ProjectFile pf, FileAnalysisResult analysisResult, ConstructionTiming timing) {
+        if (!analysisResult.topLevelCUs().isEmpty()
+                || !analysisResult.signatures().isEmpty()
+                || !analysisResult.sourceRanges().isEmpty()) {
+
+            long __mergeStart = System.nanoTime();
+            ingestAnalysisResult(pf, analysisResult);
+            long __mergeEnd = System.nanoTime();
+            timing.mergeStageNanos().addAndGet(__mergeEnd - __mergeStart);
+            timing.mergeStageFirstStartNanos().accumulateAndGet(__mergeStart, Math::min);
+            timing.mergeStageLastEndNanos().accumulateAndGet(__mergeEnd, Math::max);
+
+            log.trace(
+                    "Processed file {} via ingestAnalysisResult: {} top-level CUs, {} signatures, {} parent-child relationships, {} source range entries.",
+                    pf,
+                    analysisResult.topLevelCUs().size(),
+                    analysisResult.signatures().size(),
+                    analysisResult.children().size(),
+                    analysisResult.sourceRanges().size());
+        } else {
+            log.trace("analyzeFileDeclarations returned empty result for file: {}", pf);
+        }
+    }
+
     /* ---------- incremental updates ---------- */
 
     @Override
@@ -2298,12 +2460,9 @@ public abstract class TreeSitterAnalyzer
                 // -------- re-analyse (if file still exists) ----------
                 if (Files.exists(file.absPath())) {
                     try {
-                        var localParser = new TSParser();
-                        if (!localParser.setLanguage(getTSLanguage())) {
-                            log.error("Cannot set TSLanguage for {}", file);
-                            continue;
-                        }
-                        var analysisResult = analyzeFileDeclarations(file, localParser);
+                        var parser = getTSParser();
+                        byte[] bytes = Files.readAllBytes(file.absPath());
+                        var analysisResult = analyzeFileContent(file, bytes, parser, null);
                         ingestAnalysisResult(file, analysisResult);
                     } catch (IOException e) {
                         log.warn("IO error re-analysing {}: {}", file, e.getMessage());
@@ -2448,35 +2607,6 @@ public abstract class TreeSitterAnalyzer
         return Set.of();
     }
 
-    /** Finds a Tree-Sitter node by its byte range within the given tree. */
-    protected Optional<TSNode> findNodeByRange(TSTree tree, int startByte, int endByte) {
-        TSNode root = tree.getRootNode();
-        return findNodeByRangeRecursive(root, startByte, endByte);
-    }
-
-    private Optional<TSNode> findNodeByRangeRecursive(TSNode node, int targetStartByte, int targetEndByte) {
-        // Check if this node matches the target range
-        if (node.getStartByte() == targetStartByte && node.getEndByte() == targetEndByte) {
-            return Optional.of(node);
-        }
-
-        // Check children
-        for (int i = 0; i < node.getChildCount(); i++) {
-            TSNode child = node.getChild(i);
-            if (child != null && !child.isNull()) {
-                // Only recurse if the target range could be within this child
-                if (child.getStartByte() <= targetStartByte && child.getEndByte() >= targetEndByte) {
-                    Optional<TSNode> result = findNodeByRangeRecursive(child, targetStartByte, targetEndByte);
-                    if (result.isPresent()) {
-                        return result;
-                    }
-                }
-            }
-        }
-
-        return Optional.empty();
-    }
-
     /**
      * Finds all comment nodes that directly precede the given declaration node. Returns comments in source order
      * (earliest first).
@@ -2515,34 +2645,20 @@ public abstract class TreeSitterAnalyzer
 
     /**
      * Expands a source range to include contiguous leading metadata (comments and attribute-like nodes) immediately
-     * preceding the declaration node. Reuses the cached AST; does not re-parse.
+     * preceding the declaration node. Operates directly on the provided declaration node.
      */
-    protected Range expandRangeWithComments(ProjectFile file, Range originalRange, boolean ignoredIncludeOnlyDocLike) {
+    protected Range expandRangeWithComments(TSNode declarationNode, boolean ignoredIncludeOnlyDocLike) {
+        var originalRange = new Range(
+                declarationNode.getStartByte(),
+                declarationNode.getEndByte(),
+                declarationNode.getStartPoint().getRow(),
+                declarationNode.getEndPoint().getRow(),
+                declarationNode.getStartByte()); // initial commentStartByte equals start
+
         try {
-            // Reuse cached tree created during analyzeFileDeclarations
-            TSTree tree = getCachedTree(file);
-            if (tree == null) {
-                log.debug("No cached AST available for {} during comment expansion; keeping original range", file);
-                return originalRange;
-            }
-
-            // Find the declaration node by its range
-            Optional<TSNode> declarationNode =
-                    findNodeByRange(tree, originalRange.startByte(), originalRange.endByte());
-            if (declarationNode.isEmpty()) {
-                log.debug(
-                        "Could not find declaration node for range [{}, {}] in file {}",
-                        originalRange.startByte(),
-                        originalRange.endByte(),
-                        file);
-                return originalRange;
-            }
-
-            TSNode decl = declarationNode.get();
-
             // Walk preceding siblings and collect contiguous leading metadata nodes (comments, attributes)
             List<TSNode> leading = new ArrayList<>();
-            TSNode current = decl.getPrevSibling();
+            TSNode current = declarationNode.getPrevSibling();
             while (current != null && !current.isNull()) {
                 if (isLeadingMetadataNode(current)) {
                     leading.add(current);
@@ -2551,12 +2667,14 @@ public abstract class TreeSitterAnalyzer
                 }
                 break;
             }
-            // leading currently has closest-first order; reverse to earliest-first
+
+            // No leading metadata; keep the original range
             if (leading.isEmpty()) {
                 return originalRange;
             }
-            Collections.reverse(leading);
 
+            // Reverse to get earliest-first
+            Collections.reverse(leading);
             int newStartByte = leading.get(0).getStartByte();
 
             Range expandedRange = new Range(
@@ -2567,18 +2685,16 @@ public abstract class TreeSitterAnalyzer
                     newStartByte);
 
             log.trace(
-                    "Expanded range for file {} from [{}, {}] to [{}, {}] (added {} preceding metadata nodes)",
-                    file,
+                    "Expanded range for node. Body range [{}, {}], comment range starts at {} (added {} preceding metadata nodes)",
                     originalRange.startByte(),
                     originalRange.endByte(),
-                    expandedRange.startByte(),
-                    expandedRange.endByte(),
+                    expandedRange.commentStartByte(),
                     leading.size());
 
             return expandedRange;
 
         } catch (Exception e) {
-            log.warn("Error during comment/metadata expansion for file {}: {}", file, e.getMessage());
+            log.warn("Error during comment/metadata expansion for node: {}", e.getMessage());
             return originalRange;
         }
     }
