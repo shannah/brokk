@@ -1073,6 +1073,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                     // Only auto-commit if we're processing multiple tasks as part of a queue
                     if (queueActive) {
                         autoCommitChanges(c, prompt);
+                        cm.compressHistoryAsync().get();
                     }
                     return true;
                 }
