@@ -1,6 +1,8 @@
 package io.github.jbellis.brokk.gui.terminal;
 
 import com.google.common.base.Splitter;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskResult;
@@ -101,6 +103,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
     private @Nullable Integer runningIndex = null;
     private final LinkedHashSet<Integer> pendingQueue = new LinkedHashSet<>();
     private boolean queueActive = false;
+    private @Nullable List<Integer> currentRunOrder = null;
 
     public TaskListPanel(IConsoleIO console) {
         super(new BorderLayout(4, 4));
@@ -991,6 +994,9 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
             return;
         }
 
+        // Record the full ordered run for context awareness
+        currentRunOrder = java.util.List.copyOf(toRun);
+
         // Set up queue: first runs now, the rest are pending
         int first = toRun.get(0);
         pendingQueue.clear();
@@ -1021,8 +1027,8 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
             return;
         }
 
-        String prompt = item.text();
-        if (prompt.isBlank()) {
+        String originalPrompt = item.text();
+        if (originalPrompt.isBlank()) {
             startNextIfAny();
             return;
         }
@@ -1032,6 +1038,13 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         runningAnimStartMs = System.currentTimeMillis();
         runningFadeTimer.start();
         list.repaint();
+
+        // IMMEDIATE FEEDBACK: inform user tasks were submitted without waiting for LLM work
+        int totalToRun = currentRunOrder != null ? currentRunOrder.size() : 1;
+        if (console instanceof Chrome ch) {
+            SwingUtilities.invokeLater(() -> ch.systemOutput(
+                    "Submitted " + totalToRun + " task(s) for execution. Running task 1 of " + totalToRun + "..."));
+        }
 
         if (!(console instanceof Chrome c)) {
             try {
@@ -1045,14 +1058,86 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
 
         try {
             var cm = c.getContextManager();
-            var future = cm.submitBackgroundTask("Execute Task " + (idx + 1), () -> {
-                boolean skipSearch = idx == 0 && !cm.liveContext().isEmpty();
 
+            // Snapshot ordered task texts and position to avoid accessing Swing model from background threads.
+            final List<String> orderedTexts = new ArrayList<>();
+            int posInOrder = -1;
+            if (currentRunOrder != null) {
+                for (int i = 0; i < currentRunOrder.size(); i++) {
+                    int taskIdx = currentRunOrder.get(i);
+                    String ttext = "";
+                    if (taskIdx >= 0 && taskIdx < model.getSize()) {
+                        var t = model.get(taskIdx);
+                        if (t != null) ttext = t.text();
+                    }
+                    orderedTexts.add(ttext);
+                    if (taskIdx == idx) posInOrder = i;
+                }
+            } else {
+                orderedTexts.add(originalPrompt);
+                posInOrder = 0;
+            }
+            final int finalPosInOrder = posInOrder;
+            final int finalTotal = orderedTexts.size();
+
+            // Submit background work: perform LLM goal extraction and run Architect off the EDT.
+            var future = cm.submitBackgroundTask("Execute Task " + (idx + 1), () -> {
+                // Build header using LLM in background thread (non-blocking to EDT).
+                StringBuilder header = new StringBuilder();
+                if (!orderedTexts.isEmpty()) {
+                    String goal;
+                    try {
+                        var scanModel = cm.getService().getScanModel();
+                        var llm = cm.getLlm(scanModel, "Extract Goal from Task list", false);
+                        // Build a numbered task list text for the LLM
+                        StringBuilder orderedTasklistText = new StringBuilder();
+                        for (int i = 0; i < orderedTexts.size(); i++) {
+                            orderedTasklistText.append(String.format("%d. %s\n", i + 1, orderedTexts.get(i)));
+                        }
+                        var messages = List.<ChatMessage>of(new UserMessage(
+                                """
+                                You are a summarizer of tasks. Take a list of tasks and find the common goal for them in one
+                                sentence. Only return the goal.
+                                task list below:
+                                %s
+
+                                """
+                                        .stripIndent()
+                                        .formatted(orderedTasklistText.toString())));
+                        var result = llm.sendRequest(messages, false);
+                        var goalRaw = result.text();
+                        goal = goalRaw.trim();
+                    } catch (Exception e) {
+                        logger.error(e);
+                        goal = "Overall goal: Complete the following tasks in order.";
+                    }
+
+                    header.append(goal);
+                    header.append("\n\n");
+                    header.append("Ordered task list:\n");
+                    for (int i = 0; i < orderedTexts.size(); i++) {
+                        header.append(String.format("%d. %s\n", i + 1, orderedTexts.get(i)));
+                    }
+                    int humanPos = finalPosInOrder >= 0 ? finalPosInOrder + 1 : -1;
+                    if (humanPos > 0) {
+                        header.append("\nYou are executing task " + humanPos + " of " + finalTotal + ".\n");
+                    } else {
+                        header.append("\nYou are executing one of " + finalTotal + " tasks in this run.\n");
+                    }
+                } else {
+                    header.append("Overall goal: Complete the following task.\n\n");
+                }
+
+                String augmentedPrompt = header.toString() + "\n" + originalPrompt;
+
+                // Optionally run SearchAgent (this is also background work)
+                boolean skipSearch = idx == 0 && !cm.liveContext().isEmpty();
                 if (skipSearch) {
                     logger.debug("Skipping SearchAgent for first task since workspace is not empty");
                 } else {
-                    var model = cm.getService().getScanModel();
-                    SearchAgent agent = new SearchAgent(prompt, cm, model, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+                    var scanModel = cm.getService().getScanModel();
+                    SearchAgent agent =
+                            new SearchAgent(originalPrompt, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
                     var searchResult = agent.execute();
                     if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
                         logger.debug("Search failed: {}", searchResult.stopDetails());
@@ -1060,19 +1145,19 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                     }
                 }
 
-                var archFuture = c.getInstructionsPanel().runArchitectCommand(prompt);
+                var archFuture = c.getInstructionsPanel().runArchitectCommand(augmentedPrompt);
                 TaskResult archResult;
                 try {
                     archResult = archFuture.get();
                 } catch (Exception e) {
-                    logger.error("Architect failed for prompt: {}", prompt, e);
+                    logger.error("Architect failed for prompt: {}", originalPrompt, e);
                     return false;
                 }
 
                 if (archResult.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {
                     // Only auto-commit if we're processing multiple tasks as part of a queue
                     if (queueActive) {
-                        autoCommitChanges(c, prompt);
+                        autoCommitChanges(c, originalPrompt);
                         cm.compressHistoryAsync().get();
                     }
                     return true;
@@ -1110,6 +1195,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         if (pendingQueue.isEmpty()) {
             // Queue finished
             queueActive = false;
+            currentRunOrder = null;
             list.repaint();
             updateButtonStates();
             return;
@@ -1126,6 +1212,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         runningFadeTimer.stop();
         pendingQueue.clear();
         queueActive = false;
+        currentRunOrder = null;
         list.repaint();
         updateButtonStates();
     }
