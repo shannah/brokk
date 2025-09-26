@@ -1161,11 +1161,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     historyMenuItem.setToolTipText(item);
 
                     historyMenuItem.addActionListener(ev -> {
-                        Objects.requireNonNull(commandInputOverlay).hideOverlay();
-                        Objects.requireNonNull(instructionsArea).setEnabled(true);
+                        commandInputOverlay.hideOverlay();
+                        instructionsArea.setEnabled(true);
 
                         instructionsArea.setText(item);
-                        Objects.requireNonNull(commandInputUndoManager).discardAllEdits();
+                        commandInputUndoManager.discardAllEdits();
                         instructionsArea.requestFocusInWindow();
                     });
                     menu.add(historyMenuItem);

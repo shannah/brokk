@@ -163,7 +163,7 @@ public class MergeAgent {
 
         // Merge test files first (in parallel) to seed relevance
         if (!testAnnotated.isEmpty()) {
-            var service = requireNonNull(cm.getService());
+            var service = cm.getService();
             ExecutorService testExecutor = AdaptiveExecutor.create(service, codeModel, testAnnotated.size());
             try {
                 CompletionService<MergeOneFile.Outcome> completionService =
@@ -231,7 +231,7 @@ public class MergeAgent {
 
         // Then merge non-test files (in parallel), leveraging merged test sources
         if (!nonTestAnnotated.isEmpty()) {
-            var service = requireNonNull(cm.getService());
+            var service = cm.getService();
             ExecutorService nonTestExecutor = AdaptiveExecutor.create(service, codeModel, nonTestAnnotated.size());
             try {
                 CompletionService<Map.Entry<ProjectFile, MergeOneFile.Outcome>> completionService =

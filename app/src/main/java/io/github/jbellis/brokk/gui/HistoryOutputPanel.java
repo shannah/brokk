@@ -947,11 +947,11 @@ public class HistoryOutputPanel extends JPanel {
 
     /** Gets the LLM scroll pane */
     public JScrollPane getLlmScrollPane() {
-        return requireNonNull(llmScrollPane, "llmScrollPane should be initialized by constructor");
+        return llmScrollPane;
     }
 
     public MarkdownOutputPanel getLlmStreamArea() {
-        return requireNonNull(llmStreamArea, "llmStreamArea should be initialized by constructor");
+        return llmStreamArea;
     }
 
     public void clearLlmOutput() {

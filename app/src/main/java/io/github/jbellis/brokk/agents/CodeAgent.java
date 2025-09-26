@@ -822,7 +822,7 @@ public class CodeAgent {
             if (e.stopDetails.reason() == TaskResult.StopReason.READ_ONLY_EDIT) {
                 // already reported by applyBlocksAndHandleErrors
             } else if (e.stopDetails.reason() == TaskResult.StopReason.IO_ERROR) {
-                io.toolError(requireNonNull(e.stopDetails.explanation()));
+                io.toolError(e.stopDetails.explanation());
             } else if (e.stopDetails.reason() == TaskResult.StopReason.APPLY_ERROR) {
                 reportComplete(e.stopDetails.explanation());
             }
