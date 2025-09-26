@@ -266,11 +266,7 @@ public class ContextMenuBuilder {
         var historyItem = new JMenuItem("Show History");
         historyItem.addActionListener(e -> {
             final var chrome = context.chrome();
-            if (chrome != null) {
-                chrome.addFileHistoryTab(file);
-            } else {
-                logger.warn("Chrome is null, cannot show history for {}", file);
-            }
+            chrome.addFileHistoryTab(file);
         });
         historyItem.setEnabled(hasGit);
         if (!hasGit) {
@@ -302,11 +298,7 @@ public class ContextMenuBuilder {
         var historyItem = new JMenuItem("Show History");
         historyItem.addActionListener(e -> {
             final var chrome = singleFileContext.chrome();
-            if (chrome != null) {
-                chrome.addFileHistoryTab(file);
-            } else {
-                logger.warn("Chrome is null, cannot show history for {}", file);
-            }
+            chrome.addFileHistoryTab(file);
         });
         historyItem.setEnabled(hasGit);
         if (!hasGit) {

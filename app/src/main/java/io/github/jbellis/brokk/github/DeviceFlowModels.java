@@ -13,18 +13,16 @@ public class DeviceFlowModels {
             @JsonProperty("interval") int interval) {
 
         public String getPreferredVerificationUri() {
-            return (verificationUriComplete != null && !verificationUriComplete.isEmpty())
-                    ? verificationUriComplete
-                    : verificationUri;
+            return !verificationUriComplete.isEmpty() ? verificationUriComplete : verificationUri;
         }
 
         public boolean hasCompleteUri() {
-            return verificationUriComplete != null && !verificationUriComplete.isEmpty();
+            return !verificationUriComplete.isEmpty();
         }
     }
 
     public record TokenResponse(
-            @JsonProperty("access_token") String accessToken,
+            @JsonProperty("access_token") @Nullable String accessToken,
             @JsonProperty("token_type") String tokenType,
             @JsonProperty("scope") String scope) {}
 
