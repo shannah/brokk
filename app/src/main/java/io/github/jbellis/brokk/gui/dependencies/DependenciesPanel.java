@@ -605,7 +605,7 @@ public final class DependenciesPanel extends JPanel {
         var dep = depOpt.get();
 
         var cm = chrome.getContextManager();
-        cm.submitContextTask("Summarize files for " + depName, () -> {
+        cm.submitContextTask(() -> {
             cm.addSummaries(dep.files(), Set.of());
         });
     }

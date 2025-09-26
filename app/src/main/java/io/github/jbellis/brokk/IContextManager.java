@@ -16,11 +16,6 @@ import java.util.concurrent.*;
 
 /** Interface for context manager functionality */
 public interface IContextManager {
-
-    default void beginTask(String code, String userInput) {
-        getIo().llmOutput("Begin task " + code + ": " + userInput, ChatMessageType.CUSTOM);
-    }
-
     /** Callback interface for analyzer update events. */
     interface AnalyzerCallback {
         /** Called before each analyzer build begins. */

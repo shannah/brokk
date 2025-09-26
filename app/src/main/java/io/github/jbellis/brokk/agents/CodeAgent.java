@@ -87,7 +87,6 @@ public class CodeAgent {
     }
 
     private @NotNull TaskResult runTaskInternal(String userInput, Set<Option> options) {
-        contextManager.beginTask("Code", userInput);
         var collectMetrics = "true".equalsIgnoreCase(System.getenv("BRK_CODEAGENT_METRICS"));
         @Nullable Metrics metrics = collectMetrics ? new Metrics() : null;
 
@@ -257,7 +256,7 @@ public class CodeAgent {
                 : userInput + " [" + stopDetails.reason().name() + "]";
         // architect auto-compresses the task entry so let's give it the full history to work with, quickModel is cheap
         // Prepare messages for TaskEntry log: filter raw messages and keep S/R blocks verbatim
-        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages(false));
+        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages());
         return new TaskResult(
                 "Code: " + finalActionDescription,
                 new ContextFragment.TaskFragment(contextManager, finalMessages, userInput),
@@ -381,7 +380,7 @@ public class CodeAgent {
 
         // 2.  Produce TaskResult
         assert stopDetails != null;
-        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages(false));
+        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages());
 
         String finalAction = (stopDetails.reason() == TaskResult.StopReason.SUCCESS)
                 ? instructions

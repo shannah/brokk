@@ -539,7 +539,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             }
 
             var fragment = new ContextFragment.StringFragment(contextManager, diffText, description, syntaxStyle);
-            contextManager.submitContextTask("Adding diff to context", () -> {
+            contextManager.submitContextTask(() -> {
                 contextManager.addVirtualFragment(fragment);
                 contextManager.getIo().systemOutput("Added captured diff to context: " + description);
             });
@@ -854,7 +854,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
                     TaskResult.StopReason.SUCCESS);
 
             // Add a single history entry for the whole batch
-            contextManager.addToHistory(result, false);
+            try (var scope = contextManager.beginTask(actionDescription, "", false)) {
+                scope.append(result);
+            }
             logger.info("Saved changes to {} file(s): {}", fileCount, actionDescription);
 
             // Step 4: Finalize panels selectively and refresh UI

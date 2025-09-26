@@ -226,8 +226,8 @@ public final class ContextMenuUtils {
                             chrome.toolError(
                                     "Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
                         }
-                    },
-                    "Edit files");
+                    }
+            );
         });
         // Disable for dependency projects
         if (!cm.getProject().hasGit()) {
@@ -259,8 +259,8 @@ public final class ContextMenuUtils {
                                 chrome.toolError("No summarizable code found");
                             }
                         }
-                    },
-                    "Summarize files");
+                    }
+            );
         });
         menu.add(summarizeItem);
         menu.addSeparator();
@@ -274,8 +274,8 @@ public final class ContextMenuUtils {
     }
 
     /** Helper method to detach context listener temporarily while performing operations. */
-    private static void withTemporaryListenerDetachment(Chrome chrome, Runnable action, String taskDescription) {
+    private static void withTemporaryListenerDetachment(Chrome chrome, Runnable action) {
         // Access the contextManager from Chrome and call submitContextTask on it
-        chrome.getContextManager().submitContextTask(taskDescription, action);
+        chrome.getContextManager().submitContextTask(action);
     }
 }

@@ -506,9 +506,11 @@ public class BlitzForgeProgressDialog extends JDialog {
                     throw new RuntimeException("Task failed: " + e.getMessage(), e);
                 }
 
-                // Add task result to history
+                // Add task result to history (single scope)
                 var contextManager = chrome.getContextManager();
-                Thread.ofPlatform().start(() -> contextManager.addToHistory(result, true));
+                try (var scope = contextManager.beginTask("BlitzForge: " + instructions, "", true)) {
+                    scope.append(result);
+                }
                 var mainIo = contextManager.getIo();
 
                 llmLineCountLabel.setText("Lines received: " + llmLineCount.get()); // Final update to LLM line count
@@ -627,19 +629,15 @@ public class BlitzForgeProgressDialog extends JDialog {
 
                     outputTextArea.append("Architect has been invoked. You can close this window.\n");
                     // Submit the Architect task after running a Search for relevant information
-                    contextManager.submitUserTask("Architect post-upgrade build fix", () -> {
+                    contextManager.submitLlmAction(() -> {
+                        // FIXME handle interruptions
                         var scanModel = contextManager.getService().getScanModel();
                         SearchAgent agent = new SearchAgent(
                                 agentInstructions,
                                 contextManager,
                                 scanModel,
                                 EnumSet.of(SearchAgent.Terminal.WORKSPACE));
-                        TaskResult searchResult;
-                        try {
-                            searchResult = agent.execute();
-                        } catch (InterruptedException e) {
-                            return;
-                        }
+                        TaskResult searchResult = agent.execute();
                         if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
                             logger.debug("Search failed: {}", searchResult.stopDetails());
                             mainIo.toolError(
@@ -752,7 +750,7 @@ public class BlitzForgeProgressDialog extends JDialog {
         }
 
         @Override
-        public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
+        public List<ChatMessage> getLlmRawMessages() {
             return List.of();
         }
     }

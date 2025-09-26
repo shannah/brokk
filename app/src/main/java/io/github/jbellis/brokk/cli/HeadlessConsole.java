@@ -67,11 +67,8 @@ public final class HeadlessConsole implements IConsoleIO {
     }
 
     @Override
-    public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
-        if (includeReasoning) {
-            return List.copyOf(messages);
-        }
-        return messages.stream().filter(m -> !isReasoningMessage(m)).toList();
+    public List<ChatMessage> getLlmRawMessages() {
+        return List.copyOf(messages);
     }
 
     @Override

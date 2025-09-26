@@ -6,6 +6,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.model.chat.StreamingChatModel;
+import dev.langchain4j.data.message.AiMessage;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskResult;
@@ -22,6 +23,7 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
+import java.util.stream.Collectors;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ConcurrentHashMap;
@@ -63,6 +65,7 @@ public class MergeAgent {
 
     private final StreamingChatModel planningModel;
     private final StreamingChatModel codeModel;
+    private final ContextManager.TaskScope scope;
 
     // Lightweight accumulators used during a run
     private final List<String> codeAgentFailures = new ArrayList<>();
@@ -72,7 +75,8 @@ public class MergeAgent {
             IContextManager cm,
             StreamingChatModel planningModel,
             StreamingChatModel codeModel,
-            MergeConflict conflict) {
+            MergeConflict conflict,
+            ContextManager.TaskScope scope) {
         this.cm = cm;
         this.planningModel = planningModel;
         this.codeModel = codeModel;
@@ -82,21 +86,23 @@ public class MergeAgent {
         this.baseCommitId = conflict.baseCommitId();
         this.otherCommitId = conflict.otherCommitId();
         this.conflicts = conflict.files();
+        this.scope = scope;
     }
 
     /** Create a MergeAgent by inspecting the on-disk repository state. */
     public static MergeAgent inferFromExternal(
-            ContextManager cm, StreamingChatModel planningModel, StreamingChatModel codeModel) {
+            ContextManager cm, StreamingChatModel planningModel, StreamingChatModel codeModel, ContextManager.TaskScope scope) {
         var conflict = ConflictInspector.inspectFromProject(cm.getProject());
         logger.debug(conflict);
-        return new MergeAgent(cm, planningModel, codeModel, conflict);
+        return new MergeAgent(cm, planningModel, codeModel, conflict, scope);
     }
 
     /**
      * High-level merge entry point. First annotates all conflicts, then resolves them file-by-file. Also publishes
      * commit explanations for the relevant ours/theirs commits discovered by blame.
      */
-    public void execute() throws IOException, GitAPIException, InterruptedException {
+    public TaskResult execute() throws IOException, GitAPIException, InterruptedException {
+        // FIXME handled InterruptedException, return TaskResult
         codeAgentFailures.clear();
 
         var repo = (GitRepo) cm.getProject().getRepo();
@@ -128,6 +134,11 @@ public class MergeAgent {
             unionOurCommits.addAll(annotated.ourCommits());
             unionTheirCommits.addAll(annotated.theirCommits());
         }
+
+        // Compute changed files set for reporting
+        var changedFiles = annotatedConflicts.stream()
+                .map(ConflictAnnotator.ConflictFileCommits::file)
+                .collect(Collectors.toSet());
 
         // Kick off background explanations for our/their relevant commits discovered via blame.
         Future<String> oursFuture = cm.submitBackgroundTask("Explain relevant OUR commits", () -> {
@@ -327,7 +338,14 @@ public class MergeAgent {
         var buildFailureText = runVerificationIfConfigured();
         if (buildFailureText.isBlank() && codeAgentFailures.isEmpty()) {
             logger.info("Verification passed and no CodeAgent failures; merge completed successfully.");
-            return;
+            var msg = "Merge completed successfully. Annotated %d conflicted files (%d tests, %d sources). Verification passed."
+                    .formatted(annotatedConflicts.size(), testAnnotated.size(), nonTestAnnotated.size());
+            return new TaskResult(
+                    cm,
+                    "Merge",
+                    List.of(new AiMessage(msg)),
+                    changedFiles,
+                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
         }
 
         // We tried auto-editing files that are mentioned i nthe build failure, the trouble is that you
@@ -357,11 +375,8 @@ public class MergeAgent {
                 """
                         .formatted(otherCommitId, mode, codeAgentText);
 
-        var agent = new ArchitectAgent(contextManager, planningModel, codeModel, agentInstructions);
-        var result = agent.execute();
-        if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
-            contextManager.addToHistory(result, true);
-        }
+        var agent = new ArchitectAgent(contextManager, planningModel, codeModel, agentInstructions, scope);
+        return agent.execute();
     }
 
     private static boolean containsConflictMarkers(String text) {

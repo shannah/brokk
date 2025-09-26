@@ -6,7 +6,7 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.gui.InstructionsPanel;
 import java.awt.*;
 import java.util.List;
-import javax.swing.*;
+
 import org.jetbrains.annotations.Nullable;
 
 public interface IConsoleIO {
@@ -71,7 +71,7 @@ public interface IConsoleIO {
 
     default void hideSessionSwitchSpinner() {}
 
-    default List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
+    default List<ChatMessage> getLlmRawMessages() {
         throw new UnsupportedOperationException();
     }
 

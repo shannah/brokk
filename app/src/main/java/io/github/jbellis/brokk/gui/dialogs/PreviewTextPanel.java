@@ -783,7 +783,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
         var resultsIo = new QuickResultsIo();
 
         // Submit the quick-edit session to a background future
-        var future = cm.submitUserTask("Quick Edit", () -> {
+        var future = cm.submitExclusiveAction(() -> {
             var agent = new CodeAgent(cm, cm.getService().quickModel());
             return agent.runQuickTask(file, selectedText, instructions);
         });
@@ -1030,7 +1030,9 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
                                 Messages.customSystem("# Diff of changes\n\n```%s```".formatted(unifiedDiff)));
                         var saveResult = new TaskResult(
                                 cm, actionDescription, messagesForHistory, Set.of(file), TaskResult.StopReason.SUCCESS);
-                        cm.addToHistory(saveResult, false); // Add the single entry
+                        try (var scope = cm.beginTask(actionDescription, "", false)) {
+                            scope.append(saveResult);
+                        }
                         logger.debug("Added history entry for changes in: {}", file);
                     } catch (Exception e) {
                         logger.error("Failed to generate diff or add history entry for {}", file, e);

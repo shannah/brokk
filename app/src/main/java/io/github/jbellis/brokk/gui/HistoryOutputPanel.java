@@ -52,7 +52,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-/** A component that combines the context history panel with the output panel using BorderLayout. */
 public class HistoryOutputPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(HistoryOutputPanel.class);
 
@@ -81,9 +80,8 @@ public class HistoryOutputPanel extends JPanel {
     // Output components
     private final MarkdownOutputPanel llmStreamArea;
     private final JScrollPane llmScrollPane;
-    // systemArea, systemScrollPane, commandResultLabel removed
     @Nullable
-    private JTextArea captureDescriptionArea; // This one seems to be intentionally nullable or less strictly managed
+    private JTextArea captureDescriptionArea;
 
     private final MaterialButton copyButton;
 
@@ -876,8 +874,8 @@ public class HistoryOutputPanel extends JPanel {
         return panel;
     }
 
-    public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
-        return llmStreamArea.getRawMessages(includeReasoning);
+    public List<ChatMessage> getLlmRawMessages() {
+        return llmStreamArea.getRawMessages();
     }
 
     /**
@@ -993,7 +991,7 @@ public class HistoryOutputPanel extends JPanel {
 
     private void openOutputWindowStreaming() {
         // show all = grab all messages, including reasoning for preview window
-        List<ChatMessage> currentMessages = llmStreamArea.getRawMessages(true);
+        List<ChatMessage> currentMessages = llmStreamArea.getRawMessages();
         var tempFragment = new ContextFragment.TaskFragment(contextManager, currentMessages, "Streaming Output...");
         var history = contextManager.topContext().getTaskHistory();
         var mainTask = new TaskEntry(-1, tempFragment, null);
