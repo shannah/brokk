@@ -106,7 +106,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JLabel codeModeLabel = new JLabel("Code");
     private final JLabel answerModeLabel = new JLabel("Ask");
     private final MaterialButton actionButton;
+    private final MaterialButton wandButton = new MaterialButton();
     private @Nullable volatile Future<?> currentActionFuture;
+    private @Nullable volatile Future<?> currentWandFuture;
     private final ModelSelector modelSelector;
     private String storedAction;
     private final ContextManager contextManager;
@@ -1095,6 +1097,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Flexible space between action controls and Go/Stop
         bottomPanel.add(Box.createHorizontalGlue());
 
+        // Wand button (Magic Ask) on the right
+        SwingUtilities.invokeLater(() -> {
+            wandButton.setIcon(Icons.WAND);
+        });
+        wandButton.setToolTipText("Refine Prompt: rewrites your prompt for clarity and specificity (silent)");
+        wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
+        wandButton.addActionListener(e -> onWandPressed());
+        // Size set after fixedHeight is computed below
+        bottomPanel.add(wandButton);
+        bottomPanel.add(Box.createHorizontalStrut(4));
+
         // Action button (Go/Stop toggle) on the right
         actionButton.setAlignmentY(Component.CENTER_ALIGNMENT);
         // Make the action button slightly smaller while keeping a fixed minimum height
@@ -1104,6 +1117,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         actionButton.setMinimumSize(prefSize);
         actionButton.setMaximumSize(prefSize);
         actionButton.setMargin(new Insets(4, 10, 4, 10));
+
+        // Size the wand button to match height of action button
+        var wandSize = new Dimension(fixedHeight, fixedHeight);
+        wandButton.setPreferredSize(wandSize);
+        wandButton.setMinimumSize(wandSize);
+        wandButton.setMaximumSize(wandSize);
+
         bottomPanel.add(actionButton);
 
         return bottomPanel;
@@ -1969,6 +1989,131 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         setActionRunning(future);
     }
 
+    /** Handler for the Wand button: silently refine the prompt in the background and replace the input. */
+    private void onWandPressed() {
+        // If a refine task is already running, clicking the wand cancels it.
+        var running = currentWandFuture;
+        if (running != null && !running.isDone()) {
+            running.cancel(true);
+            return;
+        }
+
+        var original = getInstructions();
+        if (original.isBlank()) {
+            chrome.toolError("Please enter a prompt to refine");
+            return;
+        }
+
+        // Prepare UI: turn wand into a red Stop button; keep it enabled to allow cancel
+        SwingUtilities.invokeLater(() -> {
+            wandButton.setEnabled(true);
+            wandButton.setIcon(Icons.STOP);
+            wandButton.setToolTipText("Cancel prompt refinement");
+            // always use the off red of the light theme
+            Color badgeBackgroundColor = ThemeColors.getColor(false, "git_badge_background");
+            wandButton.setBackground(badgeBackgroundColor);
+            actionButton.setEnabled(false);
+            instructionsArea.setEditable(false);
+        });
+
+        var cm = chrome.getContextManager();
+        var service = cm.getService();
+        var model = service.getWandModel(); // availability-based: GPT-5 Mini, else Gemini 2.0 Flash
+
+        var future = cm.submitBackgroundTask("Refine prompt", () -> {
+            try {
+                // Keep this operation silent (no streaming to LLM Output panel)
+                chrome.blockLlmOutput(true);
+
+                var instruction =
+                        """
+					You are a Prompt Refiner for coding instructions.
+
+					Take the draft prompt and rewrite it so it is:
+					- Clear
+					- Concise
+					- Structured
+					- Without adding new information beyond what’s in the original
+
+					Output only the improved prompt.
+
+
+                        Original Prompt:
+                        <<<
+                        %s
+                        >>>
+                        """
+                                .stripIndent()
+                                .formatted(original);
+
+                var llm = cm.getLlm(model, "Refine Prompt", false);
+                var messages = List.<ChatMessage>of(new UserMessage(instruction));
+                var result = llm.sendRequest(messages, false);
+
+                var refinedRaw = result.text();
+                var refined = refinedRaw.trim();
+
+                // Basic sanitization: strip code fences and leading labels
+                if (refined.startsWith("```")) {
+                    int start = refined.indexOf('\n');
+                    int endFence = refined.lastIndexOf("```");
+                    if (start >= 0 && endFence > start) {
+                        refined = refined.substring(start + 1, endFence).trim();
+                    } else {
+                        refined = refined.replace("```", "").trim();
+                    }
+                }
+                var lowered = refined.toLowerCase(Locale.ROOT);
+                if (lowered.startsWith("improved prompt:")) {
+                    int idx = refined.indexOf(':');
+                    if (idx >= 0 && idx + 1 < refined.length()) {
+                        refined = refined.substring(idx + 1).trim();
+                    }
+                }
+
+                if (refined.isBlank()) {
+                    SwingUtilities.invokeLater(() -> chrome.toolError("Could not refine prompt, please try again"));
+                } else {
+                    var finalRefined = refined;
+                    SwingUtilities.invokeLater(() -> populateInstructionsArea(finalRefined));
+                }
+            } catch (InterruptedException ignored) {
+                // ignore cancellation
+            } finally {
+                chrome.blockLlmOutput(false);
+            }
+            return null;
+        });
+
+        // Track and watch the refine task so we can restore UI when it completes or is cancelled
+        currentWandFuture = future;
+        Thread watcher = new Thread(
+                () -> {
+                    try {
+                        future.get();
+                    } catch (InterruptedException e) {
+                        Thread.currentThread().interrupt();
+                    } catch (ExecutionException | CancellationException ignored) {
+                        // ignore
+                    } finally {
+                        currentWandFuture = null;
+                        SwingUtilities.invokeLater(() -> {
+                            wandButton.setEnabled(true);
+                            wandButton.setIcon(Icons.WAND);
+                            wandButton.setToolTipText(
+                                    "Refine Prompt: rewrites your prompt for clarity and specificity (silent)");
+                            // Reset background to default (null lets LAF/theme paint it)
+                            wandButton.setBackground(null);
+                            actionButton.setEnabled(true);
+                            instructionsArea.setEditable(true);
+                        });
+                    }
+                },
+                "Brokk-Wand-Watcher");
+        watcher.setDaemon(true);
+        watcher.start();
+    }
+
     public void runSearchCommand() {
         var input = getInstructions();
         if (input.isBlank()) {
@@ -2103,12 +2248,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setText(null);
             actionButton.setEnabled(true);
             actionButton.setToolTipText("Cancel the current operation");
-            actionButton.setBackground(Color.RED);
+            // always use the off red of the light theme
+            Color badgeBackgroundColor = ThemeColors.getColor(false, "git_badge_background");
+            actionButton.setBackground(badgeBackgroundColor);
         } else {
             // If there is no running action, keep the action button enabled so the user can start an action.
             actionButton.setEnabled(true);
             actionButton.setBackground(defaultActionButtonBg);
         }
+
+        // Wand is disabled while any action is running
+        wandButton.setEnabled(!isActionRunning());
     }
 
     /**
@@ -2151,6 +2301,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setBackground(defaultActionButtonBg);
         }
         actionButton.setEnabled(true);
+
+        // Enable/disable wand depending on running state
+        wandButton.setEnabled(!isActionRunning());
 
         // Ensure the action button is the root pane's default button so Enter triggers it by default.
         // This mirrors the intended "default" behavior for the Go action.
@@ -2227,7 +2380,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             actionButton.setText(null);
             actionButton.setToolTipText("Cancel the current operation");
             actionButton.setEnabled(true);
-            actionButton.setBackground(Color.RED);
+            // always use the off red of the light theme
+            Color badgeBackgroundColor = ThemeColors.getColor(false, "git_badge_background");
+            actionButton.setBackground(badgeBackgroundColor);
         });
         Thread watcher = new Thread(
                 () -> {
