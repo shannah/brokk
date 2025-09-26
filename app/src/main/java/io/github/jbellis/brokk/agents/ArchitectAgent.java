@@ -197,7 +197,7 @@ public class ArchitectAgent {
         var messages = io.getLlmRawMessages(true);
         if (messages.isEmpty()) {
             return;
-        }b
+        }
 
         cm.addToHistory(
                 new TaskResult(
