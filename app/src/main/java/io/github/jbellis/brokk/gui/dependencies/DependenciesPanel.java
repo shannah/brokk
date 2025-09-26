@@ -113,7 +113,7 @@ public final class DependenciesPanel extends JPanel {
                 }
                 return cb;
             } else {
-                var text = (value != null) ? value.toString() : "";
+                var text = java.util.Objects.toString(value, "");
                 var lbl = new JLabel(text);
                 lbl.setHorizontalAlignment(CENTER);
                 lbl.setOpaque(isSelected);
@@ -171,7 +171,7 @@ public final class DependenciesPanel extends JPanel {
 
                 // Return the same content as shown in the table cell (the Name column)
                 Object v = getValueAt(row, col);
-                return v != null ? v.toString() : null;
+                return java.util.Objects.toString(v, null);
             }
         };
         var sorter = new TableRowSorter<>(tableModel) {
