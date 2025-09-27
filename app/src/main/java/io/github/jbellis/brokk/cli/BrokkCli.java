@@ -106,15 +106,15 @@ public final class BrokkCli implements Callable<Integer> {
     @Nullable
     private String askPrompt;
 
-    @CommandLine.Option(names = "--search", description = "Run Search agent with the given prompt.")
+    @CommandLine.Option(names = "--search-answer", description = "Run Search agent to find an answer for the given prompt.")
     @Nullable
-    private String searchPrompt;
+    private String searchAnswerPrompt;
 
     @CommandLine.Option(
-            names = "--search-terminal",
-            description = "Terminal mode for --search: ${COMPLETION-CANDIDATES} (defaults to ANSWER).",
-            defaultValue = "ANSWER")
-    private Terminal searchTerminal = Terminal.ANSWER;
+            names = "--search-tasks",
+            description = "Run Search agent to produce a task list for the given prompt.")
+    @Nullable
+    private String searchTasksPrompt;
 
     @CommandLine.Option(names = "--merge", description = "Run Merge agent to resolve repository conflicts (no prompt).")
     private boolean merge = false;
@@ -153,17 +153,18 @@ public final class BrokkCli implements Callable<Integer> {
     @Override
     public Integer call() throws Exception {
         // --- Action Validation ---
-        long actionCount = Stream.of(architectPrompt, codePrompt, askPrompt, searchPrompt)
+        long actionCount = Stream.of(architectPrompt, codePrompt, askPrompt, searchAnswerPrompt, searchTasksPrompt)
                 .filter(p -> p != null && !p.isBlank())
                 .count();
         if (merge) actionCount++;
         if (actionCount > 1) {
-            System.err.println("At most one action (--architect, --code, --ask, --search, --merge) can be specified.");
+            System.err.println(
+                    "At most one action (--architect, --code, --ask, --search-answer, --search-tasks, --merge) can be specified.");
             return 1;
         }
         if (actionCount == 0 && worktreePath == null) {
             System.err.println(
-                    "Exactly one action (--architect, --code, --ask, --search, --merge) or --worktree is required.");
+                    "Exactly one action (--architect, --code, --ask, --search-answer, --search-tasks, --merge) or --worktree is required.");
             return 1;
         }
 
@@ -173,7 +174,7 @@ public final class BrokkCli implements Callable<Integer> {
                 System.err.println("For the --code action, specify at most one of --model or --codemodel.");
                 return 1;
             }
-        } else if (askPrompt != null || searchPrompt != null) {
+        } else if (askPrompt != null || searchAnswerPrompt != null || searchTasksPrompt != null) {
             if (codeModelName != null) {
                 System.err.println("--codemodel is not valid with --ask or --search actions.");
                 return 1;
@@ -185,7 +186,8 @@ public final class BrokkCli implements Callable<Integer> {
             architectPrompt = maybeLoadFromFile(architectPrompt);
             codePrompt = maybeLoadFromFile(codePrompt);
             askPrompt = maybeLoadFromFile(askPrompt);
-            searchPrompt = maybeLoadFromFile(searchPrompt);
+            searchAnswerPrompt = maybeLoadFromFile(searchAnswerPrompt);
+            searchTasksPrompt = maybeLoadFromFile(searchTasksPrompt);
         } catch (IOException e) {
             System.err.println("Error reading prompt file: " + e.getMessage());
             return 1;
@@ -303,7 +305,7 @@ public final class BrokkCli implements Callable<Integer> {
             io.systemOutput("# Workspace (pre-scan)");
             io.systemOutput(ContextFragment.getSummary(cm.topContext().allFragments()));
 
-            String goalForScan = Stream.of(architectPrompt, codePrompt, askPrompt, searchPrompt)
+            String goalForScan = Stream.of(architectPrompt, codePrompt, askPrompt, searchAnswerPrompt, searchTasksPrompt)
                     .filter(s -> s != null && !s.isBlank())
                     .findFirst()
                     .orElseThrow();
@@ -351,9 +353,12 @@ public final class BrokkCli implements Callable<Integer> {
         } else if (merge) {
             scopeAction = "Merge";
             scopeInput = "";
-        } else {
+        } else if (searchAnswerPrompt != null) {
             scopeAction = "Search";
-            scopeInput = requireNonNull(searchPrompt);
+            scopeInput = requireNonNull(searchAnswerPrompt);
+        } else { // searchTasksPrompt != null
+            scopeAction = "Search";
+            scopeInput = requireNonNull(searchTasksPrompt);
         }
 
         try (var scope = cm.beginTask(scopeAction, scopeInput, false)) {
@@ -394,12 +399,16 @@ public final class BrokkCli implements Callable<Integer> {
                         return 1;
                     }
                     return 0; // merge is terminal for this CLI command
-                } else { // searchPrompt != null
+                } else if (searchAnswerPrompt != null) {
                     var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
-                    var terminalSet = (searchTerminal == Terminal.TASK_LIST)
-                            ? EnumSet.of(Terminal.TASK_LIST)
-                            : EnumSet.of(Terminal.ANSWER);
-                    var agent = new SearchAgent(requireNonNull(searchPrompt), cm, searchModel, terminalSet);
+                    var agent =
+                            new SearchAgent(requireNonNull(searchAnswerPrompt), cm, searchModel, EnumSet.of(Terminal.ANSWER));
+                    result = agent.execute();
+                    scope.append(result);
+                } else { // searchTasksPrompt != null
+                    var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
+                    var agent =
+                            new SearchAgent(requireNonNull(searchTasksPrompt), cm, searchModel, EnumSet.of(Terminal.TASK_LIST));
                     result = agent.execute();
                     scope.append(result);
                 }
