@@ -5,8 +5,8 @@ import static java.util.Objects.requireNonNull;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.TaskResult;
@@ -22,7 +22,6 @@ import java.util.LinkedHashSet;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
-import java.util.stream.Collectors;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CompletionService;
 import java.util.concurrent.ConcurrentHashMap;
@@ -30,6 +29,7 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ExecutorCompletionService;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Future;
+import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -90,7 +90,10 @@ public class MergeAgent {
 
     /** Create a MergeAgent by inspecting the on-disk repository state. */
     public static MergeAgent inferFromExternal(
-            ContextManager cm, StreamingChatModel planningModel, StreamingChatModel codeModel, ContextManager.TaskScope scope) {
+            ContextManager cm,
+            StreamingChatModel planningModel,
+            StreamingChatModel codeModel,
+            ContextManager.TaskScope scope) {
         var conflict = ConflictInspector.inspectFromProject(cm.getProject());
         logger.debug(conflict);
         return new MergeAgent(cm, planningModel, codeModel, conflict, scope);
@@ -337,8 +340,9 @@ public class MergeAgent {
         var buildFailureText = runVerificationIfConfigured();
         if (buildFailureText.isBlank() && codeAgentFailures.isEmpty()) {
             logger.info("Verification passed and no CodeAgent failures; merge completed successfully.");
-            var msg = "Merge completed successfully. Annotated %d conflicted files (%d tests, %d sources). Verification passed."
-                    .formatted(annotatedConflicts.size(), testAnnotated.size(), nonTestAnnotated.size());
+            var msg =
+                    "Merge completed successfully. Annotated %d conflicted files (%d tests, %d sources). Verification passed."
+                            .formatted(annotatedConflicts.size(), testAnnotated.size(), nonTestAnnotated.size());
             return new TaskResult(
                     cm,
                     "Merge",

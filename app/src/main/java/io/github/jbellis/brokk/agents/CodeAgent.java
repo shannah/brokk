@@ -829,8 +829,6 @@ public class CodeAgent {
         return BuildAgent.runVerification((ContextManager) contextManager);
     }
 
-
-
     /** next FSM state */
     sealed interface Step permits Step.Continue, Step.Retry, Step.Fatal {
         ConversationState cs();

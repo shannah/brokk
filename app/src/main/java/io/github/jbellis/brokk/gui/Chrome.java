@@ -762,8 +762,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         while (true) {
             try {
                 final CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
-                SwingUtilities.invokeAndWait(
-                        () -> future.complete(historyOutputPanel.getLlmRawMessages()));
+                SwingUtilities.invokeAndWait(() -> future.complete(historyOutputPanel.getLlmRawMessages()));
                 return future.get();
             } catch (InterruptedException e) {
                 // retry

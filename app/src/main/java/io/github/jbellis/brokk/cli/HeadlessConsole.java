@@ -1,7 +1,5 @@
 package io.github.jbellis.brokk.cli;
 
-import static io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel.isReasoningMessage;
-
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;

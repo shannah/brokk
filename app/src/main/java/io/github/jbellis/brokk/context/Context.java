@@ -12,9 +12,9 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment.HistoryFragment;
 import io.github.jbellis.brokk.context.ContextFragment.SkeletonFragment;
+import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.ActivityTableRenderers;
 import io.github.jbellis.brokk.util.ContentDiffUtils;
-import io.github.jbellis.brokk.git.IGitRepo;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.Collection;
@@ -580,14 +580,12 @@ public class Context {
                             .findFirst()
                             .orElse(null);
                     if (ff2 == null) {
-                        // No matching fragment in 'other'; if this represents a new, untracked file in Git, diff against empty
+                        // No matching fragment in 'other'; if this represents a new, untracked file in Git, diff
+                        // against empty
                         if (isNewFileInGit(ff) && ff.isText()) {
                             var newContent = ff.text();
                             var result = ContentDiffUtils.computeDiffResult(
-                                    "",
-                                    newContent,
-                                    "old/" + ff.shortDescription(),
-                                    "new/" + ff.shortDescription());
+                                    "", newContent, "old/" + ff.shortDescription(), "new/" + ff.shortDescription());
                             if (result.diff().isEmpty()) {
                                 return null;
                             }

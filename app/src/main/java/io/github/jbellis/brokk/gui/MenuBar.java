@@ -311,8 +311,8 @@ public class MenuBar {
         clearTaskHistoryItem.setAccelerator(KeyStroke.getKeyStroke(
                 KeyEvent.VK_P, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()));
         clearTaskHistoryItem.addActionListener(e -> runWithRefocus(chrome, () -> {
-            chrome.getContextManager().submitContextTask(() -> chrome.getContextManager()
-                    .clearHistory());
+            chrome.getContextManager()
+                    .submitContextTask(() -> chrome.getContextManager().clearHistory());
         }));
         clearTaskHistoryItem.setEnabled(true);
         contextMenu.add(clearTaskHistoryItem);

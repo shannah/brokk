@@ -6,7 +6,6 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.gui.InstructionsPanel;
 import java.awt.*;
 import java.util.List;
-
 import org.jetbrains.annotations.Nullable;
 
 public interface IConsoleIO {

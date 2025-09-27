@@ -3,10 +3,6 @@ package io.github.jbellis.brokk.util;
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.TaskResult;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -14,13 +10,16 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.atomic.AtomicReference;
 import java.util.function.Consumer;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 /**
- * Manages execution of "user actions" with two clear semantics:
- * - cancelable actions: long-running, interruptible, Stop-button aware (e.g., Ask/Code/Search).
- * - exclusive actions: non-interruptible, short UI tasks that must exclude cancelables (e.g., undo/redo/session ops).
+ * Manages execution of "user actions" with two clear semantics: - cancelable actions: long-running, interruptible,
+ * Stop-button aware (e.g., Ask/Code/Search). - exclusive actions: non-interruptible, short UI tasks that must exclude
+ * cancelables (e.g., undo/redo/session ops).
  *
- * Both action types are serialized via a fair lock ("user slot") to prevent overlap.
+ * <p>Both action types are serialized via a fair lock ("user slot") to prevent overlap.
  */
 public class UserActionManager {
     private static final Logger logger = LogManager.getLogger(UserActionManager.class);
@@ -91,9 +90,7 @@ public class UserActionManager {
 
     // ---------- Cancelable (interruptible) ----------
 
-    /**
-     * Caller is responsible for handling interruption of `task`.
-     */
+    /** Caller is responsible for handling interruption of `task`. */
     public CompletableFuture<Void> submitLlmAction(ThrowingRunnable task) {
         return userExecutor.submit(() -> {
             cancelableThread.set(Thread.currentThread());
@@ -121,11 +118,10 @@ public class UserActionManager {
     }
 
     /**
-     * Will send a "canceled" message to llmOutput on StopReason.INTERRUPTED, and log
-     * on unexpected errors, but but further exception handling is up to the caller.
+     * Will send a "canceled" message to llmOutput on StopReason.INTERRUPTED, and log on unexpected errors, but but
+     * further exception handling is up to the caller.
      */
-    public CompletableFuture<TaskResult> submitLlmAction(
-            String description, Callable<TaskResult> task) {
+    public CompletableFuture<TaskResult> submitLlmAction(String description, Callable<TaskResult> task) {
         return userExecutor.submit(() -> {
             cancelableThread.set(Thread.currentThread());
             io.disableActionButtons();
@@ -162,8 +158,8 @@ public class UserActionManager {
                 return;
             }
             logger.error("Uncaught exception in UserActionManager executor", th);
-            io.systemOutput("Uncaught exception in user action thread %s\n%s".formatted(
-                    Thread.currentThread().getName(), getStackTraceAsString(th)));
+            io.systemOutput("Uncaught exception in user action thread %s\n%s"
+                    .formatted(Thread.currentThread().getName(), getStackTraceAsString(th)));
         };
         return new LoggingExecutorService(delegate, onError);
     }

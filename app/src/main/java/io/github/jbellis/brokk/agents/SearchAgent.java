@@ -505,7 +505,14 @@ public class SearchAgent {
         int finalBudget = cm.getService().getMaxInputTokens(model) / 2;
         if (totalTokens > finalBudget) {
             var summaries = ContextFragment.getSummary(recommendation.fragments());
-            cm.addVirtualFragment(new ContextFragment.StringFragment(cm, summaries, "Summary of Scan Results", recommendation.fragments().stream().findFirst().orElseThrow().syntaxStyle()));
+            cm.addVirtualFragment(new ContextFragment.StringFragment(
+                    cm,
+                    summaries,
+                    "Summary of Scan Results",
+                    recommendation.fragments().stream()
+                            .findFirst()
+                            .orElseThrow()
+                            .syntaxStyle()));
         } else {
             WorkspaceTools.addToWorkspace(cm, recommendation);
             io.llmOutput("\n\nScan complete; added recommendations to the Workspace.", ChatMessageType.CUSTOM);

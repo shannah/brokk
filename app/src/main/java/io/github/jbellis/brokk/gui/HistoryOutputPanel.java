@@ -80,6 +80,7 @@ public class HistoryOutputPanel extends JPanel {
     // Output components
     private final MarkdownOutputPanel llmStreamArea;
     private final JScrollPane llmScrollPane;
+
     @Nullable
     private JTextArea captureDescriptionArea;
 

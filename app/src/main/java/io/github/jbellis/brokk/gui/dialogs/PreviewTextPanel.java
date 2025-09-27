@@ -2,7 +2,6 @@ package io.github.jbellis.brokk.gui.dialogs;
 
 import static java.util.Objects.requireNonNull;
 
-import io.github.jbellis.brokk.util.ContentDiffUtils;
 import com.google.common.base.Splitter;
 import com.google.common.collect.Iterables;
 import dev.langchain4j.data.message.AiMessage;
@@ -25,6 +24,7 @@ import io.github.jbellis.brokk.gui.search.RTextAreaSearchableComponent;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import io.github.jbellis.brokk.gui.util.SourceCaptureUtil;
+import io.github.jbellis.brokk.util.ContentDiffUtils;
 import io.github.jbellis.brokk.util.Messages;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -38,7 +38,6 @@ import java.util.concurrent.ExecutionException;
 import java.util.concurrent.Future;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
-import java.util.stream.Collectors;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import javax.swing.event.DocumentEvent;

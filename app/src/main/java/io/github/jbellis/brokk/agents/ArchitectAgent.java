@@ -532,12 +532,7 @@ public class ArchitectAgent {
 
     private TaskResult resultWithMessages(StopReason reason) {
         // include the messages we exchanged with the LLM for any planning steps since we ran a sub-agent
-        return new TaskResult(
-                cm,
-                "Architect: " + goal,
-                io.getLlmRawMessages(),
-                Set.of(),
-                new StopDetails(reason));
+        return new TaskResult(cm, "Architect: " + goal, io.getLlmRawMessages(), Set.of(), new StopDetails(reason));
     }
 
     /** Helper method to get priority rank for tool names. Lower number means higher priority. */

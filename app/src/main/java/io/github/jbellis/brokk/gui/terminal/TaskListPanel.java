@@ -1,11 +1,13 @@
 package io.github.jbellis.brokk.gui.terminal;
 
+import static java.util.Objects.requireNonNull;
+
 import com.google.common.base.Splitter;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.TaskResult;
-import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
+import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.GitWorkflow;
@@ -73,8 +75,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.Nullable;
-
-import static java.util.Objects.requireNonNull;
 
 /** A simple, theme-aware task list panel supporting add, remove and complete toggle. */
 public class TaskListPanel extends JPanel implements ThemeAware, IContextManager.ContextListener {
@@ -992,10 +992,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                         logger.debug("Skipping SearchAgent for first task since workspace is not empty");
                     } else {
                         var agent = new SearchAgent(
-                                prompt,
-                                cm,
-                                cm.getService().getScanModel(),
-                                EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+                                prompt, cm, cm.getService().getScanModel(), EnumSet.of(SearchAgent.Terminal.WORKSPACE));
                         chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
                         var searchResult = agent.execute();
                         scope.append(searchResult);
@@ -1040,8 +1037,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
 
             // TODO are these checks useful/necessary?
             try {
-                if (java.util.Objects.equals(runningIndex, idx)
-                        && idx < model.size()) {
+                if (java.util.Objects.equals(runningIndex, idx) && idx < model.size()) {
                     var it = model.get(idx);
                     if (it != null) {
                         model.set(idx, new TaskItem(it.text(), true));

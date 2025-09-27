@@ -27,9 +27,9 @@ import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.BuildOutputPreprocessor;
 import io.github.jbellis.brokk.util.BuildToolConventions;
 import io.github.jbellis.brokk.util.BuildToolConventions.BuildSystem;
-import io.github.jbellis.brokk.util.BuildOutputPreprocessor;
 import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.Messages;
@@ -578,10 +578,11 @@ public class BuildAgent {
     }
 
     /**
-     * Run the verification build for the current project, stream output to the console,
-     * and update the session's Build Results fragment.
+     * Run the verification build for the current project, stream output to the console, and update the session's Build
+     * Results fragment.
      *
-     * Returns empty string on success (or when no command is configured), otherwise the raw combined error/output text.
+     * <p>Returns empty string on success (or when no command is configured), otherwise the raw combined error/output
+     * text.
      */
     public static String runVerification(ContextManager cm) throws InterruptedException {
         var io = cm.getIo();
@@ -601,7 +602,8 @@ public class BuildAgent {
                 logger.warn("Failed to acquire build lock; proceeding without it");
                 return runBuildAndUpdateFragmentInternal(cm, verificationCommand);
             }
-            // The lock is implemented using a FileChannel/FileLock; keep the channel/lock inside the record and close it after execution.
+            // The lock is implemented using a FileChannel/FileLock; keep the channel/lock inside the record and close
+            // it after execution.
             try (var ignored = lock) {
                 logger.debug("Acquired build lock {}", lock.lockFile());
                 return runBuildAndUpdateFragmentInternal(cm, verificationCommand);
@@ -615,9 +617,9 @@ public class BuildAgent {
     }
 
     /** Holder for lock resources, AutoCloseable so try-with-resources releases it. */
-    private record BuildLock(java.nio.channels.FileChannel channel,
-                             java.nio.channels.FileLock lock,
-                             java.nio.file.Path lockFile) implements AutoCloseable {
+    private record BuildLock(
+            java.nio.channels.FileChannel channel, java.nio.channels.FileLock lock, java.nio.file.Path lockFile)
+            implements AutoCloseable {
         @Override
         public void close() {
             try {

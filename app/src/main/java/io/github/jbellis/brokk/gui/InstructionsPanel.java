@@ -1892,7 +1892,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 <workspace_summary>
                 %s
                 </workspace_summary>
-                
+
                 <draft_prompt>>
                 %s
                 </draft_prompt>
@@ -1907,17 +1907,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 Output only the improved prompt.
                 </goal>
                 """
-                        .formatted(
-                                ContextFragment.getSummary(cm.topContext().allFragments()),
-                                original);
+                        .formatted(ContextFragment.getSummary(cm.topContext().allFragments()), original);
 
         // Stream to custom tooltip-updating IConsoleIO
         Llm llm = cm.getLlm(model, "Refine Prompt", false);
         var wandIo = new WandConsoleIO();
         llm.setOutput(wandIo);
         List<ChatMessage> req = List.of(
-                new SystemMessage("You are a Prompt Refiner for coding instructions."),
-                new UserMessage(instruction));
+                new SystemMessage("You are a Prompt Refiner for coding instructions."), new UserMessage(instruction));
         Llm.StreamingResult res = llm.sendRequest(req, true);
 
         // On error/empty, restore original and re-enable input
@@ -1980,10 +1977,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             var cm = chrome.getContextManager();
             SearchAgent agent = new SearchAgent(
-                    query,
-                    cm,
-                    modelToUse,
-                    EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST));
+                    query, cm, modelToUse, EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST));
             var result = agent.execute();
 
             chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
@@ -1996,7 +1990,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return executeSearchInternal(query);
     }
 
-    /** Runs the given task, handling spinner and add-to-history of the TaskResult, including partial result on interruption */
+    /**
+     * Runs the given task, handling spinner and add-to-history of the TaskResult, including partial result on
+     * interruption
+     */
     public Future<TaskResult> submitAction(String action, String input, Callable<TaskResult> task) {
         var cm = chrome.getContextManager();
         // Map some actions to a more user-friendly display string for the spinner.
@@ -2035,9 +2032,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     /** Overload that provides a TaskScope to the task body so callers can pass it to agents. */
     public Future<TaskResult> submitAction(
-            String action,
-            String input,
-            java.util.function.Function<ContextManager.TaskScope, TaskResult> task) {
+            String action, String input, java.util.function.Function<ContextManager.TaskScope, TaskResult> task) {
         var cm = chrome.getContextManager();
         // need to set the correct parser here since we're going to append to the same fragment during the action
         String finalAction = (action + " MODE").toUpperCase(java.util.Locale.ROOT);
@@ -2262,7 +2257,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
                 if (totalTokens > finalBudget) {
                     var summary = ContextFragment.getSummary(recommendation.fragments());
-                    cm.addVirtualFragment(new ContextFragment.StringFragment(cm, summary, "Summary of Project Scan", recommendation.fragments().stream().findFirst().map(ContextFragment::syntaxStyle).orElseThrow()));
+                    cm.addVirtualFragment(new ContextFragment.StringFragment(
+                            cm,
+                            summary,
+                            "Summary of Project Scan",
+                            recommendation.fragments().stream()
+                                    .findFirst()
+                                    .map(ContextFragment::syntaxStyle)
+                                    .orElseThrow()));
                 } else {
                     WorkspaceTools.addToWorkspace(cm, recommendation);
                 }
@@ -2282,7 +2284,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
         });
     }
-
 
     public VoiceInputButton getVoiceInputButton() {
         return this.micButton;
@@ -2432,7 +2433,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         @Override
-        public void llmOutput(String token, dev.langchain4j.data.message.ChatMessageType type, boolean isNewMessage, boolean isReasoning) {
+        public void llmOutput(
+                String token,
+                dev.langchain4j.data.message.ChatMessageType type,
+                boolean isNewMessage,
+                boolean isReasoning) {
             if (!isReasoning && lastWasReasoning && !hasStartedContent) {
                 // Transition from reasoning to content: clear the area first
                 SwingUtilities.invokeLater(() -> instructionsArea.setText(""));
