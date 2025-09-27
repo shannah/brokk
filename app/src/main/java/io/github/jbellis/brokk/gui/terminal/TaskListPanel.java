@@ -1084,7 +1084,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                 }
 
                 var planningModel = requireNonNull(cm.getService().getModel(Service.GEMINI_2_5_PRO));
-                var codeModel = cm.getCodeModel();
+                var codeModel = requireNonNull(cm.getService().getModel(chrome.getInstructionsPanel().getSelectedModel()));
 
                 var architectAgent = new ArchitectAgent(cm, planningModel, codeModel, augmentedPrompt, scope);
                 var archResult = architectAgent.execute();
