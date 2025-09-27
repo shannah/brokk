@@ -345,8 +345,10 @@ public final class ContextExplorer extends JFrame {
         var chooser = new JFileChooser();
         chooser.setDialogTitle("Select Brokk sessions directory");
         chooser.setFileSelectionMode(JFileChooser.DIRECTORIES_ONLY);
-        // Default to a common location if possible, e.g., user home or current dir
         chooser.setCurrentDirectory(new File(System.getProperty("user.home")));
+
+        // Show dotfiles (hidden files on Unix/macOS)
+        chooser.setFileHidingEnabled(false);
 
         int result = chooser.showOpenDialog(null);
         if (result == JFileChooser.APPROVE_OPTION) {

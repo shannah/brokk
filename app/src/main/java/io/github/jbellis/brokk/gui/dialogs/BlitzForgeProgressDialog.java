@@ -28,7 +28,6 @@ import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.util.AdaptiveExecutor;
 import io.github.jbellis.brokk.util.BuildOutputPreprocessor;
 import io.github.jbellis.brokk.util.Environment;
-import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.TokenAware;
 import java.awt.*;
@@ -506,9 +505,11 @@ public class BlitzForgeProgressDialog extends JDialog {
                     throw new RuntimeException("Task failed: " + e.getMessage(), e);
                 }
 
-                // Add task result to history
+                // Add task result to history (single scope)
                 var contextManager = chrome.getContextManager();
-                Thread.ofPlatform().start(() -> contextManager.addToHistory(result, true));
+                try (var scope = contextManager.beginTask("BlitzForge: " + instructions, "", true)) {
+                    scope.append(result);
+                }
                 var mainIo = contextManager.getIo();
 
                 llmLineCountLabel.setText("Lines received: " + llmLineCount.get()); // Final update to LLM line count
@@ -524,33 +525,17 @@ public class BlitzForgeProgressDialog extends JDialog {
 
                 CompletableFuture<String> buildFailureFuture;
                 if (buildFirst) {
-                    buildFailureFuture = BuildAgent.determineVerificationCommandAsync(contextManager)
-                            .thenApplyAsync((@Nullable String verificationCommand) -> {
-                                if (verificationCommand == null || verificationCommand.isBlank()) {
-                                    return "";
-                                }
-                                try {
-                                    mainIo.llmOutput(
-                                            "\nRunning verification command: " + verificationCommand,
-                                            ChatMessageType.CUSTOM);
-                                    String shellLang =
-                                            ExecutorConfig.getShellLanguageFromProject(contextManager.getProject());
-                                    mainIo.llmOutput("\n```" + shellLang + "\n", ChatMessageType.CUSTOM);
-                                    Environment.instance.runShellCommand(
-                                            verificationCommand,
-                                            contextManager.getProject().getRoot(),
-                                            line -> mainIo.llmOutput(line + "\n", ChatMessageType.CUSTOM),
-                                            Environment.UNLIMITED_TIMEOUT);
-                                    return "The build succeeded.";
-                                } catch (Environment.SubprocessException e) {
-                                    String buildOutput = e.getMessage() + "\n\n" + e.getOutput();
-                                    // Process build output through standardized pipeline before passing to Architect
-                                    return BuildOutputPreprocessor.processForLlm(buildOutput, contextManager);
-                                } catch (InterruptedException e) {
-                                    Thread.currentThread().interrupt();
-                                    return "Build command was interrupted.";
-                                }
-                            });
+                    buildFailureFuture = contextManager.submitBackgroundTask("Run verification build", () -> {
+                        try {
+                            String raw = BuildAgent.runVerification(contextManager);
+                            return raw.isBlank()
+                                    ? "The build succeeded."
+                                    : BuildOutputPreprocessor.processForLlm(raw, contextManager);
+                        } catch (InterruptedException e) {
+                            Thread.currentThread().interrupt();
+                            return "Build command was interrupted.";
+                        }
+                    });
                 } else {
                     buildFailureFuture = CompletableFuture.completedFuture("");
                 }
@@ -627,19 +612,15 @@ public class BlitzForgeProgressDialog extends JDialog {
 
                     outputTextArea.append("Architect has been invoked. You can close this window.\n");
                     // Submit the Architect task after running a Search for relevant information
-                    contextManager.submitUserTask("Architect post-upgrade build fix", () -> {
+                    contextManager.submitLlmAction(() -> {
+                        // FIXME handle interruptions
                         var scanModel = contextManager.getService().getScanModel();
                         SearchAgent agent = new SearchAgent(
                                 agentInstructions,
                                 contextManager,
                                 scanModel,
                                 EnumSet.of(SearchAgent.Terminal.WORKSPACE));
-                        TaskResult searchResult;
-                        try {
-                            searchResult = agent.execute();
-                        } catch (InterruptedException e) {
-                            return;
-                        }
+                        TaskResult searchResult = agent.execute();
                         if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
                             logger.debug("Search failed: {}", searchResult.stopDetails());
                             mainIo.toolError(
@@ -752,7 +733,7 @@ public class BlitzForgeProgressDialog extends JDialog {
         }
 
         @Override
-        public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
+        public List<ChatMessage> getLlmRawMessages() {
             return List.of();
         }
     }

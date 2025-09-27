@@ -749,9 +749,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     }
 
     @Override
-    public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
+    public List<ChatMessage> getLlmRawMessages() {
         if (SwingUtilities.isEventDispatchThread()) {
-            return historyOutputPanel.getLlmRawMessages(includeReasoning);
+            return historyOutputPanel.getLlmRawMessages();
         }
 
         // this can get interrupted at the end of a Code or Ask action, but we don't want to just throw
@@ -762,8 +762,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         while (true) {
             try {
                 final CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
-                SwingUtilities.invokeAndWait(
-                        () -> future.complete(historyOutputPanel.getLlmRawMessages(includeReasoning)));
+                SwingUtilities.invokeAndWait(() -> future.complete(historyOutputPanel.getLlmRawMessages()));
                 return future.get();
             } catch (InterruptedException e) {
                 // retry
@@ -785,6 +784,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         SwingUtil.runOnEdt(() -> {
             disableHistoryPanel();
             instructionsPanel.disableButtons();
+            terminalDrawer.disablePlay();
             if (gitCommitTab != null) {
                 gitCommitTab.disableButtons();
             }
@@ -797,6 +797,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     public void enableActionButtons() {
         SwingUtil.runOnEdt(() -> {
             instructionsPanel.enableButtons();
+            terminalDrawer.enablePlay();
             if (gitCommitTab != null) {
                 gitCommitTab.enableButtons();
             }
@@ -1917,7 +1918,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     }
 
     public void updateCaptureButtons() {
-        var messageSize = historyOutputPanel.getLlmRawMessages(true).size();
+        var messageSize = historyOutputPanel.getLlmRawMessages().size();
         SwingUtilities.invokeLater(() -> historyOutputPanel.setCopyButtonEnabled(messageSize > 0));
     }
 

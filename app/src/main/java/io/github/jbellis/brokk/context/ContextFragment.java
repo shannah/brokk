@@ -393,12 +393,12 @@ public interface ContextFragment {
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof ProjectPathFragment that)) return false;
-            return Objects.equals(id(), that.id());
+            return file.equals(that.file());
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(id());
+            return Objects.hash(file);
         }
     }
 
@@ -487,12 +487,12 @@ public interface ContextFragment {
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof GitFileFragment that)) return false;
-            return Objects.equals(id(), that.id());
+            return file.equals(that.file()) && revision.equals(that.revision());
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(id());
+            return Objects.hash(file, revision);
         }
 
         @Override
@@ -554,12 +554,12 @@ public interface ContextFragment {
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof ExternalPathFragment that)) return false;
-            return Objects.equals(id(), that.id());
+            return file.equals(that.file());
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(id());
+            return Objects.hash(file);
         }
     }
 
@@ -683,12 +683,12 @@ public interface ContextFragment {
         public boolean equals(Object o) {
             if (this == o) return true;
             if (!(o instanceof ImageFileFragment that)) return false;
-            return Objects.equals(id(), that.id());
+            return file.equals(that.file());
         }
 
         @Override
         public int hashCode() {
-            return Objects.hash(id());
+            return Objects.hash(file);
         }
 
         @Override

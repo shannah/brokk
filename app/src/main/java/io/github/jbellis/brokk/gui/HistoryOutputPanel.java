@@ -52,7 +52,6 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-/** A component that combines the context history panel with the output panel using BorderLayout. */
 public class HistoryOutputPanel extends JPanel {
     private static final Logger logger = LogManager.getLogger(HistoryOutputPanel.class);
 
@@ -81,16 +80,16 @@ public class HistoryOutputPanel extends JPanel {
     // Output components
     private final MarkdownOutputPanel llmStreamArea;
     private final JScrollPane llmScrollPane;
-    // systemArea, systemScrollPane, commandResultLabel removed
+
     @Nullable
-    private JTextArea captureDescriptionArea; // This one seems to be intentionally nullable or less strictly managed
+    private JTextArea captureDescriptionArea;
 
     private final MaterialButton copyButton;
 
     private final List<OutputWindow> activeStreamingWindows = new ArrayList<>();
 
-    // Diff caching for AI result contexts
-    private final Map<UUID, List<Context.DiffEntry>> aiDiffCache = new ConcurrentHashMap<>();
+    // Diff caching
+    private final Map<UUID, List<Context.DiffEntry>> diffCache = new ConcurrentHashMap<>();
     private final java.util.Set<UUID> diffInFlight = ConcurrentHashMap.newKeySet();
     private Map<UUID, Context> previousContextMap = new HashMap<>();
 
@@ -876,8 +875,8 @@ public class HistoryOutputPanel extends JPanel {
         return panel;
     }
 
-    public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
-        return llmStreamArea.getRawMessages(includeReasoning);
+    public List<ChatMessage> getLlmRawMessages() {
+        return llmStreamArea.getRawMessages();
     }
 
     /**
@@ -993,7 +992,7 @@ public class HistoryOutputPanel extends JPanel {
 
     private void openOutputWindowStreaming() {
         // show all = grab all messages, including reasoning for preview window
-        List<ChatMessage> currentMessages = llmStreamArea.getRawMessages(true);
+        List<ChatMessage> currentMessages = llmStreamArea.getRawMessages();
         var tempFragment = new ContextFragment.TaskFragment(contextManager, currentMessages, "Streaming Output...");
         var history = contextManager.topContext().getTaskHistory();
         var mainTask = new TaskEntry(-1, tempFragment, null);
@@ -1183,7 +1182,7 @@ public class HistoryOutputPanel extends JPanel {
         });
     }
 
-    /** A renderer that shows the action text and, for AI result contexts, a diff summary under it. */
+    /** A renderer that shows the action text and a diff summary (when available) under it. */
     private class DiffAwareActionRenderer extends DefaultTableCellRenderer {
         private final ActivityTableRenderers.ActionCellRenderer fallback =
                 new ActivityTableRenderers.ActionCellRenderer();
@@ -1201,8 +1200,8 @@ public class HistoryOutputPanel extends JPanel {
             // Determine context for this row
             Object ctxVal = table.getModel().getValueAt(row, 2);
 
-            // For non-AI contexts, just render a normal label (top-aligned)
-            if (!(ctxVal instanceof Context ctx) || !ctx.isAiResult()) {
+            // If not a Context row, render a normal label (top-aligned)
+            if (!(ctxVal instanceof Context ctx)) {
                 var comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
                 if (comp instanceof JLabel lbl) {
                     lbl.setVerticalAlignment(JLabel.TOP);
@@ -1210,8 +1209,8 @@ public class HistoryOutputPanel extends JPanel {
                 return adjustRowHeight(table, row, column, comp);
             }
 
-            // For AI contexts, decide whether to render a diff panel or just the label
-            var cached = aiDiffCache.get(ctx.id());
+            // Decide whether to render a diff panel or just the label
+            var cached = diffCache.get(ctx.id());
 
             // Not yet cached → kick off background computation; show a compact label for now
             if (cached == null) {
@@ -1310,7 +1309,7 @@ public class HistoryOutputPanel extends JPanel {
 
     /** Schedule background computation (with caching) of diff for an AI result context. */
     private void scheduleDiffComputation(Context ctx) {
-        if (aiDiffCache.containsKey(ctx.id())) return;
+        if (diffCache.containsKey(ctx.id())) return;
         if (!diffInFlight.add(ctx.id())) return;
 
         var prev = previousContextMap.get(ctx.id());
@@ -1322,7 +1321,7 @@ public class HistoryOutputPanel extends JPanel {
         contextManager.submitBackgroundTask("Compute diff for history entry", () -> {
             try {
                 var diffs = ctx.getDiff(prev);
-                aiDiffCache.put(ctx.id(), diffs);
+                diffCache.put(ctx.id(), diffs);
             } finally {
                 diffInFlight.remove(ctx.id());
                 SwingUtilities.invokeLater(() -> historyTable.repaint());
@@ -1339,7 +1338,7 @@ public class HistoryOutputPanel extends JPanel {
         }
 
         contextManager.submitBackgroundTask("Preparing diff preview", () -> {
-            var diffs = aiDiffCache.computeIfAbsent(ctx.id(), id -> ctx.getDiff(prev));
+            var diffs = diffCache.computeIfAbsent(ctx.id(), id -> ctx.getDiff(prev));
             SwingUtilities.invokeLater(() -> showDiffWindow(ctx, diffs));
         });
     }

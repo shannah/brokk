@@ -336,54 +336,78 @@ public final class BrokkCli implements Callable<Integer> {
         io.systemOutput(ContextFragment.getSummary(cm.topContext().allFragments()));
 
         TaskResult result = null;
-        try {
-            if (architectPrompt != null) {
-                var architectModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;
-                var codeModel = codeModelOverride == null ? cm.getCodeModel() : codeModelOverride;
-                var agent = new ArchitectAgent(cm, architectModel, codeModel, architectPrompt);
-                result = agent.execute();
-            } else if (codePrompt != null) {
-                var effectiveModel = codeModelOverride == null
-                        ? (taskModelOverride != null ? taskModelOverride : cm.getCodeModel())
-                        : codeModelOverride;
-                var agent = new CodeAgent(cm, effectiveModel);
-                result = agent.runTask(codePrompt, Set.of());
-            } else if (askPrompt != null) {
-                StreamingChatModel askModel;
-                askModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
-                result = InstructionsPanel.executeAskCommand(cm, askModel, askPrompt);
-            } else if (merge) {
-                var planningModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;
-                var codeModel = codeModelOverride == null ? cm.getCodeModel() : codeModelOverride;
-                MergeAgent mergeAgent;
-                try {
-                    mergeAgent = MergeAgent.inferFromExternal(cm, planningModel, codeModel);
-                } catch (IllegalStateException e) {
-                    System.err.println("Cannot run --merge: " + e.getMessage());
-                    return 1;
-                }
-                try {
-                    mergeAgent.execute();
-                } catch (Exception e) {
-                    io.toolError(getStackTrace(e), "Merge failed: " + e.getMessage());
-                    return 1;
-                }
-                return 0; // merge is terminal for this CLI command
-            } else { // searchPrompt != null
-                var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
-                var terminalSet = (searchTerminal == Terminal.TASK_LIST)
-                        ? EnumSet.of(Terminal.TASK_LIST)
-                        : EnumSet.of(Terminal.ANSWER);
-                var agent = new SearchAgent(requireNonNull(searchPrompt), cm, searchModel, terminalSet);
-                result = agent.execute();
-            }
-        } catch (Throwable th) {
-            io.toolError(getStackTrace(th), "Internal error: " + th.getMessage());
-            return 1; // internal error
+        // Decide scope action/input
+        String scopeAction;
+        String scopeInput;
+        if (architectPrompt != null) {
+            scopeAction = "Architect";
+            scopeInput = architectPrompt;
+        } else if (codePrompt != null) {
+            scopeAction = "Code";
+            scopeInput = codePrompt;
+        } else if (askPrompt != null) {
+            scopeAction = "Ask";
+            scopeInput = requireNonNull(askPrompt);
+        } else if (merge) {
+            scopeAction = "Merge";
+            scopeInput = "";
+        } else {
+            scopeAction = "Search";
+            scopeInput = requireNonNull(searchPrompt);
         }
 
-        // Add the TaskResult to history so it is preserved in subsequent workspace sessions
-        cm.addToHistory(result, false);
+        try (var scope = cm.beginTask(scopeAction, scopeInput, false)) {
+            try {
+                if (architectPrompt != null) {
+                    var architectModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;
+                    var codeModel = codeModelOverride == null ? cm.getCodeModel() : codeModelOverride;
+                    var agent = new ArchitectAgent(cm, architectModel, codeModel, architectPrompt, scope);
+                    result = agent.execute();
+                    scope.append(result);
+                } else if (codePrompt != null) {
+                    var effectiveModel = codeModelOverride == null
+                            ? (taskModelOverride != null ? taskModelOverride : cm.getCodeModel())
+                            : codeModelOverride;
+                    var agent = new CodeAgent(cm, effectiveModel);
+                    result = agent.runTask(codePrompt, Set.of());
+                    scope.append(result);
+                } else if (askPrompt != null) {
+                    StreamingChatModel askModel;
+                    askModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
+                    result = InstructionsPanel.executeAskCommand(cm, askModel, askPrompt);
+                    scope.append(result);
+                } else if (merge) {
+                    var planningModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;
+                    var codeModel = codeModelOverride == null ? cm.getCodeModel() : codeModelOverride;
+                    MergeAgent mergeAgent;
+                    try {
+                        mergeAgent = MergeAgent.inferFromExternal(cm, planningModel, codeModel, scope);
+                    } catch (IllegalStateException e) {
+                        System.err.println("Cannot run --merge: " + e.getMessage());
+                        return 1;
+                    }
+                    try {
+                        result = mergeAgent.execute();
+                        scope.append(result);
+                    } catch (Exception e) {
+                        io.toolError(getStackTrace(e), "Merge failed: " + e.getMessage());
+                        return 1;
+                    }
+                    return 0; // merge is terminal for this CLI command
+                } else { // searchPrompt != null
+                    var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
+                    var terminalSet = (searchTerminal == Terminal.TASK_LIST)
+                            ? EnumSet.of(Terminal.TASK_LIST)
+                            : EnumSet.of(Terminal.ANSWER);
+                    var agent = new SearchAgent(requireNonNull(searchPrompt), cm, searchModel, terminalSet);
+                    result = agent.execute();
+                    scope.append(result);
+                }
+            } catch (Throwable th) {
+                io.toolError(getStackTrace(th), "Internal error: " + th.getMessage());
+                return 1; // internal error
+            }
+        }
 
         if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
             io.toolError(
