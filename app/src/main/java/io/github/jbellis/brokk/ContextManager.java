@@ -760,16 +760,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var textFiles = castNonNull(filesByType.get(true));
         var binaryFiles = castNonNull(filesByType.get(false));
 
-        if (!textFiles.isEmpty()) {
-            var proposedEditableFragments = textFiles.stream()
-                    .map(pf -> new ContextFragment.ProjectPathFragment(pf, this))
-                    .toList();
-            this.addPathFragments(proposedEditableFragments);
-        }
+        var textFragments = textFiles.stream()
+                .map(pf -> new ContextFragment.ProjectPathFragment(pf, this))
+                .toList();
+        addPathFragments(textFragments);
 
-        if (!binaryFiles.isEmpty()) {
-            addFiles(binaryFiles);
-        }
+        var binaryFragments = binaryFiles.stream()
+                .map(pf -> new ContextFragment.ImageFileFragment(pf, this))
+                .toList();
+        addPathFragments(binaryFragments);
     }
 
     /** Add the given files to editable. */

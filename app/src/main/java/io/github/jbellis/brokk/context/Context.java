@@ -156,16 +156,6 @@ public class Context {
         return withFragments(newFragments, CompletableFuture.completedFuture(action));
     }
 
-    public Context removePathFragments(List<? extends ContextFragment> toRemove, String actionPrefix) {
-        var newFragments = new ArrayList<>(fragments);
-        if (!newFragments.removeAll(toRemove)) {
-            return this;
-        }
-        String actionDetails =
-                toRemove.stream().map(ContextFragment::shortDescription).collect(Collectors.joining(", "));
-        return withFragments(newFragments, CompletableFuture.completedFuture(actionPrefix + actionDetails));
-    }
-
     public Context addVirtualFragment(ContextFragment.VirtualFragment fragment) {
         // Deduplicate among existing virtual fragments only
         boolean isDuplicate = fragment.getType() == ContextFragment.FragmentType.PASTE_IMAGE
