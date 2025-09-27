@@ -13,7 +13,6 @@ import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.util.AdaptiveExecutor;
-import io.github.jbellis.brokk.util.Environment;
 import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.TokenAware;
 import java.io.IOException;
@@ -348,7 +347,7 @@ public class MergeAgent {
                     new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
         }
 
-        // We tried auto-editing files that are mentioned i nthe build failure, the trouble is that you
+        // We tried auto-editing files that are mentioned in the build failure, the trouble is that you
         // can cause errors in lots of files by screwing up the API in one, and adding all of them
         // obscures rather than clarifies the actual problem. So don't do that.
 
@@ -428,22 +427,7 @@ public class MergeAgent {
     /** Run verification build if configured; returns empty string on success, otherwise failure text. */
     private String runVerificationIfConfigured() {
         try {
-            var cmd = BuildAgent.determineVerificationCommandAsync((ContextManager) cm)
-                    .join();
-            if (cmd == null || cmd.isBlank()) return "";
-            cm.getIo()
-                    .llmOutput(
-                            "\nRunning verification command: " + cmd,
-                            dev.langchain4j.data.message.ChatMessageType.CUSTOM);
-            cm.getIo().llmOutput("\n```bash\n", dev.langchain4j.data.message.ChatMessageType.CUSTOM);
-            Environment.instance.runShellCommand(
-                    cmd,
-                    ((ContextManager) cm).getProject().getRoot(),
-                    line -> cm.getIo().llmOutput(line + "\n", dev.langchain4j.data.message.ChatMessageType.CUSTOM),
-                    Environment.UNLIMITED_TIMEOUT);
-            return ""; // success
-        } catch (Environment.SubprocessException e) {
-            return e.getMessage() + "\n\n" + e.getOutput();
+            return BuildAgent.runVerification((ContextManager) cm);
         } catch (InterruptedException e) {
             Thread.currentThread().interrupt();
             return "Verification command was interrupted.";
