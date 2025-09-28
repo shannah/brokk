@@ -551,11 +551,8 @@ public class CodeAgent {
             String errorMessage = Objects.toString(result.error().getMessage(), "Unknown LLM error during quick edit");
             stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, errorMessage);
             io.toolError("Quick edit failed: " + errorMessage);
-        } else if (result.text().isBlank()) {
-            stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.EMPTY_RESPONSE);
-            io.toolError("LLM returned empty response for quick edit.");
         } else {
-            // Success from LLM perspective (no error, text is not blank)
+            // Success from LLM perspective
             pendingHistory.add(result.aiMessage());
             stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
         }
@@ -626,17 +623,12 @@ public class CodeAgent {
     Step requestPhase(
             ConversationState cs, EditState es, StreamingResult streamingResultFromLlm, @Nullable Metrics metrics) {
         var llmError = streamingResultFromLlm.error();
-        if (streamingResultFromLlm.isEmpty()) {
+        if (llmError != null) {
             String message;
             TaskResult.StopDetails fatalDetails;
-            if (llmError != null) {
-                message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending task";
-                fatalDetails = new TaskResult.StopDetails(
-                        TaskResult.StopReason.LLM_ERROR, requireNonNull(llmError.getMessage()));
-            } else {
-                message = "Empty LLM response even after retries. Ending task";
-                fatalDetails = new TaskResult.StopDetails(TaskResult.StopReason.EMPTY_RESPONSE, message);
-            }
+            message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending task";
+            fatalDetails =
+                    new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, requireNonNull(llmError.getMessage()));
             io.toolError(message);
             return new Step.Fatal(fatalDetails);
         }
@@ -826,7 +818,7 @@ public class CodeAgent {
     }
 
     private String performBuildVerification() throws InterruptedException {
-        return BuildAgent.runVerification((ContextManager) contextManager);
+        return BuildAgent.runVerification(contextManager);
     }
 
     /** next FSM state */

@@ -686,7 +686,7 @@ public class SearchAgent {
             Thread.currentThread().interrupt();
             throw new RuntimeException(e);
         }
-        if (sr.error() != null || sr.isEmpty()) {
+        if (sr.error() != null) {
             return rawResult; // fallback to raw
         }
         return sr.text();

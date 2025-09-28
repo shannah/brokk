@@ -584,7 +584,7 @@ public class BuildAgent {
      * <p>Returns empty string on success (or when no command is configured), otherwise the raw combined error/output
      * text.
      */
-    public static String runVerification(ContextManager cm) throws InterruptedException {
+    public static String runVerification(IContextManager cm) throws InterruptedException {
         var io = cm.getIo();
 
         var verificationCommand = determineVerificationCommand(cm);
@@ -636,7 +636,7 @@ public class BuildAgent {
     }
 
     /** Attempts to acquire an inter-process build lock. Returns a non-null BuildLock on success, or null on failure. */
-    private static @Nullable BuildLock acquireBuildLock(ContextManager cm) {
+    private static @Nullable BuildLock acquireBuildLock(IContextManager cm) {
         java.nio.file.Path lockDir = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "brokk");
         try {
             java.nio.file.Files.createDirectories(lockDir);
@@ -660,7 +660,7 @@ public class BuildAgent {
         }
     }
 
-    private static String getOriginRepositoryName(ContextManager cm) {
+    private static String getOriginRepositoryName(IContextManager cm) {
         var url = cm.getRepo().getRemoteUrl();
         if (url == null || url.isBlank()) {
             return cm.getRepo().getGitTopLevel().getFileName().toString();
@@ -673,7 +673,7 @@ public class BuildAgent {
         throw new IllegalArgumentException("Unable to parse git repo url " + url);
     }
 
-    private static String runBuildAndUpdateFragmentInternal(ContextManager cm, String verificationCommand)
+    private static String runBuildAndUpdateFragmentInternal(IContextManager cm, String verificationCommand)
             throws InterruptedException {
         var io = cm.getIo();
 

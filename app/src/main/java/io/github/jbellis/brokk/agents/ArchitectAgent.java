@@ -362,11 +362,6 @@ public class ArchitectAgent {
                 io.systemOutput("Error from LLM while deciding next action (see debug log for details)");
                 return resultWithMessages(StopReason.LLM_ERROR);
             }
-            if (result.isEmpty()) {
-                var msg = "Empty LLM response. Stopping project now";
-                io.systemOutput(msg);
-                return resultWithMessages(StopReason.LLM_ERROR);
-            }
             // show thinking
             if (!result.text().isBlank()) {
                 io.llmOutput("\n" + result.text(), ChatMessageType.AI);

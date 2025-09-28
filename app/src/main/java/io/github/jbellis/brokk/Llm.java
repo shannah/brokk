@@ -354,6 +354,12 @@ public class Llm {
         }
     }
 
+    public static class EmptyResponseError extends LangChain4jException {
+        public EmptyResponseError() {
+            super("Empty response from LLM");
+        }
+    }
+
     private static String formatTokensUsage(ChatResponse response) {
         var tu = (OpenAiTokenUsage) response.tokenUsage();
         var template = "token usage: %,d input (%s cached), %,d output (%s reasoning)";
@@ -479,8 +485,7 @@ public class Llm {
 
         // If we get here, we failed all attempts
         if (lastError == null) {
-            return new StreamingResult(
-                    null, new IllegalStateException("Empty response after max retries"), attempt - 1);
+            return new StreamingResult(null, new EmptyResponseError(), attempt - 1);
         }
         return new StreamingResult(null, lastError, attempt - 1);
     }
@@ -1261,8 +1266,7 @@ public class Llm {
 
         public boolean isEmpty() {
             var emptyText = text == null || text.isEmpty();
-            var emptyReasoning = reasoningContent == null || reasoningContent.isEmpty();
-            return emptyText && toolRequests.isEmpty() && emptyReasoning;
+            return emptyText && toolRequests.isEmpty();
         }
 
         public AiMessage aiMessage() {

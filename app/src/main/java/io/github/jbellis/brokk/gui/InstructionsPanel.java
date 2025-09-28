@@ -1598,8 +1598,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             if (response.error() != null) {
                 String explanation = Objects.requireNonNullElse(response.error().getMessage(), "Unknown LLM error");
                 stop = new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, explanation);
-            } else if (response.isEmpty()) {
-                stop = new TaskResult.StopDetails(TaskResult.StopReason.EMPTY_RESPONSE, "Empty response from LLM");
             } else {
                 stop = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
             }
@@ -1917,8 +1915,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 new SystemMessage("You are a Prompt Refiner for coding instructions."), new UserMessage(instruction));
         Llm.StreamingResult res = llm.sendRequest(req, true);
 
-        // On error/empty, restore original and re-enable input
-        if (res.error() != null || res.isEmpty()) {
+        // On error, restore original and re-enable input
+        if (res.error() != null) {
             SwingUtilities.invokeLater(() -> populateInstructionsArea(original));
             return;
         }

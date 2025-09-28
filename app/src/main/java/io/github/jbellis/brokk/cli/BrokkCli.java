@@ -106,7 +106,9 @@ public final class BrokkCli implements Callable<Integer> {
     @Nullable
     private String askPrompt;
 
-    @CommandLine.Option(names = "--search-answer", description = "Run Search agent to find an answer for the given prompt.")
+    @CommandLine.Option(
+            names = "--search-answer",
+            description = "Run Search agent to find an answer for the given prompt.")
     @Nullable
     private String searchAnswerPrompt;
 
@@ -305,7 +307,8 @@ public final class BrokkCli implements Callable<Integer> {
             io.systemOutput("# Workspace (pre-scan)");
             io.systemOutput(ContextFragment.getSummary(cm.topContext().allFragments()));
 
-            String goalForScan = Stream.of(architectPrompt, codePrompt, askPrompt, searchAnswerPrompt, searchTasksPrompt)
+            String goalForScan = Stream.of(
+                            architectPrompt, codePrompt, askPrompt, searchAnswerPrompt, searchTasksPrompt)
                     .filter(s -> s != null && !s.isBlank())
                     .findFirst()
                     .orElseThrow();
@@ -401,14 +404,14 @@ public final class BrokkCli implements Callable<Integer> {
                     return 0; // merge is terminal for this CLI command
                 } else if (searchAnswerPrompt != null) {
                     var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
-                    var agent =
-                            new SearchAgent(requireNonNull(searchAnswerPrompt), cm, searchModel, EnumSet.of(Terminal.ANSWER));
+                    var agent = new SearchAgent(
+                            requireNonNull(searchAnswerPrompt), cm, searchModel, EnumSet.of(Terminal.ANSWER));
                     result = agent.execute();
                     scope.append(result);
                 } else { // searchTasksPrompt != null
                     var searchModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
-                    var agent =
-                            new SearchAgent(requireNonNull(searchTasksPrompt), cm, searchModel, EnumSet.of(Terminal.TASK_LIST));
+                    var agent = new SearchAgent(
+                            requireNonNull(searchTasksPrompt), cm, searchModel, EnumSet.of(Terminal.TASK_LIST));
                     result = agent.execute();
                     scope.append(result);
                 }

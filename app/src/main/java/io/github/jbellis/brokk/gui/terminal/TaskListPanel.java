@@ -5,7 +5,6 @@ import static java.util.Objects.requireNonNull;
 import com.google.common.base.Splitter;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.UserMessage;
-import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.TaskResult;
@@ -1073,8 +1072,8 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                     logger.debug("Skipping SearchAgent for first task since workspace is not empty");
                 } else {
                     var scanModel = cm.getService().getScanModel();
-                    SearchAgent agent = new SearchAgent(
-                            originalPrompt, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+                    SearchAgent agent =
+                            new SearchAgent(originalPrompt, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
                     chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
                     var searchResult = agent.execute();
                     scope.append(searchResult);
@@ -1084,7 +1083,8 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                 }
 
                 var planningModel = requireNonNull(cm.getService().getModel(Service.GEMINI_2_5_PRO));
-                var codeModel = requireNonNull(cm.getService().getModel(chrome.getInstructionsPanel().getSelectedModel()));
+                var codeModel = requireNonNull(
+                        cm.getService().getModel(chrome.getInstructionsPanel().getSelectedModel()));
 
                 var architectAgent = new ArchitectAgent(cm, planningModel, codeModel, augmentedPrompt, scope);
                 var archResult = architectAgent.execute();

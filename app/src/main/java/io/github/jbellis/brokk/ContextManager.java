@@ -967,12 +967,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(fragment));
     }
 
-    /**
-     * Replaces any existing Build Results fragments with a fresh one containing the provided text. Attempts to drop all
-     * BUILD_LOG fragments first (including those in the current live context). If cleanup fails, a new BuildFragment
-     * will still be added with a failure note.
-     */
-    public void updateBuildFragment(String text) {
+    @Override
+    public void updateBuildFragment(String buildOutput) {
         // Collect IDs of existing BUILD_LOG fragments in the current live context
         var idsToDrop = liveContext()
                 .virtualFragments()
@@ -984,7 +980,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         var bf = new ContextFragment.BuildFragment(this);
-        bf.setContent(text);
+        bf.setContent(buildOutput);
         addVirtualFragment(bf);
     }
 
@@ -1454,7 +1450,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     } catch (InterruptedException e) {
                         throw new RuntimeException(e);
                     }
-                    if (result.error() != null || result.originalResponse() == null) {
+                    if (result.error() != null) {
                         logger.warn("Image summarization failed or was cancelled.");
                         return "(Image summarization failed)";
                     }
@@ -1713,9 +1709,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
                                         .formatted(codeForLLM)));
 
                 var result = getLlm(getSearchModel(), "Generate style guide").sendRequest(messages);
-                if (result.error() != null || result.originalResponse() == null) {
-                    io.systemOutput("Failed to generate style guide: "
-                            + (result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled"));
+                if (result.error() != null) {
+                    io.systemOutput(
+                            "Failed to generate style guide: " + result.error().getMessage());
                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
                     return null;
                 }
@@ -1766,11 +1762,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
             throw new RuntimeException(e);
         }
 
-        if (result.error() != null || result.originalResponse() == null) {
-            logger.warn(
-                    "History compression failed ({}) for entry: {}",
-                    result.error() != null ? result.error().getMessage() : "LLM unavailable or cancelled",
-                    entry);
+        if (result.error() != null) {
+            logger.warn("History compression failed for entry: {}", entry, result.error());
             return entry;
         }
 
@@ -2441,7 +2434,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             } catch (InterruptedException e) {
                 throw new RuntimeException(e);
             }
-            if (result.error() != null || result.originalResponse() == null) {
+            if (result.error() != null) {
                 logger.warn("Summarization failed or was cancelled.");
                 return "Summarization failed.";
             }
