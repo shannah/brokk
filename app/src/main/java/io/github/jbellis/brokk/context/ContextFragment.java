@@ -1678,13 +1678,12 @@ public interface ContextFragment {
         }
     }
 
-    // Special dynamic fragment that holds the latest build results.
-    // Only ContextManager should update its content.
-    class BuildFragment extends VirtualFragment { // Dynamic, uses nextId
-        private volatile String content = "";
+    class BuildFragment extends VirtualFragment {
+        private final String content;
 
-        public BuildFragment(IContextManager contextManager) {
+        public BuildFragment(IContextManager contextManager, String buildOutput) {
             super(contextManager);
+            this.content = buildOutput;
         }
 
         @Override
@@ -1704,7 +1703,7 @@ public interface ContextFragment {
 
         @Override
         public boolean isDynamic() {
-            return true;
+            return false;
         }
 
         @Override
@@ -1717,10 +1716,6 @@ public interface ContextFragment {
         public String syntaxStyle() {
             // Build output may contain Markdown formatting
             return SyntaxConstants.SYNTAX_STYLE_MARKDOWN;
-        }
-
-        public void setContent(String newContent) {
-            content = newContent;
         }
 
         @Override

@@ -101,12 +101,22 @@ public class DtoMapper {
             Map<String, ContextFragment> fragmentCacheForRecursion,
             ContentReader contentReader) {
         if (referencedDtos.containsKey(idToResolve)) {
+            var dto = referencedDtos.get(idToResolve);
+            if (dto instanceof FrozenFragmentDto ffd && isDeprecatedBuildFragment(ffd)) {
+                logger.info("Skipping deprecated BuildFragment during deserialization: {}", idToResolve);
+                return null;
+            }
             return _buildReferencedFragment(
-                    castNonNull(referencedDtos.get(idToResolve)), mgr, imageBytesMap, contentReader);
+                    castNonNull(dto), mgr, imageBytesMap, contentReader);
         }
         if (virtualDtos.containsKey(idToResolve)) {
+            var dto = virtualDtos.get(idToResolve);
+            if (dto instanceof FrozenFragmentDto ffd && isDeprecatedBuildFragment(ffd)) {
+                logger.info("Skipping deprecated BuildFragment during deserialization: {}", idToResolve);
+                return null;
+            }
             return _buildVirtualFragment(
-                    castNonNull(virtualDtos.get(idToResolve)),
+                    castNonNull(dto),
                     mgr,
                     imageBytesMap,
                     fragmentCacheForRecursion,
@@ -182,7 +192,13 @@ public class DtoMapper {
             ContentReader reader) {
         if (dto == null) return null;
         return switch (dto) {
-            case FrozenFragmentDto ffd -> (FrozenFragment) _buildReferencedFragment(ffd, mgr, imageBytesMap, reader);
+            case FrozenFragmentDto ffd -> {
+                if (isDeprecatedBuildFragment(ffd)) {
+                    logger.info("Skipping deprecated BuildFragment during deserialization: {}", ffd.id());
+                    yield null;
+                }
+                yield (FrozenFragment) _buildReferencedFragment(ffd, mgr, imageBytesMap, reader);
+            }
             case SearchFragmentDto searchDto -> {
                 var sources = searchDto.sources().stream()
                         .map(DtoMapper::fromCodeUnitDto)
@@ -508,6 +524,11 @@ public class DtoMapper {
         ProjectFile source = new ProjectFile(Path.of(pfd.repoRoot()), Path.of(pfd.relPath()));
         var kind = io.github.jbellis.brokk.analyzer.CodeUnitType.valueOf(dto.kind());
         return new CodeUnit(source, kind, dto.packageName(), dto.shortName());
+    }
+
+    private static boolean isDeprecatedBuildFragment(FrozenFragmentDto ffd) {
+        return "io.github.jbellis.brokk.context.ContextFragment$BuildFragment".equals(ffd.originalClassName())
+                || "BUILD_LOG".equals(ffd.originalType());
     }
 
     /* ───────────── entryInfos mapping ───────────── */

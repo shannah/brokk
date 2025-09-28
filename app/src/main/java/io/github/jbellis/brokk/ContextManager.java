@@ -979,8 +979,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             pushContext(currentLiveCtx -> currentLiveCtx.removeFragmentsByIds(idsToDrop));
         }
 
-        var bf = new ContextFragment.BuildFragment(this);
-        bf.setContent(buildOutput);
+        var bf = new ContextFragment.BuildFragment(this, buildOutput);
         addVirtualFragment(bf);
     }
 
