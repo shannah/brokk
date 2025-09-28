@@ -967,9 +967,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
         pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(fragment));
     }
 
+    /**
+     * Update the Build fragment based on structured success/failure. Always clears previous BUILD_LOG fragments. Only
+     * adds a new fragment when the build failed.
+     */
     @Override
-    public void updateBuildFragment(String buildOutput) {
-        // Collect IDs of existing BUILD_LOG fragments in the current live context
+    public void updateBuildFragment(boolean success, String buildOutput) {
+        // Remove any existing BUILD_LOG fragments
         var idsToDrop = liveContext()
                 .virtualFragments()
                 .filter(f -> f.getType() == ContextFragment.FragmentType.BUILD_LOG)
@@ -977,6 +981,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 .toList();
         if (!idsToDrop.isEmpty()) {
             pushContext(currentLiveCtx -> currentLiveCtx.removeFragmentsByIds(idsToDrop));
+        }
+
+        // Only add a new BuildFragment if the build failed
+        if (success) {
+            return;
         }
 
         var bf = new ContextFragment.BuildFragment(this, buildOutput);

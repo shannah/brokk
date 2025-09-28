@@ -44,6 +44,7 @@ public class FragmentDtos {
                     CallGraphFragmentDto,
                     CodeFragmentDto,
                     HistoryFragmentDto,
+                    BuildFragmentDto,
                     FrozenFragmentDto {
         String id();
     }
@@ -210,6 +211,10 @@ public class FragmentDtos {
         public HistoryFragmentDto {
             history = List.copyOf(history);
         }
+    }
+
+    /** DTO for BuildFragment - contains build output text. */
+    public record BuildFragmentDto(String id, String contentId) implements VirtualFragmentDto { // id changed to String
     }
 
     /** DTO for FrozenFragment - contains frozen state of any fragment type. */

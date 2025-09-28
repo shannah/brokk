@@ -590,7 +590,7 @@ public class BuildAgent {
         var verificationCommand = determineVerificationCommand(cm);
         if (verificationCommand == null || verificationCommand.isBlank()) {
             io.llmOutput("\nNo verification command specified, skipping build/check.", ChatMessageType.CUSTOM);
-            cm.updateBuildFragment("No verification command configured.");
+            // Do not update BuildFragment; success/failure unknown and not a failure.
             return "";
         }
 
@@ -688,7 +688,7 @@ public class BuildAgent {
                     Environment.UNLIMITED_TIMEOUT);
             io.llmOutput("\n```", ChatMessageType.CUSTOM);
 
-            cm.updateBuildFragment("Build succeeded.");
+            cm.updateBuildFragment(true, "Build succeeded.");
             logger.debug("Verification command successful. Output: {}", output);
             return "";
         } catch (Environment.SubprocessException e) {
@@ -696,7 +696,7 @@ public class BuildAgent {
 
             String rawBuild = e.getMessage() + "\n\n" + e.getOutput();
             String processed = BuildOutputPreprocessor.processForLlm(rawBuild, cm);
-            cm.updateBuildFragment("Build output:\n" + processed);
+            cm.updateBuildFragment(false, "Build output:\n" + processed);
             return rawBuild;
         }
     }

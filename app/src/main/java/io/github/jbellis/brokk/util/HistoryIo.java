@@ -215,10 +215,6 @@ public final class HistoryIo {
                 }
             });
             ctx.virtualFragments().forEach(vf -> {
-                if (vf.getType() == ContextFragment.FragmentType.BUILD_LOG) {
-                    logger.info("Skipping deprecated BuildFragment {} during serialization", vf.id());
-                    return;
-                }
                 if (vf instanceof ContextFragment.TaskFragment taskFragment
                         && !(vf instanceof ContextFragment.SearchFragment)) {
                     if (!collectedTaskDtos.containsKey(taskFragment.id())) {

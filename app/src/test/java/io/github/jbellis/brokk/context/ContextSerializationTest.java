@@ -758,9 +758,9 @@ public class ContextSerializationTest {
 
     @Test
     void testRoundTripBuildFragment() throws Exception {
-        // BuildFragment is deprecated and skipped during serialization/deserialization.
-        // Ensure that after a round-trip, no BUILD_LOG fragments are present.
-        var context = new Context(mockContextManager, "Test BuildFragment - deprecated");
+        var buildFragment = new ContextFragment.BuildFragment(mockContextManager, "Build successful\nAll tests passed");
+
+        var context = new Context(mockContextManager, "Test BuildFragment").addVirtualFragment(buildFragment);
         ContextHistory originalHistory = new ContextHistory(context);
 
         Path zipFile = tempDir.resolve("test_buildfrag_history.zip");
@@ -768,9 +768,14 @@ public class ContextSerializationTest {
         ContextHistory loadedHistory = HistoryIo.readZip(zipFile, mockContextManager);
 
         Context loadedCtx = loadedHistory.getHistory().get(0);
-        assertTrue(
-                loadedCtx.virtualFragments().noneMatch(f -> f.getType() == ContextFragment.FragmentType.BUILD_LOG),
-                "No BUILD_LOG fragments should be present after round-trip");
+        var loadedBuildFrag = loadedCtx
+                .virtualFragments()
+                .filter(f -> f.getType() == ContextFragment.FragmentType.BUILD_LOG)
+                .findFirst()
+                .orElseThrow(() -> new AssertionError("BUILD_LOG fragment not found after round-trip"));
+
+        assertTrue(loadedBuildFrag.isText());
+        assertTrue(loadedBuildFrag.text().contains("Build successful\nAll tests passed"));
     }
 
     @Test

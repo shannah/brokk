@@ -15,9 +15,6 @@ import java.util.concurrent.*;
 
 /** Interface for context manager functionality */
 public interface IContextManager {
-    /** Replaces any existing Build Results fragments with a fresh one containing the provided text. */
-    default void updateBuildFragment(String buildOutput) {}
-
     /** Callback interface for analyzer update events. */
     interface AnalyzerCallback {
         /** Called before each analyzer build begins. */
@@ -43,6 +40,9 @@ public interface IContextManager {
     default ExecutorService getBackgroundTasks() {
         throw new UnsupportedOperationException();
     }
+
+    /** Replaces any existing Build Results fragments with a fresh one containing the provided text. */
+    default void updateBuildFragment(boolean success, String buildOutput) {}
 
     default Collection<? extends ChatMessage> getHistoryMessages() {
         return List.of();

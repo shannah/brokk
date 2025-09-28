@@ -144,15 +144,6 @@ public class ArchitectAgent {
         var result = agent.runTask(instructions, opts);
         var stopDetails = result.stopDetails();
         var reason = stopDetails.reason();
-
-        // Update the BuildFragment on build success or build error
-        if (reason == TaskResult.StopReason.SUCCESS || reason == TaskResult.StopReason.BUILD_ERROR) {
-            var buildText = (reason == TaskResult.StopReason.SUCCESS)
-                    ? "Build succeeded."
-                    : ("Build failed.\n\n" + stopDetails.explanation());
-            cm.updateBuildFragment(buildText);
-        }
-
         scope.append(result);
 
         if (result.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {

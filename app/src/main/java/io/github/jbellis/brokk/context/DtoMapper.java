@@ -271,6 +271,8 @@ public class DtoMapper {
                         callGraphDto.isCalleeGraph());
             case CodeFragmentDto codeDto ->
                 new ContextFragment.CodeFragment(codeDto.id(), mgr, fromCodeUnitDto(codeDto.unit()));
+            case BuildFragmentDto bfDto ->
+                new ContextFragment.BuildFragment(mgr, reader.readContent(bfDto.contentId()));
             case HistoryFragmentDto historyDto -> {
                 var historyEntries = historyDto.history().stream()
                         .map(taskEntryDto -> _fromTaskEntryDto(
@@ -421,6 +423,8 @@ public class DtoMapper {
             case ContextFragment.CallGraphFragment cgf ->
                 new CallGraphFragmentDto(cgf.id(), cgf.getMethodName(), cgf.getDepth(), cgf.isCalleeGraph());
             case ContextFragment.CodeFragment cf -> new CodeFragmentDto(cf.id(), toCodeUnitDto(cf.getCodeUnit()));
+            case ContextFragment.BuildFragment bf ->
+                new BuildFragmentDto(bf.id(), writer.writeContent(bf.text(), null));
             case ContextFragment.HistoryFragment hf -> {
                 var historyDto = hf.entries().stream()
                         .map(te -> toTaskEntryDto(te, writer))

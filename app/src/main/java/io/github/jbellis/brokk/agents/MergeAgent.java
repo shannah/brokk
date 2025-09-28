@@ -359,11 +359,6 @@ public class MergeAgent {
         var contextManager = (ContextManager) cm;
         var codeAgentText = codeAgentFailures.isEmpty() ? "" : String.join("\n\n", codeAgentFailures);
 
-        // Publish build output to the workspace BuildFragment so Architect can reference it.
-        // Architect instructions should not inline the full build output; it will be available
-        // as a concise Build fragment in the workspace (keeps prompts compact).
-        contextManager.updateBuildFragment(buildFailureText);
-
         var agentInstructions =
                 """
                 I attempted to merge changes from %s into our branch (mode: %s). I have added summaries
