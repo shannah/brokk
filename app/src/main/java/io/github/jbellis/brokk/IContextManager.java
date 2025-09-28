@@ -15,9 +15,7 @@ import java.util.concurrent.*;
 
 /** Interface for context manager functionality */
 public interface IContextManager {
-    /**
-     * Replaces any existing Build Results fragments with a fresh one containing the provided text.
-     */
+    /** Replaces any existing Build Results fragments with a fresh one containing the provided text. */
     default void updateBuildFragment(String buildOutput) {}
 
     /** Callback interface for analyzer update events. */

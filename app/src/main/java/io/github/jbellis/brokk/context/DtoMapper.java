@@ -106,8 +106,7 @@ public class DtoMapper {
                 logger.info("Skipping deprecated BuildFragment during deserialization: {}", idToResolve);
                 return null;
             }
-            return _buildReferencedFragment(
-                    castNonNull(dto), mgr, imageBytesMap, contentReader);
+            return _buildReferencedFragment(castNonNull(dto), mgr, imageBytesMap, contentReader);
         }
         if (virtualDtos.containsKey(idToResolve)) {
             var dto = virtualDtos.get(idToResolve);

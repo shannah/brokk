@@ -655,6 +655,10 @@ public class HistoryOutputPanel extends JPanel {
             int currentRow = 0;
 
             var contexts = contextManager.getContextHistoryList();
+            // Proactively compute diffs so grouping can reflect file-diff boundaries
+            for (var c : contexts) {
+                scheduleDiffComputation(c);
+            }
             boolean lastIsNonLlm = !contexts.isEmpty() && !isGroupingBoundary(contexts.getLast());
 
             for (int i = 0; i < contexts.size(); i++) {
@@ -1324,7 +1328,11 @@ public class HistoryOutputPanel extends JPanel {
                 diffCache.put(ctx.id(), diffs);
             } finally {
                 diffInFlight.remove(ctx.id());
-                SwingUtilities.invokeLater(() -> historyTable.repaint());
+                SwingUtilities.invokeLater(() -> {
+                    historyTable.repaint();
+                    // Rebuild table so group boundaries can reflect new diff availability
+                    updateHistoryTable(null);
+                });
             }
         });
     }
@@ -1628,7 +1636,18 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     private boolean isGroupingBoundary(Context ctx) {
-        return ctx.isAiResult() || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction());
+        if (ctx.isAiResult() || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction())) {
+            return true;
+        }
+        // Use the cached file diffs to determine boundaries.
+        // If we don't have a cached diff yet, schedule it and do not treat as a boundary until available.
+        var diffs = diffCache.get(ctx.id());
+        if (diffs == null) {
+            scheduleDiffComputation(ctx);
+            return false;
+        }
+        // Boundary only when there are actual file changes
+        return !diffs.isEmpty();
     }
 
     private static String firstWord(String text) {
