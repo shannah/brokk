@@ -92,7 +92,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
         var io = getIo();
         if (io instanceof Chrome chrome) {
-            chrome.getTerminalDrawer().openTerminalAndPasteText(cmd);
+            SwingUtilities.invokeLater(() -> chrome.getTerminalDrawer().openTerminalAndPasteText(cmd));
         }
     }
 
