@@ -1267,6 +1267,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 previewFrame.setLocationRelativeTo(frame); // Center relative to main window
             }
 
+            // Set a minimum width for preview windows to ensure search controls work properly
+            previewFrame.setMinimumSize(new Dimension(400, 200));
+
             // Add listener to save bounds using the "preview" key
             final JFrame finalFrameForBounds = previewFrame;
             previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
