@@ -7,8 +7,6 @@ import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNul
 import com.github.tjake.jlama.model.AbstractModel;
 import com.github.tjake.jlama.model.functions.Generator;
 import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
@@ -33,6 +31,7 @@ import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import io.github.jbellis.brokk.gui.util.AddMenuFactory;
 import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
 import io.github.jbellis.brokk.gui.util.Icons;
+import io.github.jbellis.brokk.gui.wand.WandButton;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.LoggingExecutorService;
@@ -104,8 +103,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final JLabel codeModeLabel = new JLabel("Code");
     private final JLabel answerModeLabel = new JLabel("Ask");
     private final MaterialButton actionButton;
-    private final MaterialButton wandButton = new MaterialButton();
-    private String wandBaseTooltip = "Refine Prompt: rewrites your prompt for clarity and specificity.";
+    private final WandButton wandButton;
     private final ModelSelector modelSelector;
     private String storedAction;
     private final ContextManager contextManager;
@@ -165,6 +163,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Initialize components
         instructionsArea = buildCommandInputField(); // Build first to add listener
+        wandButton = new WandButton(
+                contextManager, chrome, instructionsArea, this::getInstructions, this::populateInstructionsArea);
         micButton = new VoiceInputButton(
                 instructionsArea,
                 contextManager,
@@ -1095,12 +1095,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         bottomPanel.add(Box.createHorizontalGlue());
 
         // Wand button (Magic Ask) on the right
-        SwingUtilities.invokeLater(() -> {
-            wandButton.setIcon(Icons.WAND);
-        });
-        wandButton.setToolTipText(wandBaseTooltip);
         wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
-        wandButton.addActionListener(e -> onWandPressed());
         // Size set after fixedHeight is computed below
         bottomPanel.add(wandButton);
         bottomPanel.add(Box.createHorizontalStrut(4));
@@ -1862,96 +1857,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         });
     }
 
-    /** Handler for the Wand button: silently refine the prompt in the background and replace the input. */
-    private void onWandPressed() {
-        var original = getInstructions();
-        if (original.isBlank()) {
-            chrome.toolError("Please enter a prompt to refine");
-            return;
-        }
-
-        var cm = chrome.getContextManager();
-        // Run wand as a cancelable user action; Stop button cancels it. No history, no spinner.
-        cm.submitLlmAction(() -> {
-            try {
-                onWanPressedInternal(cm, original);
-            } catch (InterruptedException e) {
-                logger.debug("Prompt enhancement interrupted", e);
-            }
-        });
-    }
-
-    private void onWanPressedInternal(ContextManager cm, String original) throws InterruptedException {
-        var service = cm.getService();
-        var model = service.getWandModel(); // pick best-available low-latency model
-
-        String instruction =
-                """
-                <workspace_summary>
-                %s
-                </workspace_summary>
-
-                <draft_prompt>>
-                %s
-                </draft_prompt>
-
-                <goal>
-                Take the draft prompt and rewrite it so it is:
-                - Clear
-                - Concise
-                - Structured
-                - Leverages information from the Workspace but without speculating beyond what you know for sure
-
-                Output only the improved prompt.
-                </goal>
-                """
-                        .formatted(ContextFragment.getSummary(cm.topContext().allFragments()), original);
-
-        // Stream to custom tooltip-updating IConsoleIO
-        Llm llm = cm.getLlm(model, "Refine Prompt", false);
-        var wandIo = new WandConsoleIO();
-        llm.setOutput(wandIo);
-        List<ChatMessage> req = List.of(
-                new SystemMessage("You are a Prompt Refiner for coding instructions."), new UserMessage(instruction));
-        Llm.StreamingResult res = llm.sendRequest(req, true);
-
-        // On error, restore original and re-enable input
-        if (res.error() != null) {
-            SwingUtilities.invokeLater(() -> populateInstructionsArea(original));
-            return;
-        }
-
-        // Sanitize refined text
-        String refined = res.text().trim();
-        if (refined.startsWith("```")) {
-            int start = refined.indexOf('\n');
-            int endFence = refined.lastIndexOf("```");
-            if (start >= 0 && endFence > start) {
-                refined = refined.substring(start + 1, endFence).trim();
-            } else {
-                refined = refined.replace("```", "").trim();
-            }
-        }
-        var lowered = refined.toLowerCase(Locale.ROOT);
-        if (lowered.startsWith("improved prompt:")) {
-            int idx = refined.indexOf(':');
-            if (idx >= 0 && idx + 1 < refined.length()) {
-                refined = refined.substring(idx + 1).trim();
-            }
-        }
-
-        if (!refined.isBlank()) {
-            String finalRefined = refined;
-            SwingUtilities.invokeLater(() -> populateInstructionsArea(finalRefined));
-        } else {
-            // No final refined text returned; keep streamed content but re-enable editing.
-            SwingUtilities.invokeLater(() -> {
-                instructionsArea.setEnabled(true);
-                instructionsArea.requestFocusInWindow();
-            });
-        }
-    }
-
     public @Nullable Future<TaskResult> runSearchCommand() {
         var input = getInstructions();
         if (input.isBlank()) {
@@ -2415,53 +2320,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         public void applyTheme(GuiTheme guiTheme) {
             // Delegate to the two-argument variant with a sensible default for wordWrap.
             applyTheme(guiTheme, false);
-        }
-    }
-
-    private class WandConsoleIO implements IConsoleIO {
-        private boolean hasStartedContent = false;
-        private boolean lastWasReasoning = true;
-
-        public WandConsoleIO() {
-            SwingUtilities.invokeLater(() -> {
-                instructionsArea.setEnabled(false);
-                instructionsArea.setText("Improving your prompt...\n\n");
-                instructionsArea.setCaretPosition(instructionsArea.getText().length());
-            });
-        }
-
-        @Override
-        public void llmOutput(
-                String token,
-                dev.langchain4j.data.message.ChatMessageType type,
-                boolean isNewMessage,
-                boolean isReasoning) {
-            if (!isReasoning && lastWasReasoning && !hasStartedContent) {
-                // Transition from reasoning to content: clear the area first
-                SwingUtilities.invokeLater(() -> instructionsArea.setText(""));
-                hasStartedContent = true;
-            } else if (isReasoning && !lastWasReasoning) {
-                // Illegal transition back to reasoning
-                throw new IllegalStateException("Wand stream switched from non-reasoning to reasoning");
-            }
-
-            if (!token.isEmpty()) {
-                SwingUtilities.invokeLater(() -> {
-                    instructionsArea.append(token);
-                    instructionsArea.setCaretPosition(instructionsArea.getText().length());
-                });
-            }
-            lastWasReasoning = isReasoning;
-        }
-
-        @Override
-        public void toolError(String message, String title) {
-            chrome.toolError(message, title);
-        }
-
-        @Override
-        public java.util.List<ChatMessage> getLlmRawMessages() {
-            return List.of();
         }
     }
 
