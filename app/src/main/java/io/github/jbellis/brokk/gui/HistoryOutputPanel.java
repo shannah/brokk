@@ -664,12 +664,7 @@ public class HistoryOutputPanel extends JPanel {
             for (int i = 0; i < contexts.size(); i++) {
                 var ctx = contexts.get(i);
                 if (isGroupingBoundary(ctx)) {
-                    Icon icon;
-                    if (ActivityTableRenderers.DROPPED_ALL_CONTEXT.equalsIgnoreCase(ctx.getAction())) {
-                        icon = null;
-                    } else {
-                        icon = Icons.CHAT_BUBBLE;
-                    }
+                    Icon icon = ctx.isAiResult() ? Icons.CHAT_BUBBLE : null;
                     historyModel.addRow(new Object[] {icon, ctx.getAction(), ctx});
                     if (ctx.equals(contextToSelect)) {
                         rowToSelect = currentRow;
