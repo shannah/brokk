@@ -1036,7 +1036,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         // Submit an LLM action that will perform optional search + architect work off the EDT.
         return cm.submitLlmAction("Execute Task " + (idx + 1), () -> {
             chrome.showOutputSpinner("Executing Task command...");
-            try (var scope = cm.beginTask("LUTZ MODE", originalPrompt, false)) {
+            try (var scope = cm.beginTask(originalPrompt, false)) {
                 // Optionally run SearchAgent (this is also background work)
                 // we are assuming we can skip search agent if there are items in the context to edit
                 // we are not using liveContext.isEmpty() here as we want to make

@@ -1025,7 +1025,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware {
                         messagesForHistory.add(Messages.customSystem("```" + diffText + "```"));
                         var saveResult = new TaskResult(
                                 cm, actionDescription, messagesForHistory, Set.of(file), TaskResult.StopReason.SUCCESS);
-                        try (var scope = cm.beginTask(actionDescription, "", false)) {
+                        try (var scope = cm.beginTask("", false)) {
                             scope.append(saveResult);
                         }
                         logger.debug("Added history entry for changes in: {}", file);

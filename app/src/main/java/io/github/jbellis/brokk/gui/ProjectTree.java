@@ -391,7 +391,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                             new HashSet<>(filesToDelete),
                             new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
 
-                    try (var scope = contextManager.beginTask(description, "", false)) {
+                    try (var scope = contextManager.beginTask("", false)) {
                         scope.append(taskResult);
                     }
 

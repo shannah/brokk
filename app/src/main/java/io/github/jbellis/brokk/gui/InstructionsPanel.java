@@ -1917,7 +1917,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return cm.submitLlmAction(action, () -> {
             try {
                 chrome.showOutputSpinner("Executing " + displayAction + " command...");
-                try (var scope = cm.beginTask(action, input, false)) {
+                try (var scope = cm.beginTask(input, false)) {
                     var result = task.call();
                     scope.append(result);
                     if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
@@ -1957,7 +1957,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return cm.submitLlmAction(finalAction, () -> {
             try {
                 chrome.showOutputSpinner("Executing " + displayAction + " command...");
-                try (var scope = cm.beginTask(action, input, false)) {
+                try (var scope = cm.beginTask(input, false)) {
                     var result = task.apply(scope);
                     scope.append(result);
                     if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {

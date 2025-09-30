@@ -853,7 +853,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
                     TaskResult.StopReason.SUCCESS);
 
             // Add a single history entry for the whole batch
-            try (var scope = contextManager.beginTask(actionDescription, "", false)) {
+            try (var scope = contextManager.beginTask("", false)) {
                 scope.append(result);
             }
             logger.info("Saved changes to {} file(s): {}", fileCount, actionDescription);

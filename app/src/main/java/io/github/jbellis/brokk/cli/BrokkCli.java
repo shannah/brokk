@@ -342,29 +342,22 @@ public final class BrokkCli implements Callable<Integer> {
 
         TaskResult result = null;
         // Decide scope action/input
-        String scopeAction;
         String scopeInput;
         if (architectPrompt != null) {
-            scopeAction = "Architect";
             scopeInput = architectPrompt;
         } else if (codePrompt != null) {
-            scopeAction = "Code";
             scopeInput = codePrompt;
         } else if (askPrompt != null) {
-            scopeAction = "Ask";
             scopeInput = requireNonNull(askPrompt);
         } else if (merge) {
-            scopeAction = "Merge";
             scopeInput = "";
         } else if (searchAnswerPrompt != null) {
-            scopeAction = "Search";
             scopeInput = requireNonNull(searchAnswerPrompt);
         } else { // searchTasksPrompt != null
-            scopeAction = "Search";
             scopeInput = requireNonNull(searchTasksPrompt);
         }
 
-        try (var scope = cm.beginTask(scopeAction, scopeInput, false)) {
+        try (var scope = cm.beginTask(scopeInput, false)) {
             try {
                 if (architectPrompt != null) {
                     var architectModel = taskModelOverride == null ? cm.getArchitectModel() : taskModelOverride;

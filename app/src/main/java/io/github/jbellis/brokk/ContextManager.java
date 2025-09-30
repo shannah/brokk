@@ -1818,7 +1818,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /** Begin a new aggregating scope with explicit compress-at-commit semantics. */
-    public TaskScope beginTask(String action, String input, boolean compressAtCommit) {
+    public TaskScope beginTask(String input, boolean compressAtCommit) {
         // Kick off UI transcript (streaming) immediately and seed MOP with a mode marker as the first message.
         var messages = List.<ChatMessage>of(new UserMessage(input));
         var currentTaskFragment = new ContextFragment.TaskFragment(this, messages, input);

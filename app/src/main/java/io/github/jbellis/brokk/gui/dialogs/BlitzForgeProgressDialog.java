@@ -506,7 +506,7 @@ public class BlitzForgeProgressDialog extends JDialog {
 
                 // Add task result to history (single scope)
                 var contextManager = chrome.getContextManager();
-                try (var scope = contextManager.beginTask("BlitzForge: " + instructions, "", true)) {
+                try (var scope = contextManager.beginTask("", true)) {
                     scope.append(result);
                 }
                 var mainIo = contextManager.getIo();

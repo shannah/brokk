@@ -668,7 +668,7 @@ public class GitCommitTab extends JPanel {
                         new HashSet<>(selectedFiles),
                         new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
 
-                try (var scope = contextManager.beginTask(rollbackDescription, "", false)) {
+                try (var scope = contextManager.beginTask("", false)) {
                     scope.append(taskResult);
                 }
 
