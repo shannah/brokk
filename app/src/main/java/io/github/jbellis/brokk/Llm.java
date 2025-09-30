@@ -638,10 +638,6 @@ public class Llm {
 
                 if (echo) {
                     // output the LLM's thinking
-                    var reasoning = parseResult.reasoningContent();
-                    if (reasoning != null && !reasoning.isBlank()) {
-                        io.llmOutput(reasoning, ChatMessageType.AI, false, true);
-                    }
                     String textToOutput = parseResult.text();
                     if (textToOutput != null && !textToOutput.isBlank()) {
                         io.llmOutput(textToOutput, ChatMessageType.AI, false, false);
