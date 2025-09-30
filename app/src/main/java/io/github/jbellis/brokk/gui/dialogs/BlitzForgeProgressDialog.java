@@ -527,10 +527,7 @@ public class BlitzForgeProgressDialog extends JDialog {
                 if (buildFirst) {
                     buildFailureFuture = contextManager.submitBackgroundTask("Run verification build", () -> {
                         try {
-                            String raw = BuildAgent.runVerification(contextManager);
-                            return raw.isBlank()
-                                    ? "The build succeeded."
-                                    : BuildOutputPreprocessor.processForLlm(raw, contextManager);
+                            return BuildAgent.runVerification(contextManager);
                         } catch (InterruptedException e) {
                             Thread.currentThread().interrupt();
                             return "Build command was interrupted.";

@@ -673,6 +673,9 @@ public class BuildAgent {
         throw new IllegalArgumentException("Unable to parse git repo url " + url);
     }
 
+    /**
+     * @return the text of the new BuildFragment (may have been preprocessed by quickestModel)
+     */
     private static String runBuildAndUpdateFragmentInternal(IContextManager cm, String verificationCommand)
             throws InterruptedException {
         var io = cm.getIo();
@@ -697,7 +700,7 @@ public class BuildAgent {
             String rawBuild = e.getMessage() + "\n\n" + e.getOutput();
             String processed = BuildOutputPreprocessor.processForLlm(rawBuild, cm);
             cm.updateBuildFragment(false, "Build output:\n" + processed);
-            return rawBuild;
+            return processed;
         }
     }
 }

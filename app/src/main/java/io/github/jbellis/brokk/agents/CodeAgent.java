@@ -17,7 +17,6 @@ import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
-import io.github.jbellis.brokk.util.BuildOutputPreprocessor;
 import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import java.io.IOException;
@@ -565,23 +564,6 @@ public class CodeAgent {
                 stopDetails);
     }
 
-    /** Formats the most recent build error for the LLM retry prompt. */
-    private static String formatBuildErrorsForLLM(String latestBuildError) {
-        return """
-                The build failed with the following error:
-
-                %s
-
-                Please analyze the error message, review the conversation history for previous attempts, and provide SEARCH/REPLACE blocks to fix the error.
-
-                IMPORTANT: If you determine that the build errors are not improving or are going in circles after reviewing the history,
-                do your best to explain the problem but DO NOT provide any edits.
-                Otherwise, provide the edits as usual.
-                """
-                .stripIndent()
-                .formatted(latestBuildError);
-    }
-
     /**
      * Generates a user message to ask the LLM to continue when a response appears to be cut off.
      *
@@ -673,15 +655,9 @@ public class CodeAgent {
             return new Step.Fatal(stopDetails);
         }
 
-        String rawBuildError;
-        String sanitizedBuildError;
-        String processedBuildError;
+        String buildError;
         try {
-            rawBuildError = performBuildVerification();
-            // Sanitize for user-facing error storage (lightweight path cleanup)
-            sanitizedBuildError = BuildOutputPreprocessor.sanitizeOnly(rawBuildError, contextManager);
-            // Get preprocessed output that BuildAgent already created and stored in BuildFragment
-            processedBuildError = contextManager.getProcessedBuildOutput();
+            buildError = BuildAgent.runVerification(contextManager);
         } catch (InterruptedException e) {
             logger.debug("CodeAgent interrupted during build verification.");
             Thread.currentThread().interrupt();
@@ -689,18 +665,13 @@ public class CodeAgent {
         }
 
         // Base success/failure decision on raw build result, not processed output
-        if (rawBuildError == null || rawBuildError.isEmpty()) {
+        if (buildError.isEmpty()) {
             // Build succeeded or was skipped by performBuildVerification
             logger.debug("Build verification succeeded");
             reportComplete("Success!");
             return new Step.Fatal(TaskResult.StopReason.SUCCESS);
         } else {
-            // Build failed - use raw error for decisions, sanitized for storage, processed for LLM prompt
-            logger.debug(
-                    "Build verification failed. Raw error: {} chars, sanitized: {} chars, processed: {} chars",
-                    rawBuildError.length(),
-                    sanitizedBuildError.length(),
-                    processedBuildError.length());
+            // Build failed - use raw error for decisions, sanitized for storage, processed for LLM context
             if (metrics != null) {
                 metrics.buildFailures++;
             }
@@ -710,17 +681,15 @@ public class CodeAgent {
                 reportComplete("Build failed %d consecutive times; aborting.".formatted(newBuildFailures));
                 return new Step.Fatal(new TaskResult.StopDetails(
                         TaskResult.StopReason.BUILD_ERROR,
-                        "Build failed %d consecutive times:\n%s".formatted(newBuildFailures, sanitizedBuildError)));
+                        "Build failed %d consecutive times:\n%s".formatted(newBuildFailures, buildError)));
             }
-            // Use processed output from BuildFragment for LLM prompt (already preprocessed by BuildAgent)
-            // Fallback to sanitized if BuildFragment doesn't exist or processing was skipped
-            String errorForLlm = !processedBuildError.isEmpty() ? processedBuildError : sanitizedBuildError;
-            UserMessage nextRequestForBuildFailure = new UserMessage(formatBuildErrorsForLLM(errorForLlm));
+            // Use processed output for LLM context, but fallback to sanitized if pipeline processing returned empty
+            UserMessage nextRequestForBuildFailure = new UserMessage(CodePrompts.buildFeedbackPrompt());
             var newCs = new ConversationState(
                     cs.taskMessages(),
                     nextRequestForBuildFailure,
                     cs.taskMessages().size());
-            var newEs = es.afterBuildFailure(sanitizedBuildError);
+            var newEs = es.afterBuildFailure(buildError);
             report("Asking LLM to fix build/lint failures");
             return new Step.Retry(newCs, newEs);
         }
@@ -816,10 +785,6 @@ public class CodeAgent {
             Thread.currentThread().interrupt(); // Preserve interrupt status
             return new Step.Fatal(new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
         }
-    }
-
-    private String performBuildVerification() throws InterruptedException {
-        return BuildAgent.runVerification(contextManager);
     }
 
     /** next FSM state */
