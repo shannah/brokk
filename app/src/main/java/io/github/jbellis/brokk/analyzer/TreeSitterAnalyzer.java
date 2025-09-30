@@ -23,6 +23,7 @@ import java.util.List;
 import java.util.Locale;
 import java.util.Map;
 import java.util.NavigableSet;
+import java.util.Objects;
 import java.util.Optional;
 import java.util.Queue;
 import java.util.Set;
@@ -199,6 +200,25 @@ public abstract class TreeSitterAnalyzer
             Set<String> modifierNodeTypes) {}
 
     public record Range(int startByte, int endByte, int startLine, int endLine, int commentStartByte) {}
+
+    private record ProjectFilePair(ProjectFile lhs, ProjectFile rhs) {
+        @Override
+        public boolean equals(Object o) {
+            if (this == o) return true;
+            if (!(o instanceof ProjectFilePair(ProjectFile oLhs, ProjectFile oRhs))) return false;
+            // Order-insensitive equality: (a,b) == (b,a)
+            return (Objects.equals(lhs, oLhs) && Objects.equals(rhs, oRhs))
+                    || (Objects.equals(lhs, oRhs) && Objects.equals(rhs, oLhs));
+        }
+
+        @Override
+        public int hashCode() {
+            // Order-insensitive hash: commutative combination
+            int h1 = Objects.hashCode(lhs);
+            int h2 = Objects.hashCode(rhs);
+            return h1 ^ h2;
+        }
+    }
 
     private record FileAnalysisResult(
             List<CodeUnit> topLevelCUs,
@@ -2385,6 +2405,8 @@ public abstract class TreeSitterAnalyzer
             return this;
         }
 
+        long overallStartMs = System.currentTimeMillis();
+
         // Filter files by language extensions - only process files this analyzer can understand
         var relevantFiles = filterRelevantFiles(changedFiles);
 
@@ -2392,60 +2414,145 @@ public abstract class TreeSitterAnalyzer
             return this; // No relevant files to process
         }
 
-        var writeLock = stateRwLock.writeLock();
-        writeLock.lock();
-        try {
+        int total = relevantFiles.size();
+
+        // Thread-safe metrics and counters
+        var reanalyzedCount = new AtomicInteger(0);
+        var deletedCount = new AtomicInteger(0);
+        var cleanupNanos = new AtomicLong(0L);
+        var reanalyzeNanos = new AtomicLong(0L);
+
+        var filesCleanedCount = new AtomicInteger(0);
+        var symbolsTouchedCount = new AtomicInteger(0);
+        var parentsTouchedCount = new AtomicInteger(0);
+        var writeLockHoldNanos = new AtomicLong(0L);
+
+        final var fileEqualityCache = new ConcurrentHashMap<ProjectFilePair, Boolean>();
+
+        int parallelism = Math.max(1, Math.min(Runtime.getRuntime().availableProcessors(), total));
+        List<CompletableFuture<Void>> futures = new ArrayList<>();
+
+        try (var executor = ExecutorServiceUtil.newFixedThreadExecutor(parallelism, "ts-update-")) {
             for (var file : relevantFiles) {
-                // -------- cleanup ----------
-                parsedTreeCache.remove(file);
-                topLevelDeclarations.remove(file);
+                CompletableFuture<Void> future = CompletableFuture.runAsync(
+                        () -> {
+                            // -------- cleanup (under short write lock) ----------
+                            long cleanupStart = System.nanoTime();
+                            var writeLock = stateRwLock.writeLock();
+                            writeLock.lock();
+                            long lockStartNanos = System.nanoTime();
+                            try {
+                                filesCleanedCount.incrementAndGet();
 
-                Predicate<CodeUnit> fromFile = cu -> cu.source().equals(file);
+                                // Build predicate with cached ProjectFile equality checks
+                                Predicate<CodeUnit> fromFile = cu -> fileEqualityCache.computeIfAbsent(
+                                        new ProjectFilePair(file, cu.source()),
+                                        pair -> pair.lhs().equals(pair.rhs()));
 
-                var symbolsToPurge = new HashSet<String>();
-                var symbolsToUpdate = new HashMap<String, List<CodeUnit>>();
-                for (var entry : symbolIndex.entrySet()) {
-                    var symbol = entry.getKey();
-                    var cus = entry.getValue();
-                    var remaining = cus.stream().filter(fromFile.negate()).toList();
-                    if (remaining.isEmpty()) {
-                        symbolsToPurge.add(symbol);
-                    } else if (remaining.size() < cus.size()) {
-                        symbolsToUpdate.put(symbol, remaining);
-                    }
-                }
-                symbolsToUpdate.forEach(symbolIndex::put);
-                symbolsToPurge.forEach(symbolIndex::remove);
+                                parsedTreeCache.remove(file);
+                                topLevelDeclarations.remove(file);
 
-                childrenByParent.keySet().removeIf(fromFile);
-                signatures.keySet().removeIf(fromFile);
-                sourceRanges.keySet().removeIf(fromFile);
+                                var symbolsToPurge = new HashSet<String>();
+                                var symbolsToUpdate = new HashMap<String, List<CodeUnit>>();
+                                for (var entry : symbolIndex.entrySet()) {
+                                    var symbol = entry.getKey();
+                                    var cus = entry.getValue();
+                                    var remaining = cus.stream()
+                                            .filter(fromFile.negate())
+                                            .toList();
+                                    if (remaining.isEmpty()) {
+                                        symbolsToPurge.add(symbol);
+                                    } else if (remaining.size() < cus.size()) {
+                                        symbolsToUpdate.put(symbol, remaining);
+                                    }
+                                }
+                                symbolsTouchedCount.addAndGet(symbolsToPurge.size() + symbolsToUpdate.size());
+                                symbolIndex.putAll(symbolsToUpdate);
+                                symbolsToPurge.forEach(symbolIndex::remove);
 
-                // remove children entries pointing to CodeUnits from the changed file
-                childrenByParent.replaceAll((parent, kids) -> {
-                    var filtered = kids.stream().filter(fromFile.negate()).toList();
-                    return filtered.equals(kids) ? kids : List.copyOf(filtered);
-                });
+                                childrenByParent.keySet().removeIf(fromFile);
+                                signatures.keySet().removeIf(fromFile);
+                                sourceRanges.keySet().removeIf(fromFile);
 
-                // -------- re-analyse (if file still exists) ----------
-                if (Files.exists(file.absPath())) {
-                    try {
-                        var parser = getTSParser();
-                        byte[] bytes = Files.readAllBytes(file.absPath());
-                        var analysisResult = analyzeFileContent(file, bytes, parser, null);
-                        ingestAnalysisResult(file, analysisResult);
-                    } catch (IOException e) {
-                        log.warn("IO error re-analysing {}: {}", file, e.getMessage());
-                    } catch (RuntimeException e) {
-                        log.error("Runtime error re-analysing {}: {}", file, e.getMessage(), e);
-                    }
-                } else {
-                    log.debug("File {} deleted; state cleaned.", file);
-                }
+                                // remove children entries pointing to CodeUnits from the changed file
+                                childrenByParent.replaceAll((parent, kids) -> {
+                                    var filtered = kids.stream()
+                                            .filter(fromFile.negate())
+                                            .toList();
+                                    if (!filtered.equals(kids)) {
+                                        parentsTouchedCount.incrementAndGet();
+                                        return List.copyOf(filtered);
+                                    }
+                                    return kids;
+                                });
+                            } catch (Throwable t) {
+                                log.error("Exception encountered while performing update for file {}", file, t);
+                            } finally {
+                                cleanupNanos.addAndGet(System.nanoTime() - cleanupStart);
+                                writeLockHoldNanos.addAndGet(System.nanoTime() - lockStartNanos);
+                                writeLock.unlock();
+                            }
+
+                            // -------- re-analyse (I/O + parse outside lock; ingestion under lock) ----------
+                            if (Files.exists(file.absPath())) {
+                                long reanStart = System.nanoTime();
+                                try {
+                                    var parser = getTSParser();
+                                    byte[] bytes = Files.readAllBytes(file.absPath());
+                                    var analysisResult = analyzeFileContent(file, bytes, parser, null);
+
+                                    var writeLock2 = stateRwLock.writeLock();
+                                    writeLock2.lock();
+                                    long lock2StartNanos = System.nanoTime();
+                                    try {
+                                        ingestAnalysisResult(file, analysisResult);
+                                    } finally {
+                                        writeLockHoldNanos.addAndGet(System.nanoTime() - lock2StartNanos);
+                                        writeLock2.unlock();
+                                    }
+                                    reanalyzedCount.incrementAndGet();
+                                } catch (IOException e) {
+                                    log.warn("IO error re-analysing {}: {}", file, e.getMessage());
+                                } catch (RuntimeException e) {
+                                    log.error("Runtime error re-analysing {}: {}", file, e.getMessage(), e);
+                                } finally {
+                                    reanalyzeNanos.addAndGet(System.nanoTime() - reanStart);
+                                }
+                            } else {
+                                deletedCount.incrementAndGet();
+                                log.debug("File {} deleted; state cleaned.", file);
+                            }
+                        },
+                        executor);
+
+                futures.add(future);
+            }
+
+            if (!futures.isEmpty()) {
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                        .join();
             }
         } finally {
-            writeLock.unlock();
+            fileEqualityCache.clear();
         }
+
+        long totalMs = System.currentTimeMillis() - overallStartMs;
+        long cleanupMs = TimeUnit.NANOSECONDS.toMillis(cleanupNanos.get());
+        long reanalyzeMs = TimeUnit.NANOSECONDS.toMillis(reanalyzeNanos.get());
+        log.debug(
+                "[{}] TreeSitter incremental update: relevantFiles={}, reanalyzed={}, deleted={}, cleanup={} ms, reanalyze={} ms, total={} ms, filesCleaned={}, symbolsTouched={}, parentsTouched={}, writeLockHold={} ms",
+                language.name(),
+                total,
+                reanalyzedCount.get(),
+                deletedCount.get(),
+                cleanupMs,
+                reanalyzeMs,
+                totalMs,
+                filesCleanedCount.get(),
+                symbolsTouchedCount.get(),
+                parentsTouchedCount.get(),
+                TimeUnit.NANOSECONDS.toMillis(writeLockHoldNanos.get()));
+
         return this;
     }
 
@@ -2455,6 +2562,8 @@ public abstract class TreeSitterAnalyzer
      */
     @Override
     public IAnalyzer update() {
+        long detectStartMs = System.currentTimeMillis();
+
         // files currently on disk that this analyser is interested in
         Set<ProjectFile> currentFiles = project.getAllFiles().stream()
                 .filter(pf -> {
@@ -2489,29 +2598,61 @@ public abstract class TreeSitterAnalyzer
             }
         }
 
-        // new or modified files
-        for (ProjectFile pf : currentFiles) {
-            try {
+        // new or modified files (parallelized)
+        int parallelism = Math.max(1, Runtime.getRuntime().availableProcessors());
+        var concurrentChanged = ConcurrentHashMap.<ProjectFile>newKeySet();
+
+        try (var detectExecutor = ExecutorServiceUtil.newFixedThreadExecutor(parallelism, "ts-detect-")) {
+            List<CompletableFuture<?>> futures = new ArrayList<>();
+            for (ProjectFile pf : currentFiles) {
                 if (!knownFiles.contains(pf)) {
                     // New file we have not seen before
-                    changed.add(pf);
+                    concurrentChanged.add(pf);
                     continue;
                 }
-                long mtimeNanos = Files.getLastModifiedTime(pf.absPath()).to(TimeUnit.NANOSECONDS);
-                if (mtimeNanos > threshold) {
-                    changed.add(pf);
-                }
-            } catch (IOException e) {
-                log.warn("Could not stat {}: {}", pf, e.getMessage());
-                changed.add(pf); // treat as changed; will retry next time
+
+                futures.add(CompletableFuture.runAsync(
+                        () -> {
+                            try {
+                                long mtimeNanos =
+                                        Files.getLastModifiedTime(pf.absPath()).to(TimeUnit.NANOSECONDS);
+                                if (mtimeNanos > threshold) {
+                                    concurrentChanged.add(pf);
+                                }
+                            } catch (IOException e) {
+                                log.warn("Could not stat {}: {}", pf, e.getMessage());
+                                concurrentChanged.add(pf); // treat as changed; will retry next time
+                            }
+                        },
+                        detectExecutor));
+            }
+
+            if (!futures.isEmpty()) {
+                CompletableFuture.allOf(futures.toArray(new CompletableFuture[0]))
+                        .join();
             }
         }
 
+        changed.addAll(concurrentChanged);
+
+        long detectMs = System.currentTimeMillis() - detectStartMs;
+
         // reuse the existing incremental logic
+        long updateStartMs = System.currentTimeMillis();
         var analyzer = update(changed);
+        long updateMs = System.currentTimeMillis() - updateStartMs;
 
         // Advance the last-update watermark to the time this scan began
         lastUpdateEpochNanos.set(nowNanos);
+
+        long totalMs = detectMs + updateMs;
+        log.debug(
+                "[{}] TreeSitter full incremental scan: changed={} files, detect={} ms, update={} ms, total={} ms",
+                language.name(),
+                changed.size(),
+                detectMs,
+                updateMs,
+                totalMs);
 
         return analyzer;
     }
@@ -2525,42 +2666,124 @@ public abstract class TreeSitterAnalyzer
 
         topLevelDeclarations.put(pf, analysisResult.topLevelCUs());
 
+        // Merge codeUnitsBySymbol with no-op checks to avoid allocations
         analysisResult.codeUnitsBySymbol().forEach((symbol, cus) -> {
             symbolIndex.compute(symbol, (String s, @Nullable List<CodeUnit> existing) -> {
                 if (existing == null) {
                     return List.copyOf(cus);
                 }
-                var merged = new ArrayList<>(existing);
-                cus.stream().filter(c -> !merged.contains(c)).forEach(merged::add);
+                if (cus.isEmpty()) {
+                    return existing; // nothing to add
+                }
+                boolean changed = false;
+                for (CodeUnit cu : cus) {
+                    if (!existing.contains(cu)) {
+                        changed = true;
+                        break;
+                    }
+                }
+                if (!changed) {
+                    return existing;
+                }
+                var merged = new ArrayList<CodeUnit>(existing.size() + cus.size());
+                merged.addAll(existing);
+                for (CodeUnit cu : cus) {
+                    if (!merged.contains(cu)) {
+                        merged.add(cu);
+                    }
+                }
                 return List.copyOf(merged);
             });
         });
 
+        // Merge childrenByParent with no-op checks
         analysisResult
                 .children()
                 .forEach((parent, newKids) ->
                         childrenByParent.compute(parent, (CodeUnit p, @Nullable List<CodeUnit> existing) -> {
-                            if (existing == null) return newKids;
-                            var merged = new ArrayList<>(existing);
-                            newKids.stream().filter(k -> !merged.contains(k)).forEach(merged::add);
+                            if (existing == null) {
+                                return newKids;
+                            }
+                            if (newKids.isEmpty()) {
+                                return existing;
+                            }
+                            boolean changed = false;
+                            for (CodeUnit kid : newKids) {
+                                if (!existing.contains(kid)) {
+                                    changed = true;
+                                    break;
+                                }
+                            }
+                            if (!changed) {
+                                return existing;
+                            }
+                            var merged = new ArrayList<CodeUnit>(existing.size() + newKids.size());
+                            merged.addAll(existing);
+                            for (CodeUnit kid : newKids) {
+                                if (!merged.contains(kid)) {
+                                    merged.add(kid);
+                                }
+                            }
                             return List.copyOf(merged);
                         }));
 
+        // Merge signatures with no-op checks
         analysisResult
                 .signatures()
                 .forEach((cu, newSigs) -> signatures.compute(cu, (CodeUnit c, @Nullable List<String> existing) -> {
-                    if (existing == null) return List.copyOf(newSigs);
-                    var merged = new ArrayList<>(existing);
-                    newSigs.stream().filter(s -> !merged.contains(s)).forEach(merged::add);
+                    if (existing == null) {
+                        return List.copyOf(newSigs);
+                    }
+                    if (newSigs.isEmpty()) {
+                        return existing;
+                    }
+                    boolean changed = false;
+                    for (String s : newSigs) {
+                        if (!existing.contains(s)) {
+                            changed = true;
+                            break;
+                        }
+                    }
+                    if (!changed) {
+                        return existing;
+                    }
+                    var merged = new ArrayList<String>(existing.size() + newSigs.size());
+                    merged.addAll(existing);
+                    for (String s : newSigs) {
+                        if (!merged.contains(s)) {
+                            merged.add(s);
+                        }
+                    }
                     return List.copyOf(merged);
                 }));
 
+        // Merge sourceRanges with no-op checks
         analysisResult
                 .sourceRanges()
                 .forEach((cu, newRanges) -> sourceRanges.compute(cu, (CodeUnit c, @Nullable List<Range> existing) -> {
-                    if (existing == null) return List.copyOf(newRanges);
-                    var merged = new ArrayList<>(existing);
-                    merged.addAll(newRanges);
+                    if (existing == null) {
+                        return List.copyOf(newRanges);
+                    }
+                    if (newRanges.isEmpty()) {
+                        return existing;
+                    }
+                    boolean changed = false;
+                    for (Range r : newRanges) {
+                        if (!existing.contains(r)) {
+                            changed = true;
+                            break;
+                        }
+                    }
+                    if (!changed) {
+                        return existing;
+                    }
+                    var merged = new ArrayList<Range>(existing.size() + newRanges.size());
+                    merged.addAll(existing);
+                    for (Range r : newRanges) {
+                        if (!merged.contains(r)) {
+                            merged.add(r);
+                        }
+                    }
                     return List.copyOf(merged);
                 }));
     }
