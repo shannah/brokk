@@ -1027,57 +1027,60 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         }));
     }
 
-    static boolean shouldSkipSearchForTask(int taskIndex, boolean workspaceHasEditableFragments) {
-        return taskIndex == 0 && workspaceHasEditableFragments;
-    }
-
     @NotNull
     CompletableFuture<TaskResult> runArchitectOnTaskAsync(int idx, ContextManager cm, String originalPrompt) {
         // Submit an LLM action that will perform optional search + architect work off the EDT.
         return cm.submitLlmAction("Execute Task " + (idx + 1), () -> {
             chrome.showOutputSpinner("Executing Task command...");
+            TaskResult result;
             try (var scope = cm.beginTask(originalPrompt, false)) {
-                // Optionally run SearchAgent (this is also background work)
-                // we are assuming we can skip search agent if there are items in the context to edit
-                // we are not using liveContext.isEmpty() here as we want to make
-                // sure to run search if there is nothing editable
-                boolean skipSearch = shouldSkipSearchForTask(
-                        idx, cm.liveContext().getEditableFragments().findAny().isPresent());
-                if (skipSearch) {
-                    logger.debug("Skipping SearchAgent for first task since workspace has editable fragments");
-                } else {
-                    var scanModel = cm.getService().getScanModel();
-                    SearchAgent agent =
-                            new SearchAgent(originalPrompt, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
-                    chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
-                    var searchResult = agent.execute();
-                    scope.append(searchResult);
-                    if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
-                        return searchResult;
-                    }
-                }
-
-                var planningModel = requireNonNull(cm.getService().getModel(Service.GEMINI_2_5_PRO));
-                var codeModel = requireNonNull(
-                        cm.getService().getModel(chrome.getInstructionsPanel().getSelectedModel()));
-
-                var architectAgent = new ArchitectAgent(cm, planningModel, codeModel, originalPrompt, scope);
-                var archResult = architectAgent.execute();
-                scope.append(archResult);
-
-                if (archResult.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {
-                    // Only auto-commit if we're processing multiple tasks as part of a queue
-                    if (queueActive) {
-                        autoCommitChanges(chrome, originalPrompt);
-                        cm.compressHistory(); // synchronous compress (avoid deadlock with async variant)
-                    }
-                }
-                return archResult;
+                result = runArchitectOnTaskInternal(idx, cm, originalPrompt, scope);
             } finally {
                 chrome.hideOutputSpinner();
                 cm.checkBalanceAndNotify();
             }
+
+            // do this AFTER the TaskScope closes with both search + architect results
+            if (result.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {
+                // Only auto-commit if we're processing multiple tasks as part of a queue
+                if (queueActive) {
+                    autoCommitChanges(chrome, originalPrompt);
+                    cm.compressHistory(); // synchronous compress (avoid deadlock with async variant)
+                }
+            }
+
+            return result;
         });
+    }
+
+    private @NotNull TaskResult runArchitectOnTaskInternal(
+            int idx, ContextManager cm, String originalPrompt, ContextManager.TaskScope scope) {
+        // Optionally run SearchAgent; we can skip search if this is the first task
+        // AND there are items in the context to edit (NOT context.isEmpty which includes task history)
+        boolean skipSearch =
+                idx == 0 && cm.liveContext().getEditableFragments().findAny().isPresent();
+        if (skipSearch) {
+            logger.debug("Skipping SearchAgent for first task since workspace has editable fragments");
+        } else {
+            var scanModel = cm.getService().getScanModel();
+            SearchAgent agent =
+                    new SearchAgent(originalPrompt, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+            chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
+            var searchResult = agent.execute();
+            scope.append(searchResult);
+            if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
+                return searchResult;
+            }
+        }
+
+        var planningModel = requireNonNull(cm.getService().getModel(Service.GEMINI_2_5_PRO));
+        var codeModel = requireNonNull(
+                cm.getService().getModel(chrome.getInstructionsPanel().getSelectedModel()));
+
+        var architectAgent = new ArchitectAgent(cm, planningModel, codeModel, originalPrompt, scope);
+        var archResult = architectAgent.execute();
+        scope.append(archResult);
+        return archResult;
     }
 
     private void startNextIfAny() {
