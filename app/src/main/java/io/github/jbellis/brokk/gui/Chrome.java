@@ -592,15 +592,22 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     /** Sets up .gitignore entries and adds .brokk project files to git */
     private void setupGitIgnore() {
-        if (getProject().hasGit()) {
-            logger.warn("setupGitIgnore called when gitPanel is null. Skipping.");
+        // If project does not have git, nothing to do.
+        if (!getProject().hasGit()) {
+            logger.debug("setupGitIgnore called but project has no git repository; skipping.");
             return;
         }
         contextManager.submitBackgroundTask("Updating .gitignore", () -> {
             try {
                 var project = getProject();
-                var gitRepo =
-                        (GitRepo) project.getRepo(); // This is the repo for the current project (worktree or main)
+                var repo = project.getRepo();
+                if (!(repo instanceof GitRepo gitRepo)) {
+                    // Defensive: project claims to have git but repo isn't a GitRepo instance.
+                    logger.warn(
+                            "setupGitIgnore: project {} reports git but repo is not a GitRepo instance. Skipping.",
+                            project.getRoot());
+                    return;
+                }
                 var gitTopLevel = project.getMasterRootPathForConfig(); // Shared .gitignore lives at the true top level
 
                 // Update .gitignore (located at gitTopLevel)
