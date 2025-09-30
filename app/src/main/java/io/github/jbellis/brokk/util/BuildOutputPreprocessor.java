@@ -59,7 +59,8 @@ public class BuildOutputPreprocessor {
      * @param contextManager The context manager to access project root and LLM
      * @return Processed output with extracted errors, or original output if processing fails
      */
-    public static String processForLlm(String rawBuildOutput, IContextManager contextManager) throws InterruptedException {
+    public static String processForLlm(String rawBuildOutput, IContextManager contextManager)
+            throws InterruptedException {
         logger.debug(
                 "Processing build output through standard pipeline. Original length: {} chars",
                 rawBuildOutput.length());
@@ -86,10 +87,7 @@ public class BuildOutputPreprocessor {
      */
     public static String maybePreprocessOutput(String buildOutput, IContextManager cm) throws InterruptedException {
         List<String> lines = Splitter.on('\n').splitToList(buildOutput);
-        logger.debug(
-                "Build output has {} lines, preprocessing threshold is {}",
-                lines.size(),
-                THRESHOLD_LINES);
+        logger.debug("Build output has {} lines, preprocessing threshold is {}", lines.size(), THRESHOLD_LINES);
         if (lines.size() <= THRESHOLD_LINES) {
             return buildOutput;
         }

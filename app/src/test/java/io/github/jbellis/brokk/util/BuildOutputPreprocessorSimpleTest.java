@@ -36,7 +36,8 @@ class BuildOutputPreprocessorSimpleTest {
     }
 
     @Test
-    void testPreprocessBuildOutput_exactlyAtThreshold_doesNotPreprocess(@TempDir Path tempDir) throws InterruptedException {
+    void testPreprocessBuildOutput_exactlyAtThreshold_doesNotPreprocess(@TempDir Path tempDir)
+            throws InterruptedException {
         var contextManager = new TestContextManager(tempDir, new NoOpConsoleIO());
         // Create output with exactly THRESHOLD_LINES lines
         String exactThresholdOutput = IntStream.range(0, BuildOutputPreprocessor.THRESHOLD_LINES)
