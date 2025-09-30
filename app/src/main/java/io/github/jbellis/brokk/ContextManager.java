@@ -1824,7 +1824,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         var messages = List.<ChatMessage>of(new UserMessage(modeMarker));
         var currentTaskFragment = new ContextFragment.TaskFragment(this, messages, input);
         var history = topContext().getTaskHistory();
-        ((Chrome) io).setLlmAndHistoryOutput(history, new TaskEntry(-1, currentTaskFragment, null));
+        io.setLlmAndHistoryOutput(history, new TaskEntry(-1, currentTaskFragment, null));
         io.llmOutput(input, ChatMessageType.USER);
 
         return new TaskScope(compressAtCommit);

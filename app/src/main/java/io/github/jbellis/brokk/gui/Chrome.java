@@ -1044,6 +1044,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
      *
      * <p>You should probably call ContextManager::beginTask instead of calling this directly.
      */
+    @Override
     public void setLlmAndHistoryOutput(List<TaskEntry> history, TaskEntry main) {
         SwingUtilities.invokeLater(() -> historyOutputPanel.setLlmAndHistoryOutput(history, main));
     }

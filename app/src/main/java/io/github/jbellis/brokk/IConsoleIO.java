@@ -34,6 +34,10 @@ public interface IConsoleIO {
         // pass
     }
 
+    default void setLlmAndHistoryOutput(List<TaskEntry> history, TaskEntry taskEntry) {
+        llmOutput(taskEntry.toString(), ChatMessageType.SYSTEM, false, false);
+    }
+
     enum MessageSubType {
         Run,
         Ask,
