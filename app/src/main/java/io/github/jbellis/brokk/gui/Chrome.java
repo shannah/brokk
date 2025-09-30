@@ -2587,6 +2587,27 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         label.setMinimumSize(label.getPreferredSize());
         label.setHorizontalAlignment(SwingConstants.CENTER);
         label.setToolTipText(tooltip);
+
+        // If this is a themed icon wrapper, ask it to ensure its delegate is resolved (non-blocking).
+        if (icon instanceof io.github.jbellis.brokk.gui.SwingUtil.ThemedIcon themedIcon) {
+            try {
+                themedIcon.ensureResolved();
+            } catch (Exception ignored) {
+                // Defensive: do not let icon resolution errors interrupt UI construction
+            }
+        }
+
+        // Ensure we repaint when the label becomes showing; some themed icons resolve lazily and
+        // a repaint on SHOWING ensures the resolved image is painted immediately (fixes hover-only reveal).
+        label.addHierarchyListener(e -> {
+            if ((e.getChangeFlags() & HierarchyEvent.SHOWING_CHANGED) != 0 && label.isShowing()) {
+                SwingUtilities.invokeLater(() -> {
+                    label.revalidate();
+                    label.repaint();
+                });
+            }
+        });
+
         return label;
     }
 
