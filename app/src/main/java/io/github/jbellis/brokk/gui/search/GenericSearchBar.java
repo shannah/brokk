@@ -158,8 +158,12 @@ public class GenericSearchBar extends JPanel {
 
         // Setup async search callback
         targetComponent.setSearchCompleteCallback(this::onSearchComplete);
+    }
 
-        // Add component listener to handle resizing
+    @Override
+    public void addNotify() {
+        super.addNotify();
+        // Register resize listener after component is added to hierarchy
         addComponentListener(new java.awt.event.ComponentAdapter() {
             @Override
             public void componentResized(java.awt.event.ComponentEvent e) {
