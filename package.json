@@ -10,6 +10,7 @@
     "jdeploy": {
         "jdk": false,
         "args": ["@jdeploy.args"],
+        "configFile": "{{ user.home }}/.config/brokk/jdeploy.json",
         "files" : [{
             "dir": ".",
             "includes": "jdeploy.args"
