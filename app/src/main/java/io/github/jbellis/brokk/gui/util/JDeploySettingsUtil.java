@@ -13,7 +13,9 @@ import java.util.Objects;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
-/** Utility to update the per-user JDeploy JSON config file (e.g. ~/.config/brokk/jdeploy.json) with JVM memory settings. */
+/**
+ * Utility to update the per-user JDeploy JSON config file (e.g. ~/.config/brokk/jdeploy.json) with JVM memory settings.
+ */
 public class JDeploySettingsUtil {
     private static final Logger logger = LogManager.getLogger(JDeploySettingsUtil.class);
 
@@ -27,9 +29,9 @@ public class JDeploySettingsUtil {
     /**
      * Update the per-user JSON config file with the provided JVM memory settings.
      *
-     * <p>Behavior: - Ensures the user's ~/.config/brokk directory exists. - Reads existing ~/.config/brokk/jdeploy.json if present,
-     * preserving all non -Xmx args. - Removes any existing -Xmx* args. - If settings.automatic() is false and
-     * manualMb() > 0, appends a single -XmxNNNm arg.
+     * <p>Behavior: - Ensures the user's ~/.config/brokk directory exists. - Reads existing ~/.config/brokk/jdeploy.json
+     * if present, preserving all non -Xmx args. - Removes any existing -Xmx* args. - If settings.automatic() is false
+     * and manualMb() > 0, appends a single -XmxNNNm arg.
      */
     public static void updateJvmMemorySettings(MainProject.JvmMemorySettings settings) {
         Objects.requireNonNull(settings, "settings");
@@ -48,9 +50,9 @@ public class JDeploySettingsUtil {
     }
 
     /**
-     * Update the per-user jdeploy config file at ~/.config/brokk/jdeploy.json.
-     * This preserves all non -Xmx args, removes any existing -Xmx args, and appends a single -XmxNNNm when manual
-     * memory is selected with a positive size. If the file or directory do not exist they will be created.
+     * Update the per-user jdeploy config file at ~/.config/brokk/jdeploy.json. This preserves all non -Xmx args,
+     * removes any existing -Xmx args, and appends a single -XmxNNNm when manual memory is selected with a positive
+     * size. If the file or directory do not exist they will be created.
      */
     private static void updateUserJdeployConfig(MainProject.JvmMemorySettings settings) {
         var home = System.getProperty("user.home");

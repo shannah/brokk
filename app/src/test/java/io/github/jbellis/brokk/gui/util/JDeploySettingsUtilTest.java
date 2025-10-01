@@ -15,9 +15,7 @@ class JDeploySettingsUtilTest {
     @TempDir
     Path tempHome;
 
-    /**
-     * Helper to invoke updateJvmMemorySettings with a custom user.home
-     */
+    /** Helper to invoke updateJvmMemorySettings with a custom user.home */
     private void updateWithCustomHome(MainProject.JvmMemorySettings settings, Path customHome) {
         String originalHome = System.getProperty("user.home");
         try {
@@ -30,9 +28,7 @@ class JDeploySettingsUtilTest {
         }
     }
 
-    /**
-     * Helper to read and parse the jdeploy.json file
-     */
+    /** Helper to read and parse the jdeploy.json file */
     private JsonNode readConfig(Path home) throws Exception {
         Path configFile = home.resolve(".config/brokk/jdeploy.json");
         assertTrue(Files.exists(configFile), "Config file should exist");
@@ -78,7 +74,8 @@ class JDeploySettingsUtilTest {
         Files.createDirectories(configDir);
         Path configFile = configDir.resolve("jdeploy.json");
 
-        String initialConfig = """
+        String initialConfig =
+                """
                 {
                   "args": [
                     "-Dfoo=bar",
@@ -184,7 +181,8 @@ class JDeploySettingsUtilTest {
         Files.createDirectories(configDir);
         Path configFile = configDir.resolve("jdeploy.json");
 
-        String initialConfig = """
+        String initialConfig =
+                """
                 {
                   "version": "1.0",
                   "args": ["-Xmx1024m"],
@@ -209,7 +207,8 @@ class JDeploySettingsUtilTest {
         Files.createDirectories(configDir);
         Path configFile = configDir.resolve("jdeploy.json");
 
-        String initialConfig = """
+        String initialConfig =
+                """
                 {
                   "args": [
                     "-Xmx512m",
