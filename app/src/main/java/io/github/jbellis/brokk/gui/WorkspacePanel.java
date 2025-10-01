@@ -2128,9 +2128,9 @@ public class WorkspacePanel extends JPanel {
 
     private void computeApproxTokensAsync(StringBuilder fullText, int totalLines) {
         contextManager
-                .submitBackgroundTask("Compute token estimate", () -> Messages.getApproximateTokens(fullText.toString()))
+                .submitBackgroundTask(
+                        "Compute token estimate", () -> Messages.getApproximateTokens(fullText.toString()))
                 .thenAccept(approxTokens -> SwingUtilities.invokeLater(() -> {
-
                     var innerLabel = safeGetLabel(0);
                     var costLabel = safeGetLabel(1);
 
@@ -2217,7 +2217,9 @@ public class WorkspacePanel extends JPanel {
                                 approxTokens, selectedModelName, selectedModelMaxInputTokens);
 
                         JTextArea warningArea = createWarningTextArea(
-                                warningText, Color.YELLOW, warningTooltip); // Standard yellow might be hard to see on some themes
+                                warningText,
+                                Color.YELLOW,
+                                warningTooltip); // Standard yellow might be hard to see on some themes
                         warningPanel.add(warningArea, BorderLayout.CENTER);
                     }
 
