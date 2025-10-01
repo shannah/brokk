@@ -30,6 +30,7 @@ import io.github.jbellis.brokk.gui.git.GitWorktreeTab;
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
 import io.github.jbellis.brokk.gui.util.AddMenuFactory;
 import io.github.jbellis.brokk.gui.util.ContextMenuUtils;
+import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.wand.WandButton;
 import io.github.jbellis.brokk.prompts.CodePrompts;
@@ -117,6 +118,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private @Nullable JComponent inputLayeredPane;
     private ActionGroupPanel actionGroupPanel;
     private @Nullable TitledBorder instructionsTitledBorder;
+    private @Nullable SplitButton branchSplitButton;
 
     // Card panel that holds the two mutually-exclusive checkboxes so they occupy the same slot.
     private @Nullable JPanel optionsPanel;
@@ -558,7 +560,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var cm = chrome.getContextManager();
         var project = chrome.getProject();
-        var branchSplitButton = new SplitButton("No Git");
+        this.branchSplitButton = new SplitButton("No Git");
         branchSplitButton.setToolTipText("Current Git branch — click to create/select branches");
         branchSplitButton.setFocusable(true);
 
@@ -575,11 +577,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             try {
                 if (project.hasGit()) {
                     IGitRepo repo = project.getRepo();
-                    List<String> branches;
+                    List<String> localBranches;
                     if (repo instanceof GitRepo gitRepo) {
-                        branches = gitRepo.listLocalBranches();
+                        localBranches = gitRepo.listLocalBranches();
                     } else {
-                        branches = List.of();
+                        localBranches = List.of();
                     }
                     String current = repo.getCurrentBranch();
 
@@ -590,7 +592,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         menu.add(new JSeparator());
                     }
 
-                    for (var b : branches) {
+                    // Local branches
+                    for (var b : localBranches) {
                         JMenuItem item = new JMenuItem(b);
                         item.addActionListener(ev -> {
                             // Checkout in background via ContextManager to get spinner/cancel behavior
@@ -600,9 +603,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                     r.checkout(b);
                                     SwingUtilities.invokeLater(() -> {
                                         try {
-                                            branchSplitButton.setText("branch: " + r.getCurrentBranch());
+                                            var currentBranch = r.getCurrentBranch();
+                                            var displayBranch = currentBranch.isBlank() ? b : currentBranch;
+                                            refreshBranchUi(displayBranch);
                                         } catch (Exception ex) {
-                                            logger.debug("Error updating branch label after checkout", ex);
+                                            logger.debug("Error updating branch UI after checkout", ex);
+                                            refreshBranchUi(b);
                                         }
                                         chrome.systemOutput("Checked out: " + b);
                                     });
@@ -615,6 +621,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         });
                         menu.add(item);
                     }
+
                 } else {
                     JMenuItem noRepo = new JMenuItem("No Git repository");
                     noRepo.setEnabled(false);
@@ -664,9 +671,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                                 }
                                 SwingUtilities.invokeLater(() -> {
                                     try {
-                                        branchSplitButton.setText("branch: " + r.getCurrentBranch());
+                                        refreshBranchUi(sanitized);
                                     } catch (Exception ex) {
-                                        logger.debug("Error updating branch label after branch creation", ex);
+                                        logger.debug("Error updating branch UI after branch creation", ex);
                                     }
                                     chrome.systemOutput("Created and checked out: " + sanitized);
                                 });
@@ -702,7 +709,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 } catch (Exception e) {
                     logger.debug("Error registering popup menu", e);
                 }
-                menu.show(branchSplitButton, 0, branchSplitButton.getHeight());
+                var bsb = requireNonNull(branchSplitButton);
+                menu.show(bsb, 0, bsb.getHeight());
             } catch (Exception ex) {
                 logger.error("Error showing branch dropdown", ex);
             }
@@ -1000,6 +1008,43 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             instructionsTitledBorder.setTitle(askMode ? "Instructions - Ask" : "Instructions - Code");
             revalidate();
             repaint();
+        }
+    }
+
+    /** Updates the Project Files drawer title to reflect the current Git branch. Ensures EDT execution. */
+    private void updateProjectFilesDrawerTitle(String branchName) {
+        var panel = chrome.getProjectFilesPanel();
+        if (SwingUtilities.isEventDispatchThread()) {
+            GitUiUtil.updatePanelBorderWithBranch(panel, "Project Files", branchName);
+        } else {
+            SwingUtilities.invokeLater(() -> GitUiUtil.updatePanelBorderWithBranch(panel, "Project Files", branchName));
+        }
+    }
+
+    /**
+     * Public hook to refresh branch UI (branch selector label and Project Files drawer title). Ensures EDT compliance
+     * and no-ops if not a git project or selector not initialized.
+     */
+    public void refreshBranchUi(String branchName) {
+        Runnable task = () -> {
+            if (!chrome.getProject().hasGit()) {
+                return;
+            }
+            if (branchSplitButton == null) {
+                // Selector not initialized (e.g., no Git or UI not yet built) -> no-op
+                return;
+            }
+            branchSplitButton.setText("branch: " + branchName);
+            updateProjectFilesDrawerTitle(branchName);
+
+            // Also notify the Git Log tab to refresh and select the current branch
+            chrome.updateLogTab();
+            chrome.selectCurrentBranchInLogTab();
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            task.run();
+        } else {
+            SwingUtilities.invokeLater(task);
         }
     }
 
