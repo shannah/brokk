@@ -22,6 +22,7 @@ import io.github.jbellis.brokk.util.Messages;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
@@ -68,6 +69,8 @@ public class CodeAgent {
      * @return A TaskResult containing the conversation history and original file contents
      */
     public TaskResult runTask(String userInput, Set<Option> options) {
+        // pause watching for external changes (so they don't get added to activity history while we're still making changes);
+        // this means that we're responsible for refreshing the analyzer when we make changes
         contextManager.getAnalyzerWrapper().pause();
         try {
             return runTaskInternal(userInput, options);
@@ -174,7 +177,14 @@ public class CodeAgent {
             es = parseOutcome.es();
 
             // Update analyzer before applying blocks
-            contextManager.getAnalyzerWrapper().updateFiles(es.changedFiles());
+            try {
+                contextManager.getAnalyzerWrapper().updateFiles(es.changedFiles()).get();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                continue; // let main loop interruption check handle
+            } catch (ExecutionException e) {
+                throw new RuntimeException(e);
+            }
 
             // APPLY PHASE applies blocks
             var applyOutcome = applyPhase(cs, es, metrics);

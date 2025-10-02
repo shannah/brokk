@@ -54,20 +54,7 @@ public final class TestContextManager implements IContextManager {
         this.stubService = new TestService(this.project);
         this.liveContext = new Context(this, "Test context");
 
-        // Quick TaskRunner that never invokes the provided Callable; it returns a completed future
-        // containing the mockAnalyzer. This prevents AnalyzerWrapper from performing real work during tests.
-        ContextManager.TaskRunner quickRunner = new ContextManager.TaskRunner() {
-            @Override
-            public <T> Future<T> submit(String taskDescription, Callable<T> task) {
-                CompletableFuture<T> f = new CompletableFuture<>();
-                @SuppressWarnings("unchecked")
-                T cast = (T) analyzer;
-                f.complete(cast);
-                return f;
-            }
-        };
-
-        this.analyzerWrapper = new AnalyzerWrapper(this.project, quickRunner, /*listener=*/ null, this.consoleIO);
+        this.analyzerWrapper = new AnalyzerWrapper(this.project, null, this.consoleIO);
     }
 
     public TestContextManager(Path projectRoot, Set<String> editableFiles) {

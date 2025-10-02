@@ -53,7 +53,7 @@ import org.treesitter.*;
  * how to map a capture to a {@link CodeUnit}.
  */
 public abstract class TreeSitterAnalyzer
-        implements IAnalyzer, SkeletonProvider, SourceCodeProvider, IncrementalUpdateProvider, TypeAliasProvider {
+        implements IAnalyzer, SkeletonProvider, SourceCodeProvider, TypeAliasProvider {
     protected static final Logger log = LoggerFactory.getLogger(TreeSitterAnalyzer.class);
     // Native library loading is assumed automatic by the io.github.bonede.tree_sitter library.
 
