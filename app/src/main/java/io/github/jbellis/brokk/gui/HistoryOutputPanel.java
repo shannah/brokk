@@ -1064,7 +1064,7 @@ public class HistoryOutputPanel extends JPanel {
                 llm.setOutput(chrome);
 
                 var system = new SystemMessage(
-                        "You are generating an actionable, incremental task list based ONLY on the provided capture. "
+                        "You are generating an actionable, incremental task list based on the provided capture."
                                 + "Do not speculate beyond it. You MUST produce tasks via the tool call createTaskList(List<String>). "
                                 + "Do not output free-form text.");
                 var user = new UserMessage(
@@ -1074,11 +1074,13 @@ public class HistoryOutputPanel extends JPanel {
                         </capture>
 
                         Instructions:
-                        - Extract 3-8 tasks that are right-sized (~2 hours each), each with a single concrete goal.
-                        - Each task must end with a verification in brackets: [Verify: <test or manual check>].
-                        - Prefer tasks that keep the project buildable and testable after each step.
-                        - Avoid multi-goal items; split if needed.
-                        - Avoid external/non-code tasks.
+                        - Prefer using tasks that are already defined in the capture.
+                        - If no such tasks exist, use your best judgement with the following guidelines:
+                          - Extract 3-8 tasks that are right-sized (~2 hours each), each with a single concrete goal.
+                          - Prefer tasks that keep the project buildable and testable after each step.
+                          - Avoid multi-goal items; split if needed.
+                          - Avoid external/non-code tasks.
+                        - Include all the relevant details that you see in the capture for each task, but do not embellish or speculate.
 
                         Call the tool createTaskList(List<String>) with your final list. Do not include any explanation outside the tool call.
                         """
