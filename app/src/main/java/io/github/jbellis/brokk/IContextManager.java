@@ -235,7 +235,8 @@ public interface IContextManager {
                                     .noneMatch(lang -> lang.getExtensions().contains(ext));
                 })
                 .collect(Collectors.toSet());
-        if (unsupported.isEmpty()) {
+        // temporarily disabled, see https://github.com/BrokkAi/brokk/issues/1250
+        if (false) {
             flags.add(CodePrompts.InstructionsFlags.SYNTAX_AWARE);
         } else {
             logger.debug("Syntax-unsupported files are {}", unsupported);
