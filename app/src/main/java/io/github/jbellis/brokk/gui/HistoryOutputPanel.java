@@ -1747,18 +1747,9 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     private boolean isGroupingBoundary(Context ctx) {
-        if (ctx.isAiResult() || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction())) {
-            return true;
-        }
-        // Use the cached file diffs to determine boundaries.
-        // If we don't have a cached diff yet, schedule it and do not treat as a boundary until available.
-        var diffs = diffCache.get(ctx.id());
-        if (diffs == null) {
-            scheduleDiffComputation(ctx);
-            return false;
-        }
-        // Boundary only when there are actual file changes
-        return !diffs.isEmpty();
+        // Grouping boundaries are independent of diff presence.
+        // Boundary when this is an AI result, or an explicit "dropped all context" separator.
+        return ctx.isAiResult() || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction());
     }
 
     private static String firstWord(String text) {
