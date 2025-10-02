@@ -444,7 +444,8 @@ public class CodeAgent {
 
             if (updatedConsecutiveParseFailures > MAX_PARSE_ATTEMPTS) {
                 reportComplete("Parse error limit reached; ending task.");
-                return new Step.Fatal(new TaskResult.StopDetails(TaskResult.StopReason.PARSE_ERROR));
+                return new Step.Fatal(new TaskResult.StopDetails(
+                        TaskResult.StopReason.PARSE_ERROR, "Parse error limit reached; ending task."));
             }
 
             var nextCs = new ConversationState(cs.taskMessages(), messageForRetry, cs.turnStartIndex());
@@ -470,7 +471,8 @@ public class CodeAgent {
                 updatedConsecutiveParseFailures = es.consecutiveParseFailures() + 1;
                 if (updatedConsecutiveParseFailures > MAX_PARSE_ATTEMPTS) {
                     reportComplete("Parse error limit reached; ending task.");
-                    return new Step.Fatal(new TaskResult.StopDetails(TaskResult.StopReason.PARSE_ERROR));
+                    return new Step.Fatal(new TaskResult.StopDetails(
+                            TaskResult.StopReason.PARSE_ERROR, "Parse error limit reached; ending task."));
                 }
                 messageForRetry = new UserMessage(
                         "It looks like the response was cut off before you provided any code blocks. Please continue with your response.");
@@ -738,13 +740,14 @@ public class CodeAgent {
                 }
 
                 if (updatedConsecutiveApplyFailures >= MAX_APPLY_FAILURES) {
-                    var msg = "Unable to apply %d blocks to %s"
-                            .formatted(
-                                    failedBlocks.size(),
-                                    failedBlocks.stream()
-                                            .map(b -> b.block().rawFileName())
-                                            .collect(Collectors.joining(",")));
-                    var details = new TaskResult.StopDetails(TaskResult.StopReason.APPLY_ERROR, msg);
+                    var files = failedBlocks.stream()
+                            .map(b -> b.block().rawFileName())
+                            .collect(Collectors.joining(","));
+                    var detailMsg = "Apply failed %d consecutive times; unable to apply %d blocks to %s"
+                            .formatted(updatedConsecutiveApplyFailures, failedBlocks.size(), files);
+                    reportComplete(
+                            "Apply failed %d consecutive times; aborting.".formatted(updatedConsecutiveApplyFailures));
+                    var details = new TaskResult.StopDetails(TaskResult.StopReason.APPLY_ERROR, detailMsg);
                     return new Step.Fatal(details);
                 } else { // Apply failed, but not yet time for full fallback -> ask LLM to retry
                     if (metrics != null) {
