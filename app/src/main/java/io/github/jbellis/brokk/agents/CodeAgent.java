@@ -12,6 +12,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.Llm.StreamingResult;
+import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.prompts.CodePrompts;
@@ -22,6 +23,7 @@ import io.github.jbellis.brokk.util.Messages;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
+import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -83,8 +85,8 @@ public class CodeAgent {
         var collectMetrics = "true".equalsIgnoreCase(System.getenv("BRK_CODEAGENT_METRICS"));
         @Nullable Metrics metrics = collectMetrics ? new Metrics() : null;
 
-        var io = contextManager.getIo();
         // Create Coder instance with the user's input as the task description
+        var io = contextManager.getIo();
         var coder = contextManager.getLlm(model, "Code: " + userInput, true);
         coder.setOutput(io);
 
@@ -122,6 +124,11 @@ public class CodeAgent {
                 stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED);
                 break;
             }
+
+            // "Update everything in the workspace" wouldn't be necessary if we were 100% sure that the analyzer were up to date
+            // before we paused it, but empirically that is not the case as of this writing.
+            var filesToRefresh = es.changedFiles().isEmpty() ? contextManager.getFilesInContext() : es.changedFiles();
+            var analyzerFuture = contextManager.getAnalyzerWrapper().updateFiles(filesToRefresh);
 
             // Make the LLM request
             StreamingResult streamingResult;
@@ -176,9 +183,9 @@ public class CodeAgent {
             cs = parseOutcome.cs();
             es = parseOutcome.es();
 
-            // Update analyzer before applying blocks
+            // Wait for analyzer update before applying blocks
             try {
-                contextManager.getAnalyzerWrapper().updateFiles(es.changedFiles()).get();
+                analyzerFuture.get();
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 continue; // let main loop interruption check handle
