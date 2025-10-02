@@ -34,8 +34,6 @@ public class JDeploySettingsUtil {
      * and manualMb() > 0, appends a single -XmxNNNm arg.
      */
     public static void updateJvmMemorySettings(MainProject.JvmMemorySettings settings) {
-        Objects.requireNonNull(settings, "settings");
-
         var home = System.getProperty("user.home");
         if (home == null || home.isBlank()) {
             logger.warn("Cannot determine user.home; skipping JDeploy config update");
