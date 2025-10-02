@@ -15,8 +15,10 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.ThemeAware;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
+import io.github.jbellis.brokk.util.ContentDiffUtils;
 import io.github.jbellis.brokk.util.Messages;
 import io.github.jbellis.brokk.util.SlidingWindowCache;
 import java.awt.*;
@@ -285,9 +287,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
         return btnUndo;
     }
 
-    private final JButton btnUndo = new JButton("Undo"); // Initialize to prevent NullAway issues
-    private final JButton btnRedo = new JButton("Redo");
-    private final JButton btnSaveAll = new JButton("Save");
+    private final MaterialButton btnUndo = new MaterialButton("Undo"); // Initialize to prevent NullAway issues
+    private final MaterialButton btnRedo = new MaterialButton("Redo");
+    private final MaterialButton btnSaveAll = new MaterialButton("Save");
 
     // Components for undo/redo/save group that need to be hidden together
     private @Nullable Component undoRedoGroupSeparator;
@@ -295,11 +297,11 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
     private @Nullable Component undoRedoGroupStrutAfter1;
     private @Nullable Component undoRedoGroupStrutAfter2;
     private @Nullable Component undoRedoGroupStrutAfter3;
-    private final JButton captureDiffButton = new JButton("Capture Diff");
-    private final JButton btnNext = new JButton("Next Change");
-    private final JButton btnPrevious = new JButton("Previous Change");
-    private final JButton btnPreviousFile = new JButton("Previous File");
-    private final JButton btnNextFile = new JButton("Next File");
+    private final MaterialButton captureDiffButton = new MaterialButton("Capture Diff");
+    private final MaterialButton btnNext = new MaterialButton("Next Change");
+    private final MaterialButton btnPrevious = new MaterialButton("Previous Change");
+    private final MaterialButton btnPreviousFile = new MaterialButton("Previous File");
+    private final MaterialButton btnNextFile = new MaterialButton("Next File");
     private final JLabel fileIndicatorLabel = new JLabel(""); // Initialize
 
     // Flag to track when layout hierarchy needs reset after navigation
@@ -538,7 +540,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             }
 
             var fragment = new ContextFragment.StringFragment(contextManager, diffText, description, syntaxStyle);
-            contextManager.submitContextTask("Adding diff to context", () -> {
+            contextManager.submitContextTask(() -> {
                 contextManager.addVirtualFragment(fragment);
                 contextManager.getIo().systemOutput("Added captured diff to context: " + description);
             });
@@ -723,7 +725,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
                 var panelFiles = p.getFilesBeingSaved();
                 for (var file : panelFiles) {
                     // Check if this file is already in the current workspace context
-                    var editableFilesList = currentContext.editableFiles().toList();
+                    var editableFilesList = currentContext.fileFragments().toList();
                     boolean inWorkspace = editableFilesList.stream()
                             .anyMatch(f -> f instanceof ContextFragment.ProjectPathFragment ppf
                                     && ppf.file().equals(file));
@@ -734,7 +736,7 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             }
 
             if (!externalFiles.isEmpty()) {
-                contextManager.editFiles(externalFiles);
+                contextManager.addFiles(externalFiles);
             }
 
             // Step 1: Collect changes (on EDT) before writing to disk
@@ -823,11 +825,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
             // Per-file diffs
             for (var entry : mergedByFilenameSuccessful.values()) {
                 var filename = entry.filename();
-                var originalLines = entry.originalContent().lines().collect(Collectors.toList());
-                var currentLines = entry.currentContent().lines().collect(Collectors.toList());
-                var patch = DiffUtils.diff(originalLines, currentLines, (DiffAlgorithmListener) null);
-                var unified = UnifiedDiffUtils.generateUnifiedDiff(filename, filename, originalLines, patch, 3);
-                var diffText = String.join("\n", unified);
+                var diffResult = ContentDiffUtils.computeDiffResult(
+                        entry.originalContent(), entry.currentContent(), filename, filename, 3);
+                var diffText = diffResult.diff();
 
                 var pf = entry.projectFile();
                 var header = "### " + (pf != null ? pf.toString() : filename);
@@ -853,7 +853,9 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware {
                     TaskResult.StopReason.SUCCESS);
 
             // Add a single history entry for the whole batch
-            contextManager.addToHistory(result, false);
+            try (var scope = contextManager.beginTask("", false)) {
+                scope.append(result);
+            }
             logger.info("Saved changes to {} file(s): {}", fileCount, actionDescription);
 
             // Step 4: Finalize panels selectively and refresh UI

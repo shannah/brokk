@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import com.jakewharton.disklrucache.DiskLruCache;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
@@ -157,8 +158,9 @@ public final class MergeOneFile {
             if (Thread.interrupted()) throw new InterruptedException();
             io.llmOutput("\n# Merge %s (step %d)".formatted(file, step), ChatMessageType.AI, true, false);
 
-            var result = llm.sendRequest(List.copyOf(currentSessionMessages), toolSpecs, ToolChoice.REQUIRED, true);
-            if (result.error() != null || result.isEmpty()) {
+            var result = llm.sendRequest(
+                    List.copyOf(currentSessionMessages), new ToolContext(toolSpecs, ToolChoice.REQUIRED, this), true);
+            if (result.error() != null) {
                 var msg = result.error() != null ? result.error().getMessage() : "Empty response";
                 io.systemOutput("LLM error in merge loop: " + msg);
                 break;
@@ -180,7 +182,7 @@ public final class MergeOneFile {
             for (var req : sorted) {
                 if (Thread.interrupted()) throw new InterruptedException();
 
-                var explanation = ToolRegistry.getExplanationForToolRequest(req);
+                var explanation = cm.getToolRegistry().getExplanationForToolRequest(this, req);
                 if (!explanation.isBlank()) {
                     io.llmOutput("\n" + explanation, ChatMessageType.AI);
                 }
@@ -517,7 +519,7 @@ public final class MergeOneFile {
                         + "\nYou can also make non-conflict edits if necessary to fix related issues caused by the merge.";
         var agent = new CodeAgent(cm, codeModel, cm.getIo());
         var result = agent.runSingleFileEdit(
-                requireNonNull(file),
+                file,
                 instructions,
                 requireNonNull(currentSessionMessages),
                 EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS));

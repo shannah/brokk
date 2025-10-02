@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.context;
 
+import com.fasterxml.jackson.annotation.JsonProperty;
 import com.fasterxml.jackson.annotation.JsonTypeInfo;
 import java.util.List;
 import java.util.Map;
@@ -41,7 +42,9 @@ public class FragmentDtos {
                     PasteImageFragmentDto,
                     StacktraceFragmentDto,
                     CallGraphFragmentDto,
+                    CodeFragmentDto,
                     HistoryFragmentDto,
+                    BuildFragmentDto,
                     FrozenFragmentDto {
         String id();
     }
@@ -137,8 +140,11 @@ public class FragmentDtos {
         }
     }
 
-    /** DTO for UsageFragment - contains target identifier. */
-    public record UsageFragmentDto(String id, String targetIdentifier)
+    /** DTO for UsageFragment - contains target identifier and includeTestFiles flag. */
+    public record UsageFragmentDto(
+            String id,
+            String targetIdentifier,
+            @JsonProperty(value = "includeTestFiles", defaultValue = "false") boolean includeTestFiles)
             implements VirtualFragmentDto { // id changed to String
         public UsageFragmentDto {
             if (targetIdentifier.isEmpty()) {
@@ -164,7 +170,7 @@ public class FragmentDtos {
     }
 
     /** DTO for PasteTextFragment - contains pasted text with resolved description. */
-    public record PasteTextFragmentDto(String id, String contentId, String description)
+    public record PasteTextFragmentDto(String id, String contentId, String description, @Nullable String syntaxStyle)
             implements VirtualFragmentDto { // id changed to String
     }
 
@@ -195,12 +201,20 @@ public class FragmentDtos {
         }
     }
 
+    /** DTO for CodeFragment - contains the referenced code unit. */
+    public record CodeFragmentDto(String id, CodeUnitDto unit) implements VirtualFragmentDto { // id changed to String
+    }
+
     /** DTO for HistoryFragment - contains task history entries. */
     public record HistoryFragmentDto(String id, List<TaskEntryDto> history)
             implements VirtualFragmentDto { // id changed to String
         public HistoryFragmentDto {
             history = List.copyOf(history);
         }
+    }
+
+    /** DTO for BuildFragment - contains build output text. */
+    public record BuildFragmentDto(String id, String contentId) implements VirtualFragmentDto { // id changed to String
     }
 
     /** DTO for FrozenFragment - contains frozen state of any fragment type. */
@@ -214,7 +228,8 @@ public class FragmentDtos {
             String syntaxStyle,
             Set<ProjectFileDto> files,
             String originalClassName,
-            Map<String, String> meta)
+            Map<String, String> meta,
+            @Nullable String repr)
             implements VirtualFragmentDto, ReferencedFragmentDto {
         public FrozenFragmentDto {
             if (originalType.isEmpty()) {

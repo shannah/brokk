@@ -210,7 +210,7 @@ public class EditBlock {
             } catch (GitAPIException e) {
                 io.toolError("Failed to add %s to git".formatted(newFiles), "Error");
             }
-            contextManager.editFiles(newFiles);
+            contextManager.addFiles(newFiles);
         }
 
         changedFiles.keySet().retainAll(succeeded.values());
@@ -621,7 +621,6 @@ public class EditBlock {
      * it's not null.
      */
     private static ContentLines prep(String content) {
-        Objects.requireNonNull(content, "Content cannot be null");
         // ensure it ends with newline
         if (!content.isEmpty() && !content.endsWith("\n")) {
             content += "\n";
@@ -665,7 +664,7 @@ public class EditBlock {
         }
 
         // 2. Check editable files (case-insensitive basename match)
-        var editableMatches = cm.getEditableFiles().stream()
+        var editableMatches = cm.getFilesInContext().stream()
                 .filter(f -> f.getFileName().equalsIgnoreCase(file.getFileName()))
                 .toList();
         if (editableMatches.size() == 1) {

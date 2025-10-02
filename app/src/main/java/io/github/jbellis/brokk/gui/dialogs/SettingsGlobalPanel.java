@@ -1,8 +1,8 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
-import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.Service;
+import io.github.jbellis.brokk.SettingsChangeListener;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.GuiTheme;
 import io.github.jbellis.brokk.gui.SwingUtil.ThemedIcon;
@@ -19,6 +19,7 @@ import io.github.jbellis.brokk.mcp.McpServer;
 import io.github.jbellis.brokk.mcp.McpUtils;
 import io.github.jbellis.brokk.mcp.StdioMcpServer;
 import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.util.GlobalUiSettings;
 import io.modelcontextprotocol.spec.McpSchema;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
@@ -47,7 +48,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-public class SettingsGlobalPanel extends JPanel implements ThemeAware {
+public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsChangeListener {
     private static final Logger logger = LogManager.getLogger(SettingsGlobalPanel.class);
     public static final String MODELS_TAB_TITLE = "Favorite Models"; // Used for targeting this tab
 
@@ -72,7 +73,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
     private BrowserLabel signupLabel = new BrowserLabel("", ""); // Initialized with dummy values
 
     @Nullable
-    private JTextField gitHubTokenField; // Null if GitHub tab not shown
+    private JCheckBox forceToolEmulationCheckbox; // Dev-only
+
+    @Nullable
+    private GitHubSettingsPanel gitHubSettingsPanel; // Null if GitHub tab not shown
 
     private DefaultListModel<McpServer> mcpServersListModel = new DefaultListModel<>();
     private JList<McpServer> mcpServersList = new JList<>(mcpServersListModel);
@@ -93,6 +97,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
 
     private JSpinner terminalFontSizeSpinner = new JSpinner();
 
+    private JRadioButton startupOpenLastRadio = new JRadioButton("Open last project (recommended)");
+    private JRadioButton startupOpenAllRadio = new JRadioButton("Reopen all previously open projects");
+    private JCheckBox persistPerProjectWindowCheckbox = new JCheckBox("Save window position per project (recommended)");
+
     private JTabbedPane globalSubTabbedPane = new JTabbedPane(JTabbedPane.TOP);
 
     public SettingsGlobalPanel(Chrome chrome, SettingsDialog parentDialog) {
@@ -101,6 +109,9 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         setLayout(new BorderLayout());
         initComponents(); // This will fully initialize or conditionally initialize fields
         loadSettings();
+
+        // Register for settings change notifications
+        MainProject.addSettingsChangeListener(this);
     }
 
     private void initComponents() {
@@ -127,16 +138,368 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         boolean shouldShowGitHubTab = project.isGitHubRepo();
 
         if (shouldShowGitHubTab) {
-            var gitHubPanel = createGitHubPanel();
+            gitHubSettingsPanel = new GitHubSettingsPanel(chrome.getContextManager(), this);
             globalSubTabbedPane.addTab(
-                    SettingsDialog.GITHUB_SETTINGS_TAB_NAME, null, gitHubPanel, "GitHub integration settings");
+                    SettingsDialog.GITHUB_SETTINGS_TAB_NAME, null, gitHubSettingsPanel, "GitHub integration settings");
         }
 
         // MCP Servers Tab
         var mcpPanel = createMcpPanel();
         globalSubTabbedPane.addTab("MCP Servers", null, mcpPanel, "MCP server configuration");
 
+        // Startup Tab
+        var startupPanel = createStartupPanel();
+        globalSubTabbedPane.addTab("Startup", null, startupPanel, "Startup behavior");
+
+        // Keybindings Tab (wrapped in a scroll pane to ensure visibility on smaller screens)
+        var keybindingsPanel = createKeybindingsPanel();
+        var keybindingsScroll = new JScrollPane(keybindingsPanel);
+        keybindingsScroll.setBorder(BorderFactory.createEmptyBorder());
+        keybindingsScroll.setHorizontalScrollBarPolicy(ScrollPaneConstants.HORIZONTAL_SCROLLBAR_AS_NEEDED);
+        keybindingsScroll.setVerticalScrollBarPolicy(ScrollPaneConstants.VERTICAL_SCROLLBAR_AS_NEEDED);
+        globalSubTabbedPane.addTab("Keybindings", null, keybindingsScroll, "Configure keyboard shortcuts");
+
         add(globalSubTabbedPane, BorderLayout.CENTER);
+    }
+
+    private JPanel createKeybindingsPanel() {
+        var panel = new JPanel(new GridBagLayout());
+        panel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        final java.util.concurrent.atomic.AtomicInteger row = new java.util.concurrent.atomic.AtomicInteger(0);
+
+        class RowAdder {
+            void add(String id, String label) {
+                javax.swing.KeyStroke def = defaultFor(id);
+                javax.swing.KeyStroke cur = io.github.jbellis.brokk.util.GlobalUiSettings.getKeybinding(id, def);
+
+                int r = row.getAndIncrement();
+                var gbcLabel = new GridBagConstraints();
+                gbcLabel.insets = new Insets(4, 6, 4, 6);
+                gbcLabel.anchor = GridBagConstraints.WEST;
+                gbcLabel.gridx = 0;
+                gbcLabel.gridy = r;
+                gbcLabel.weightx = 0.0;
+                panel.add(new JLabel(label + ":"), gbcLabel);
+
+                var field = new JTextField(formatKeyStroke(cur));
+                field.setEditable(false);
+                var gbcField = new GridBagConstraints();
+                gbcField.insets = new Insets(4, 6, 4, 6);
+                gbcField.fill = GridBagConstraints.HORIZONTAL;
+                gbcField.gridx = 1;
+                gbcField.gridy = r;
+                gbcField.weightx = 1.0;
+                panel.add(field, gbcField);
+
+                var setBtn = new MaterialButton("Set");
+                var gbcSet = new GridBagConstraints();
+                gbcSet.insets = new Insets(4, 6, 4, 6);
+                gbcSet.gridx = 2;
+                gbcSet.gridy = r;
+                gbcSet.weightx = 0.0;
+                panel.add(setBtn, gbcSet);
+
+                var clearBtn = new MaterialButton("Clear");
+                var gbcClear = new GridBagConstraints();
+                gbcClear.insets = new Insets(4, 6, 4, 6);
+                gbcClear.gridx = 3;
+                gbcClear.gridy = r;
+                gbcClear.weightx = 0.0;
+                panel.add(clearBtn, gbcClear);
+
+                setBtn.addActionListener(ev -> {
+                    javax.swing.KeyStroke captured = captureKeyStroke(panel);
+                    if ("global.closeWindow".equals(id)
+                            && captured.getKeyCode() == java.awt.event.KeyEvent.VK_ESCAPE
+                            && captured.getModifiers() == 0) {
+                        JOptionPane.showMessageDialog(
+                                panel,
+                                "ESC alone cannot be used for Close Window.",
+                                "Invalid Shortcut",
+                                JOptionPane.WARNING_MESSAGE);
+                        return;
+                    }
+
+                    // Check for conflicts
+                    String conflictingAction = findConflictingKeybinding(captured, id);
+                    if (conflictingAction != null) {
+                        int result = JOptionPane.showConfirmDialog(
+                                panel,
+                                String.format(
+                                        "This shortcut is already used by '%s'. Do you want to reassign it?",
+                                        conflictingAction),
+                                "Shortcut Conflict",
+                                JOptionPane.YES_NO_OPTION,
+                                JOptionPane.WARNING_MESSAGE);
+                        if (result != JOptionPane.YES_OPTION) {
+                            return;
+                        }
+                    }
+
+                    io.github.jbellis.brokk.util.GlobalUiSettings.saveKeybinding(id, captured);
+                    field.setText(formatKeyStroke(captured));
+                    // Immediately refresh global keybindings so changes take effect
+                    try {
+                        chrome.refreshKeybindings();
+                    } catch (Exception ex) {
+                        logger.debug("refreshKeybindings failed (non-fatal)", ex);
+                    }
+                    JOptionPane.showMessageDialog(panel, "Saved and applied.");
+                });
+
+                clearBtn.addActionListener(ev -> {
+                    io.github.jbellis.brokk.util.GlobalUiSettings.saveKeybinding(id, def);
+                    field.setText(formatKeyStroke(def));
+                });
+            }
+        }
+
+        RowAdder adder = new RowAdder();
+        // Instructions panel
+        adder.add("instructions.submit", "Submit (Ctrl/Cmd+Enter)");
+        adder.add("instructions.toggleMode", "Toggle Code/Ask");
+
+        // Global text editing
+        adder.add("global.undo", "Undo");
+        adder.add("global.redo", "Redo");
+        adder.add("global.copy", "Copy");
+        adder.add("global.paste", "Paste");
+
+        // Voice and interface
+        adder.add("global.toggleMicrophone", "Toggle Microphone");
+
+        // Panel navigation
+        adder.add("panel.switchToProjectFiles", "Switch to Project Files");
+        adder.add("panel.switchToChanges", "Switch to Changes");
+        adder.add("panel.switchToWorktrees", "Switch to Worktrees");
+        adder.add("panel.switchToLog", "Switch to Log");
+        adder.add("panel.switchToPullRequests", "Switch to Pull Requests");
+        adder.add("panel.switchToIssues", "Switch to Issues");
+
+        // Drawer navigation
+        adder.add("drawer.toggleTerminal", "Toggle Terminal Drawer");
+        adder.add("drawer.toggleDependencies", "Toggle Dependencies Drawer");
+        adder.add("drawer.switchToTerminal", "Switch to Terminal Tab");
+        adder.add("drawer.switchToTasks", "Switch to Tasks Tab");
+
+        // View controls
+        adder.add("view.zoomIn", "Zoom In");
+        adder.add("view.zoomInAlt", "Zoom In (Alt)");
+        adder.add("view.zoomOut", "Zoom Out");
+        adder.add("view.resetZoom", "Reset Zoom");
+
+        // General navigation
+        adder.add("global.openSettings", "Open Settings");
+        adder.add("global.closeWindow", "Close Window");
+
+        // Add global reset button
+        var resetAllBtn = new JButton("Reset All to Defaults");
+        resetAllBtn.setToolTipText("Reset all keybindings to their default values");
+        var gbcReset = new GridBagConstraints();
+        gbcReset.gridx = 0;
+        gbcReset.gridy = row.getAndIncrement();
+        gbcReset.gridwidth = 4;
+        gbcReset.insets = new Insets(20, 6, 6, 6);
+        gbcReset.anchor = GridBagConstraints.CENTER;
+        gbcReset.fill = GridBagConstraints.NONE;
+        panel.add(resetAllBtn, gbcReset);
+
+        resetAllBtn.addActionListener(ev -> {
+            int result = JOptionPane.showConfirmDialog(
+                    panel,
+                    "This will reset ALL keybindings to their default values. Are you sure?",
+                    "Reset All Keybindings",
+                    JOptionPane.YES_NO_OPTION,
+                    JOptionPane.WARNING_MESSAGE);
+            if (result == JOptionPane.YES_OPTION) {
+                resetAllKeybindingsToDefaults();
+                // Refresh the keybindings
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        chrome.refreshKeybindings();
+                        JOptionPane.showMessageDialog(
+                                panel,
+                                "All keybindings have been reset to defaults. Please close and reopen this settings dialog to see the updated values.");
+                    } catch (Exception ex) {
+                        logger.debug("Failed to refresh keybindings after reset", ex);
+                    }
+                });
+            }
+        });
+
+        var gbcSpacer = new GridBagConstraints();
+        gbcSpacer.gridx = 0;
+        gbcSpacer.gridy = row.get();
+        gbcSpacer.weightx = 1.0;
+        gbcSpacer.weighty = 1.0;
+        gbcSpacer.fill = GridBagConstraints.BOTH;
+        panel.add(Box.createGlue(), gbcSpacer);
+
+        return panel;
+    }
+
+    private static String formatKeyStroke(javax.swing.KeyStroke ks) {
+        try {
+            int modifiers = ks.getModifiers();
+            int keyCode = ks.getKeyCode();
+            String modText = java.awt.event.InputEvent.getModifiersExText(modifiers);
+            String keyText = java.awt.event.KeyEvent.getKeyText(keyCode);
+            if (modText == null || modText.isBlank()) return keyText;
+            return modText + "+" + keyText;
+        } catch (Exception e) {
+            return ks.toString();
+        }
+    }
+
+    private static javax.swing.KeyStroke captureKeyStroke(java.awt.Component parent) {
+        final javax.swing.KeyStroke[] result = new javax.swing.KeyStroke[1];
+        final java.awt.KeyboardFocusManager kfm = java.awt.KeyboardFocusManager.getCurrentKeyboardFocusManager();
+        java.awt.KeyEventDispatcher[] ref = new java.awt.KeyEventDispatcher[1];
+
+        var dialog = new JDialog((Frame) null, "Press new shortcut", true);
+        var label = new JLabel("Press the desired key combination now (ESC to cancel)...");
+        label.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        dialog.add(label);
+        dialog.setSize(420, 140);
+        dialog.setLocationRelativeTo(parent);
+
+        java.awt.KeyEventDispatcher dispatcher = e -> {
+            if (e.getID() != java.awt.event.KeyEvent.KEY_PRESSED) return false;
+            int code = e.getKeyCode();
+            // Ignore pure modifier presses; wait for a real key
+            if (code == java.awt.event.KeyEvent.VK_SHIFT
+                    || code == java.awt.event.KeyEvent.VK_CONTROL
+                    || code == java.awt.event.KeyEvent.VK_ALT
+                    || code == java.awt.event.KeyEvent.VK_META) {
+                return true;
+            }
+            if (code == java.awt.event.KeyEvent.VK_ESCAPE && e.getModifiersEx() == 0) {
+                result[0] = null; // cancel
+            } else {
+                result[0] = javax.swing.KeyStroke.getKeyStroke(code, e.getModifiersEx());
+            }
+            dialog.dispose();
+            return true;
+        };
+        ref[0] = dispatcher;
+        kfm.addKeyEventDispatcher(ref[0]);
+
+        try {
+            dialog.setFocusable(true);
+            dialog.setFocusableWindowState(true);
+            dialog.setAlwaysOnTop(true);
+            dialog.setVisible(true);
+        } finally {
+            if (ref[0] != null) kfm.removeKeyEventDispatcher(ref[0]);
+        }
+        return result[0] == null ? javax.swing.KeyStroke.getKeyStroke(0, 0) : result[0];
+    }
+
+    /** Checks if a KeyStroke conflicts with any existing keybinding. */
+    private static @Nullable String findConflictingKeybinding(javax.swing.KeyStroke newKeyStroke, String excludeId) {
+        if (newKeyStroke.getKeyCode() == 0) return null;
+
+        // List of all keybinding IDs to check
+        String[] allKeybindingIds = {
+            "instructions.submit",
+            "instructions.toggleMode",
+            "global.undo",
+            "global.redo",
+            "global.copy",
+            "global.paste",
+            "global.toggleMicrophone",
+            "global.openSettings",
+            "global.closeWindow",
+            "panel.switchToProjectFiles",
+            "panel.switchToChanges",
+            "panel.switchToWorktrees",
+            "panel.switchToLog",
+            "panel.switchToPullRequests",
+            "panel.switchToIssues",
+            "drawer.toggleTerminal",
+            "drawer.toggleDependencies",
+            "drawer.switchToTerminal",
+            "drawer.switchToTasks",
+            "view.zoomIn",
+            "view.zoomInAlt",
+            "view.zoomOut",
+            "view.resetZoom"
+        };
+
+        for (String id : allKeybindingIds) {
+            if (id.equals(excludeId)) continue; // Skip the one we're setting
+
+            javax.swing.KeyStroke existing =
+                    io.github.jbellis.brokk.util.GlobalUiSettings.getKeybinding(id, defaultFor(id));
+            if (existing.equals(newKeyStroke)) {
+                return getKeybindingDisplayName(id);
+            }
+        }
+        return null;
+    }
+
+    /** Gets a human-readable display name for a keybinding ID. */
+    private static String getKeybindingDisplayName(String id) {
+        return switch (id) {
+            case "instructions.submit" -> "Submit (Ctrl/Cmd+Enter)";
+            case "instructions.toggleMode" -> "Toggle Code/Ask";
+            case "global.undo" -> "Undo";
+            case "global.redo" -> "Redo";
+            case "global.copy" -> "Copy";
+            case "global.paste" -> "Paste";
+            case "global.toggleMicrophone" -> "Toggle Microphone";
+            case "global.openSettings" -> "Open Settings";
+            case "global.closeWindow" -> "Close Window";
+            case "panel.switchToProjectFiles" -> "Switch to Project Files";
+            case "panel.switchToChanges" -> "Switch to Changes";
+            case "panel.switchToWorktrees" -> "Switch to Worktrees";
+            case "panel.switchToLog" -> "Switch to Log";
+            case "panel.switchToPullRequests" -> "Switch to Pull Requests";
+            case "panel.switchToIssues" -> "Switch to Issues";
+            case "drawer.toggleTerminal" -> "Toggle Terminal Drawer";
+            case "drawer.toggleDependencies" -> "Toggle Dependencies Drawer";
+            case "drawer.switchToTerminal" -> "Switch to Terminal Tab";
+            case "drawer.switchToTasks" -> "Switch to Tasks Tab";
+            case "view.zoomIn" -> "Zoom In";
+            case "view.zoomInAlt" -> "Zoom In (Alt)";
+            case "view.zoomOut" -> "Zoom Out";
+            case "view.resetZoom" -> "Reset Zoom";
+            default -> id;
+        };
+    }
+
+    /** Resets all keybindings to their default values. */
+    private static void resetAllKeybindingsToDefaults() {
+        String[] allKeybindingIds = {
+            "instructions.submit",
+            "instructions.toggleMode",
+            "global.undo",
+            "global.redo",
+            "global.copy",
+            "global.paste",
+            "global.toggleMicrophone",
+            "global.openSettings",
+            "global.closeWindow",
+            "panel.switchToProjectFiles",
+            "panel.switchToChanges",
+            "panel.switchToWorktrees",
+            "panel.switchToLog",
+            "panel.switchToPullRequests",
+            "panel.switchToIssues",
+            "drawer.toggleTerminal",
+            "drawer.toggleDependencies",
+            "drawer.switchToTerminal",
+            "drawer.switchToTasks",
+            "view.zoomIn",
+            "view.zoomInAlt",
+            "view.zoomOut",
+            "view.resetZoom"
+        };
+
+        for (String id : allKeybindingIds) {
+            javax.swing.KeyStroke defaultValue = defaultFor(id);
+            io.github.jbellis.brokk.util.GlobalUiSettings.saveKeybinding(id, defaultValue);
+        }
     }
 
     public JTabbedPane getGlobalSubTabbedPane() {
@@ -324,53 +687,25 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             gbc.insets = new Insets(2, 5, 2, 5);
         }
 
+        // Dev-only: Force tool emulation checkbox
+        if (Boolean.getBoolean("brokk.devmode")) {
+            forceToolEmulationCheckbox =
+                    new JCheckBox("[Dev Mode] Force tool emulation", Service.GLOBAL_FORCE_TOOL_EMULATION);
+            forceToolEmulationCheckbox.setToolTipText(
+                    "Development override: emulate tool calls instead of native function calling.");
+            gbc.gridx = 1;
+            gbc.gridy = row++;
+            gbc.weightx = 1.0;
+            gbc.fill = GridBagConstraints.HORIZONTAL;
+            servicePanel.add(forceToolEmulationCheckbox, gbc);
+        }
+
         gbc.gridy = row;
         gbc.weighty = 1.0;
         gbc.fill = GridBagConstraints.VERTICAL;
         servicePanel.add(Box.createVerticalGlue(), gbc);
 
         return servicePanel;
-    }
-
-    private JPanel createGitHubPanel() {
-        var gitHubPanel = new JPanel(new GridBagLayout());
-        gitHubPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
-        var gbc = new GridBagConstraints();
-        gbc.insets = new Insets(2, 5, 2, 5);
-        gbc.anchor = GridBagConstraints.WEST;
-        int row = 0;
-
-        gbc.gridx = 0;
-        gbc.gridy = row;
-        gbc.weightx = 0.0;
-        gitHubPanel.add(new JLabel("GitHub Token:"), gbc);
-
-        gitHubTokenField = new JTextField(20);
-        gbc.gridx = 1;
-        gbc.gridy = row++;
-        gbc.weightx = 1.0;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gitHubPanel.add(gitHubTokenField, gbc);
-
-        var explanationLabel = new JLabel(
-                "<html>This token is used to access GitHub APIs. It should have read and write access to Pull Requests and Issues.</html>");
-        explanationLabel.setFont(explanationLabel
-                .getFont()
-                .deriveFont(Font.ITALIC, explanationLabel.getFont().getSize() * 0.9f));
-        gbc.gridx = 1;
-        gbc.gridy = row++;
-        gbc.fill = GridBagConstraints.HORIZONTAL;
-        gbc.weightx = 1.0;
-        gbc.insets = new Insets(2, 5, 8, 5);
-        gitHubPanel.add(explanationLabel, gbc);
-        gbc.insets = new Insets(2, 5, 2, 5);
-
-        gbc.gridy = row;
-        gbc.weighty = 1.0;
-        gbc.fill = GridBagConstraints.VERTICAL;
-        gitHubPanel.add(Box.createVerticalGlue(), gbc);
-
-        return gitHubPanel;
     }
 
     private void updateSignupLabelVisibility() {
@@ -510,6 +845,50 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         gbc.fill = GridBagConstraints.VERTICAL;
         appearancePanel.add(Box.createVerticalGlue(), gbc);
         return appearancePanel;
+    }
+
+    private JPanel createStartupPanel() {
+        var startupPanel = new JPanel(new GridBagLayout());
+        startupPanel.setBorder(BorderFactory.createEmptyBorder(10, 10, 10, 10));
+        var gbc = new GridBagConstraints();
+        gbc.insets = new Insets(2, 5, 2, 5);
+        gbc.anchor = GridBagConstraints.WEST;
+        int row = 0;
+
+        gbc.gridx = 0;
+        gbc.gridy = row;
+        gbc.weightx = 0.0;
+        startupPanel.add(new JLabel("On startup:"), gbc);
+
+        var group = new ButtonGroup();
+        group.add(startupOpenLastRadio);
+        group.add(startupOpenAllRadio);
+
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        startupPanel.add(startupOpenLastRadio, gbc);
+
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        startupPanel.add(startupOpenAllRadio, gbc);
+
+        // Per-project window bounds persistence
+        gbc.gridx = 1;
+        gbc.gridy = row++;
+        gbc.weightx = 1.0;
+        gbc.fill = GridBagConstraints.HORIZONTAL;
+        startupPanel.add(persistPerProjectWindowCheckbox, gbc);
+
+        gbc.gridy = row;
+        gbc.weighty = 1.0;
+        gbc.fill = GridBagConstraints.VERTICAL;
+        startupPanel.add(Box.createVerticalGlue(), gbc);
+
+        return startupPanel;
     }
 
     private JPanel createQuickModelsPanel() {
@@ -667,6 +1046,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             }
         }
 
+        if (forceToolEmulationCheckbox != null) {
+            forceToolEmulationCheckbox.setSelected(MainProject.getForceToolEmulation());
+        }
+
         // Appearance Tab
         if (MainProject.getTheme().equals("dark")) {
             darkThemeRadio.setSelected(true);
@@ -713,12 +1096,22 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
 
         terminalFontSizeSpinner.setValue((double) MainProject.getTerminalFontSize());
 
+        // Startup behavior
+        var startupMode = MainProject.getStartupOpenMode();
+        if (startupMode == MainProject.StartupOpenMode.ALL) {
+            startupOpenAllRadio.setSelected(true);
+        } else {
+            startupOpenLastRadio.setSelected(true);
+        }
+        // Persist per-project main window position (default true)
+        persistPerProjectWindowCheckbox.setSelected(GlobalUiSettings.isPersistPerProjectBounds());
+
         // Quick Models Tab
         quickModelsTableModel.setFavorites(MainProject.loadFavoriteModels());
 
         // GitHub Tab
-        if (gitHubTokenField != null) { // Only if panel was created
-            gitHubTokenField.setText(MainProject.getGitHubToken());
+        if (gitHubSettingsPanel != null) {
+            gitHubSettingsPanel.loadSettings();
         }
 
         // MCP Servers Tab
@@ -790,6 +1183,11 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         } catch (Exception e) {
             logger.warn("Failed to persist JVM memory settings", e);
         }
+        if (forceToolEmulationCheckbox != null) {
+            MainProject.setForceToolEmulation(forceToolEmulationCheckbox.isSelected());
+            logger.debug("Applied Force Tool Emulation: {}", forceToolEmulationCheckbox.isSelected());
+
+        }
 
         // Appearance Tab
         boolean newIsDark = darkThemeRadio.isSelected();
@@ -852,6 +1250,17 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
             logger.debug("Applied Terminal Font Size: {}", newTerminalFontSize);
         }
 
+        // Startup behavior
+        var currentStartupMode = MainProject.getStartupOpenMode();
+        var selectedStartupMode =
+                startupOpenAllRadio.isSelected() ? MainProject.StartupOpenMode.ALL : MainProject.StartupOpenMode.LAST;
+        if (selectedStartupMode != currentStartupMode) {
+            MainProject.setStartupOpenMode(selectedStartupMode);
+            logger.debug("Applied Startup Open Mode: {}", selectedStartupMode);
+        }
+        // Save preference for per-project main window bounds persistence
+        GlobalUiSettings.savePersistPerProjectBounds(persistPerProjectWindowCheckbox.isSelected());
+
         // Quick Models Tab
         if (quickModelsTable.isEditing()) {
             quickModelsTable.getCellEditor().stopCellEditing();
@@ -859,14 +1268,9 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         MainProject.saveFavoriteModels(quickModelsTableModel.getFavorites());
         // chrome.getQuickContextActions().reloadFavoriteModels(); // Commented out due to missing method in Chrome
 
-        // GitHub Tab
-        if (gitHubTokenField != null) {
-            String newToken = gitHubTokenField.getText().trim();
-            if (!newToken.equals(MainProject.getGitHubToken())) {
-                MainProject.setGitHubToken(newToken);
-                GitHubAuth.invalidateInstance();
-                logger.debug("Applied GitHub Token");
-            }
+        // GitHub Tab - managed via Connect/Disconnect flow
+        if (gitHubSettingsPanel != null && !gitHubSettingsPanel.applySettings()) {
+            return false;
         }
 
         // MCP Servers Tab
@@ -944,10 +1348,10 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
 
         // Buttons
         var buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
-        var addHttpButton = new JButton("Add HTTP...");
-        var addStdioButton = new JButton("Add Stdio...");
-        var editButton = new JButton("Edit...");
-        var removeButton = new JButton("Remove");
+        var addHttpButton = new MaterialButton("Add HTTP...");
+        var addStdioButton = new MaterialButton("Add Stdio...");
+        var editButton = new MaterialButton("Edit...");
+        var removeButton = new MaterialButton("Remove");
 
         // Enable and wire up action listeners for MCP server management.
         addHttpButton.setEnabled(true);
@@ -1482,8 +1886,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         var argsScroll = new JScrollPane(argsTable);
         argsScroll.setPreferredSize(new Dimension(400, 120));
         var argsButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        var addArgButton = new JButton("Add");
-        var removeArgButton = new JButton("Remove");
+        var addArgButton = new MaterialButton("Add");
+        var removeArgButton = new MaterialButton("Remove");
         argsButtons.add(addArgButton);
         argsButtons.add(removeArgButton);
         addArgButton.addActionListener(e -> {
@@ -1510,8 +1914,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         var envScroll = new JScrollPane(envTable);
         envScroll.setPreferredSize(new Dimension(400, 150));
         var envButtons = new JPanel(new FlowLayout(FlowLayout.LEFT, 5, 0));
-        var addEnvButton = new JButton("Add");
-        var removeEnvButton = new JButton("Remove");
+        var addEnvButton = new MaterialButton("Add");
+        var removeEnvButton = new MaterialButton("Remove");
         envButtons.add(addEnvButton);
         envButtons.add(removeEnvButton);
         addEnvButton.addActionListener(e -> {
@@ -1535,7 +1939,7 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         });
 
         // Fetch Tools button
-        var fetchButton = new JButton("Fetch Tools");
+        var fetchButton = new MaterialButton("Fetch Tools");
         fetchButton.addActionListener(e -> {
             String cmd = commandField.getText().trim();
             if (cmd.isEmpty()) {
@@ -1636,7 +2040,8 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         if (helpIcon instanceof ThemedIcon themedHelpIcon) {
             helpIcon = themedHelpIcon.withSize(14);
         }
-        var envHelpButton = new JButton(helpIcon);
+        var envHelpButton = new MaterialButton();
+        envHelpButton.setIcon(helpIcon);
         envHelpButton.setBorder(BorderFactory.createEmptyBorder(2, 2, 2, 2));
         envHelpButton.setContentAreaFilled(false);
         envHelpButton.setFocusPainted(false);
@@ -2397,5 +2802,214 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware {
         public Object getCellEditorValue() {
             return comboBox.isEnabled() ? super.getCellEditorValue() : Service.ProcessingTier.DEFAULT;
         }
+    }
+
+    // SettingsChangeListener implementation
+    @Override
+    public void gitHubTokenChanged() {
+        if (gitHubSettingsPanel != null) {
+            gitHubSettingsPanel.gitHubTokenChanged();
+        }
+    }
+
+    @Override
+    public void removeNotify() {
+        super.removeNotify();
+        MainProject.removeSettingsChangeListener(this);
+    }
+
+    // --- Default keybinding definitions ---
+    private static javax.swing.KeyStroke defaultToggleMode() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_M);
+    }
+
+    // Global text editing defaults
+    private static javax.swing.KeyStroke defaultUndo() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_Z);
+    }
+
+    private static javax.swing.KeyStroke defaultRedo() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShiftShortcut(
+                java.awt.event.KeyEvent.VK_Z);
+    }
+
+    private static javax.swing.KeyStroke defaultCopy() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_C);
+    }
+
+    private static javax.swing.KeyStroke defaultPaste() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_V);
+    }
+
+    // Voice and interface defaults
+    private static javax.swing.KeyStroke defaultToggleMicrophone() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_L);
+    }
+
+    // Panel navigation defaults (Alt/Cmd+Number)
+    private static javax.swing.KeyStroke defaultSwitchToProjectFiles() {
+        int modifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? java.awt.event.KeyEvent.META_DOWN_MASK
+                        : java.awt.event.KeyEvent.ALT_DOWN_MASK;
+        return javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_1, modifier);
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToChanges() {
+        int modifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? java.awt.event.KeyEvent.META_DOWN_MASK
+                        : java.awt.event.KeyEvent.ALT_DOWN_MASK;
+        return javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_2, modifier);
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToWorktrees() {
+        int modifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? java.awt.event.KeyEvent.META_DOWN_MASK
+                        : java.awt.event.KeyEvent.ALT_DOWN_MASK;
+        return javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_3, modifier);
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToLog() {
+        int modifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? java.awt.event.KeyEvent.META_DOWN_MASK
+                        : java.awt.event.KeyEvent.ALT_DOWN_MASK;
+        return javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_4, modifier);
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToPullRequests() {
+        int modifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? java.awt.event.KeyEvent.META_DOWN_MASK
+                        : java.awt.event.KeyEvent.ALT_DOWN_MASK;
+        return javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_5, modifier);
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToIssues() {
+        int modifier =
+                System.getProperty("os.name").toLowerCase(java.util.Locale.ROOT).contains("mac")
+                        ? java.awt.event.KeyEvent.META_DOWN_MASK
+                        : java.awt.event.KeyEvent.ALT_DOWN_MASK;
+        return javax.swing.KeyStroke.getKeyStroke(java.awt.event.KeyEvent.VK_6, modifier);
+    }
+
+    // General navigation defaults
+    private static javax.swing.KeyStroke defaultCloseWindow() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_W);
+    }
+
+    private static javax.swing.KeyStroke defaultOpenSettings() {
+        return io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil.createPlatformShortcut(
+                java.awt.event.KeyEvent.VK_COMMA);
+    }
+
+    // Drawer navigation defaults
+    private static javax.swing.KeyStroke defaultToggleTerminalDrawer() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_T,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()
+                        | java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+    }
+
+    private static javax.swing.KeyStroke defaultToggleDependenciesDrawer() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_D,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx()
+                        | java.awt.event.InputEvent.SHIFT_DOWN_MASK);
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToTerminalTab() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_T,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+
+    private static javax.swing.KeyStroke defaultSwitchToTasksTab() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_K,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+
+    // View control defaults
+    private static javax.swing.KeyStroke defaultZoomIn() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_PLUS,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+
+    private static javax.swing.KeyStroke defaultZoomInAlt() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_EQUALS,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+
+    private static javax.swing.KeyStroke defaultZoomOut() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_MINUS,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+
+    private static javax.swing.KeyStroke defaultResetZoom() {
+        return javax.swing.KeyStroke.getKeyStroke(
+                java.awt.event.KeyEvent.VK_0,
+                java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+    }
+
+    @SuppressWarnings("UnusedMethod")
+    private static javax.swing.KeyStroke defaultFor(String id) {
+        return switch (id) {
+            // Instructions panel
+            case "instructions.submit" ->
+                javax.swing.KeyStroke.getKeyStroke(
+                        java.awt.event.KeyEvent.VK_ENTER,
+                        java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+            case "instructions.toggleMode" -> defaultToggleMode();
+
+            // Global text editing
+            case "global.undo" -> defaultUndo();
+            case "global.redo" -> defaultRedo();
+            case "global.copy" -> defaultCopy();
+            case "global.paste" -> defaultPaste();
+
+            // Voice and interface
+            case "global.toggleMicrophone" -> defaultToggleMicrophone();
+
+            // Panel navigation
+            case "panel.switchToProjectFiles" -> defaultSwitchToProjectFiles();
+            case "panel.switchToChanges" -> defaultSwitchToChanges();
+            case "panel.switchToWorktrees" -> defaultSwitchToWorktrees();
+            case "panel.switchToLog" -> defaultSwitchToLog();
+            case "panel.switchToPullRequests" -> defaultSwitchToPullRequests();
+            case "panel.switchToIssues" -> defaultSwitchToIssues();
+
+            // Drawer navigation
+            case "drawer.toggleTerminal" -> defaultToggleTerminalDrawer();
+            case "drawer.toggleDependencies" -> defaultToggleDependenciesDrawer();
+            case "drawer.switchToTerminal" -> defaultSwitchToTerminalTab();
+            case "drawer.switchToTasks" -> defaultSwitchToTasksTab();
+
+            // View controls
+            case "view.zoomIn" -> defaultZoomIn();
+            case "view.zoomInAlt" -> defaultZoomInAlt();
+            case "view.zoomOut" -> defaultZoomOut();
+            case "view.resetZoom" -> defaultResetZoom();
+
+            // General navigation
+            case "global.openSettings" -> defaultOpenSettings();
+            case "global.closeWindow" -> defaultCloseWindow();
+
+            default ->
+                javax.swing.KeyStroke.getKeyStroke(
+                        java.awt.event.KeyEvent.VK_ENTER,
+                        java.awt.Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx());
+        };
     }
 }

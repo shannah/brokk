@@ -8,6 +8,7 @@ import com.github.mustachejava.MustacheFactory;
 import com.github.mustachejava.util.DecoratedCollection;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.model.chat.request.ToolChoice;
@@ -26,8 +27,11 @@ import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.BuildOutputPreprocessor;
 import io.github.jbellis.brokk.util.BuildToolConventions;
 import io.github.jbellis.brokk.util.BuildToolConventions.BuildSystem;
+import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.Messages;
 import java.io.StringReader;
 import java.io.StringWriter;
@@ -158,7 +162,7 @@ public class BuildAgent {
             // Make the LLM request
             Llm.StreamingResult result;
             try {
-                result = llm.sendRequest(messages, tools, ToolChoice.REQUIRED, false);
+                result = llm.sendRequest(messages, new ToolContext(tools, ToolChoice.REQUIRED, this), false);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.error("Unexpected request cancellation in build agent");
@@ -291,9 +295,7 @@ public class BuildAgent {
         return messages;
     }
 
-    @Tool(
-            value =
-                    "Report the gathered build details when ALL information is collected. DO NOT call this method before then.")
+    @Tool("Report the gathered build details when ALL information is collected. DO NOT call this method before then.")
     public String reportBuildDetails(
             @P(
                             "Command to build or lint incrementally, e.g. mvn compile, cargo check, pyflakes. If a linter is not clearly in use, don't guess! it will cause problems; just leave it blank.")
@@ -320,9 +322,7 @@ public class BuildAgent {
         return "Build details report received and processed.";
     }
 
-    @Tool(
-            value =
-                    "Abort the process if you cannot determine the build details or the project structure is unsupported.")
+    @Tool("Abort the process if you cannot determine the build details or the project structure is unsupported.")
     public String abortBuildDetails(
             @P("Explanation of why the build details cannot be determined") String explanation) {
         // Store the explanation in the agent's field
@@ -387,12 +387,6 @@ public class BuildAgent {
     /** Holds semi-structured information about a project's build process */
     public record BuildDetails(
             String buildLintCommand, String testAllCommand, String testSomeCommand, Set<String> excludedDirectories) {
-        public BuildDetails {
-            requireNonNull(buildLintCommand);
-            requireNonNull(testAllCommand);
-            requireNonNull(testSomeCommand);
-            requireNonNull(excludedDirectories);
-        }
 
         public static final BuildDetails EMPTY = new BuildDetails("", "", "", Set.of());
     }
@@ -426,9 +420,9 @@ public class BuildAgent {
         logger.debug("Code Agent Test Scope is WORKSPACE, determining tests in workspace.");
 
         // Get ProjectFiles from editable and read-only fragments
-        var topContext = requireNonNull(cm.topContext());
-        var projectFilesFromEditableOrReadOnly = Stream.concat(topContext.editableFiles(), topContext.readonlyFiles())
-                .flatMap(fragment -> fragment.files().stream()); // No analyzer
+        var topContext = cm.topContext();
+        var projectFilesFromEditableOrReadOnly =
+                topContext.fileFragments().flatMap(fragment -> fragment.files().stream()); // No analyzer
 
         // Get ProjectFiles specifically from SkeletonFragments among all virtual fragments
         var projectFilesFromSkeletons = topContext
@@ -581,5 +575,130 @@ public class BuildAgent {
         mustache.execute(writer, context);
 
         return writer.toString();
+    }
+
+    /**
+     * Run the verification build for the current project, stream output to the console, and update the session's Build
+     * Results fragment.
+     *
+     * <p>Returns empty string on success (or when no command is configured), otherwise the raw combined error/output
+     * text.
+     */
+    public static String runVerification(IContextManager cm) throws InterruptedException {
+        var io = cm.getIo();
+
+        var verificationCommand = determineVerificationCommand(cm);
+        if (verificationCommand == null || verificationCommand.isBlank()) {
+            io.llmOutput("\nNo verification command specified, skipping build/check.", ChatMessageType.CUSTOM);
+            // Do not update BuildFragment; success/failure unknown and not a failure.
+            return "";
+        }
+
+        // Enforce single-build execution when requested
+        boolean noConcurrentBuilds = "true".equalsIgnoreCase(System.getenv("BRK_NO_CONCURRENT_BUILDS"));
+        if (noConcurrentBuilds) {
+            var lock = acquireBuildLock(cm);
+            if (lock == null) {
+                logger.warn("Failed to acquire build lock; proceeding without it");
+                return runBuildAndUpdateFragmentInternal(cm, verificationCommand);
+            }
+            // The lock is implemented using a FileChannel/FileLock; keep the channel/lock inside the record and close
+            // it after execution.
+            try (var ignored = lock) {
+                logger.debug("Acquired build lock {}", lock.lockFile());
+                return runBuildAndUpdateFragmentInternal(cm, verificationCommand);
+            } catch (Exception e) {
+                logger.warn("Exception while using build lock {}; proceeding without it", lock.lockFile(), e);
+                return runBuildAndUpdateFragmentInternal(cm, verificationCommand);
+            }
+        } else {
+            return runBuildAndUpdateFragmentInternal(cm, verificationCommand);
+        }
+    }
+
+    /** Holder for lock resources, AutoCloseable so try-with-resources releases it. */
+    private record BuildLock(
+            java.nio.channels.FileChannel channel, java.nio.channels.FileLock lock, java.nio.file.Path lockFile)
+            implements AutoCloseable {
+        @Override
+        public void close() {
+            try {
+                if (lock.isValid()) lock.release();
+            } catch (Exception e) {
+                logger.debug("Error releasing build lock {}: {}", lockFile, e.toString());
+            }
+            try {
+                if (channel.isOpen()) channel.close();
+            } catch (Exception e) {
+                logger.debug("Error closing lock channel {}: {}", lockFile, e.toString());
+            }
+        }
+    }
+
+    /** Attempts to acquire an inter-process build lock. Returns a non-null BuildLock on success, or null on failure. */
+    private static @Nullable BuildLock acquireBuildLock(IContextManager cm) {
+        java.nio.file.Path lockDir = java.nio.file.Paths.get(System.getProperty("java.io.tmpdir"), "brokk");
+        try {
+            java.nio.file.Files.createDirectories(lockDir);
+        } catch (java.io.IOException e) {
+            logger.warn("Unable to create lock directory {}; proceeding without build lock", lockDir, e);
+            return null;
+        }
+
+        var repoNameForLock = getOriginRepositoryName(cm);
+        java.nio.file.Path lockFile = lockDir.resolve(repoNameForLock + ".lock");
+
+        try {
+            var channel = java.nio.channels.FileChannel.open(
+                    lockFile, java.nio.file.StandardOpenOption.CREATE, java.nio.file.StandardOpenOption.WRITE);
+            var lock = channel.lock();
+            logger.debug("Acquired build lock {}", lockFile);
+            return new BuildLock(channel, lock, lockFile);
+        } catch (java.io.IOException ioe) {
+            logger.warn("Failed to acquire file lock {}; proceeding without it", lockFile, ioe);
+            return null;
+        }
+    }
+
+    private static String getOriginRepositoryName(IContextManager cm) {
+        var url = cm.getRepo().getRemoteUrl();
+        if (url == null || url.isBlank()) {
+            return cm.getRepo().getGitTopLevel().getFileName().toString();
+        }
+        if (url.endsWith(".git")) url = url.substring(0, url.length() - 4);
+        int idx = Math.max(url.lastIndexOf('/'), url.lastIndexOf(':'));
+        if (idx >= 0 && idx < url.length() - 1) {
+            return url.substring(idx + 1);
+        }
+        throw new IllegalArgumentException("Unable to parse git repo url " + url);
+    }
+
+    /** @return the text of the new BuildFragment (may have been preprocessed by quickestModel) */
+    private static String runBuildAndUpdateFragmentInternal(IContextManager cm, String verificationCommand)
+            throws InterruptedException {
+        var io = cm.getIo();
+
+        io.llmOutput("\nRunning verification command: " + verificationCommand, ChatMessageType.CUSTOM);
+        String shellLang = ExecutorConfig.getShellLanguageFromProject(cm.getProject());
+        io.llmOutput("\n```" + shellLang + "\n", ChatMessageType.CUSTOM);
+        try {
+            var output = Environment.instance.runShellCommand(
+                    verificationCommand,
+                    cm.getProject().getRoot(),
+                    line -> io.llmOutput(line + "\n", ChatMessageType.CUSTOM),
+                    Environment.UNLIMITED_TIMEOUT);
+            io.llmOutput("\n```", ChatMessageType.CUSTOM);
+
+            cm.updateBuildFragment(true, "Build succeeded.");
+            logger.debug("Verification command successful. Output: {}", output);
+            return "";
+        } catch (Environment.SubprocessException e) {
+            io.llmOutput("\n```", ChatMessageType.CUSTOM); // Close the markdown block
+
+            String rawBuild = e.getMessage() + "\n\n" + e.getOutput();
+            String processed = BuildOutputPreprocessor.processForLlm(rawBuild, cm);
+            cm.updateBuildFragment(false, "Build output:\n" + processed);
+            return processed;
+        }
     }
 }

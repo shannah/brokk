@@ -1,5 +1,6 @@
 import './styles/global.scss';
 import {mount, tick} from 'svelte';
+import {get} from 'svelte/store';
 import Mop from './MOP.svelte';
 import {bubblesStore, onBrokkEvent} from './stores/bubblesStore';
 import {onHistoryEvent} from './stores/historyStore';
@@ -10,6 +11,10 @@ import {createSearchController, type SearchController} from './search/search';
 import {reparseAll} from './stores/bubblesStore';
 import {log, createLogger} from './lib/logging';
 import {onSymbolResolutionResponse, clearSymbolCache} from './stores/symbolCacheStore';
+import {onFilePathResolutionResponse, clearFilePathCache} from './stores/filePathCacheStore';
+import {zoomIn, zoomOut, resetZoom, zoomStore, getZoomPercentage, setZoom} from './stores/zoomStore';
+import './components/ZoomWidget.ts';
+import { envStore } from './stores/envStore';
 
 const mainLog = createLogger('main');
 
@@ -22,6 +27,7 @@ const buffer = setupBrokkInterface();
 replayBufferedItems(buffer);
 void initSearchController();
 setupSearchRehighlight();
+setupZoomDisplayObserver();
 
 // Function definitions below
 function checkWorkerSupport(): void {
@@ -30,6 +36,7 @@ function checkWorkerSupport(): void {
         throw new Error('Web Workers unsupported');
     }
 }
+
 
 function initializeApp(): void {
     mount(Mop, {
@@ -66,8 +73,30 @@ function setupBrokkInterface(): any[] {
         refreshSymbolLookup: refreshSymbolLookup,
         onSymbolLookupResponse: onSymbolResolutionResponse,
 
+        // File path lookup API
+        refreshFilePathLookup: refreshFilePathLookup,
+        onFilePathLookupResponse: onFilePathResolutionResponse,
+        // Zoom API
+        zoomIn: () => {
+            zoomIn();
+        },
+        zoomOut: () => {
+            zoomOut();
+        },
+        resetZoom: () => {
+            resetZoom();
+        },
+        setZoom: (value: number) => {
+            setZoom(value);
+        },
+
         // Debug API
         toggleWrapStatus: () => typeof window !== 'undefined' && window.toggleWrapStatus ? window.toggleWrapStatus() : undefined,
+
+        // Environment info API
+        setEnvironmentInfo: (info) => {
+            envStore.set(info);
+        },
 
     };
 
@@ -102,8 +131,8 @@ function clearChat(): void {
     onHistoryEvent({type: 'history-reset', epoch: 0});
 }
 
-function setAppTheme(dark: boolean, isDevMode?: boolean, wrapMode?: boolean): void {
-    console.info('setTheme executed: dark=' + dark + ', isDevMode=' + isDevMode + ', wrapMode=' + wrapMode);
+function setAppTheme(dark: boolean, isDevMode?: boolean, wrapMode?: boolean, zoom?: number): void {
+    console.info('setTheme executed: dark=' + dark + ', isDevMode=' + isDevMode + ', wrapMode=' + wrapMode + ', zoom=' + zoom);
     themeStore.set(dark);
     const html = document.querySelector('html')!;
 
@@ -111,6 +140,11 @@ function setAppTheme(dark: boolean, isDevMode?: boolean, wrapMode?: boolean): vo
     const [addTheme, removeTheme] = dark ? ['theme-dark', 'theme-light'] : ['theme-light', 'theme-dark'];
     html.classList.add(addTheme);
     html.classList.remove(removeTheme);
+
+    // Set zoom if provided
+    if (zoom !== undefined) {
+        setZoom(zoom);
+    }
 
     // Handle wrap mode classes - default to wrap mode enabled
     const shouldWrap = wrapMode !== undefined ? wrapMode : true;
@@ -165,6 +199,22 @@ function refreshSymbolLookup(contextId: string = 'main-context'): void {
     reparseAll(contextId);
 }
 
+/**
+ * Refresh file path lookup by clearing the cache and triggering a fresh lookup for all visible file paths.
+ * This is called when the analyzer becomes ready or when context switches.
+ *
+ * @param contextId - The context ID to refresh file paths for (defaults to 'main-context')
+ */
+function refreshFilePathLookup(contextId: string = 'main-context'): void {
+    mainLog.debug(`[file-path-refresh] Refreshing file paths for context: ${contextId}, clearing cache and triggering UI refresh`);
+
+    // Clear file path cache to ensure fresh lookups
+    clearFilePathCache(contextId);
+
+    // Trigger file path lookup for visible file paths to highlight them
+    reparseAll(contextId);
+}
+
 
 function replayBufferedItems(buffer: any[]): void {
     // Replay buffered calls and events in sequence order
@@ -213,4 +263,24 @@ function setupSearchRehighlight(): void {
     };
     bubblesStore.subscribe(trigger);
     threadStore.subscribe(trigger);
+}
+
+function setupZoomDisplayObserver(): void {
+    const render = (zoom: number) => {
+        const el = document.getElementById('zoom-display');
+        if (el) {
+            el.textContent = getZoomPercentage(zoom);
+        }
+    };
+
+    // Initial render and ongoing updates
+    render(get(zoomStore));
+    zoomStore.subscribe((zoom) => {
+        render(zoom);
+        try {
+            (window as any).javaBridge?.onZoomChanged?.(zoom);
+        } catch (e) {
+            // ignore when bridge not ready or in dev
+        }
+    });
 }

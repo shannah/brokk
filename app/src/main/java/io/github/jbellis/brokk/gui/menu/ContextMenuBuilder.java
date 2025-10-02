@@ -27,7 +27,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-/** Builder for creating consistent context menus for files and symbols */
+/** Builder for creating consistent context menus for files and symbols. */
 public class ContextMenuBuilder {
     private static final Logger logger = LogManager.getLogger(ContextMenuBuilder.class);
 
@@ -58,6 +58,15 @@ public class ContextMenuBuilder {
         var context = new FileMenuContext(files, chrome, contextManager);
         var builder = new ContextMenuBuilder(context);
         builder.buildFileMenu();
+        return builder;
+    }
+
+    /** Creates a context menu for file path matches (MOP disambiguation) */
+    public static ContextMenuBuilder forFilePathMatches(
+            List<ProjectFile> files, Chrome chrome, ContextManager contextManager) {
+        var context = new FileMenuContext(files, chrome, contextManager);
+        var builder = new ContextMenuBuilder(context);
+        builder.buildFilePathMenu();
         return builder;
     }
 
@@ -143,11 +152,6 @@ public class ContextMenuBuilder {
 
         parent.add(new JPopupMenu.Separator());
 
-        // Read File
-        var readFileItem = new JMenuItem("Read File");
-        readFileItem.addActionListener(e -> readFiles(context));
-        parent.add(readFileItem);
-
         // Edit File
         var editFileItem = new JMenuItem("Edit File");
         editFileItem.setEnabled(analyzerReady);
@@ -204,11 +208,6 @@ public class ContextMenuBuilder {
         editItem.setEnabled(allFilesTracked);
         menu.add(editItem);
 
-        // Read
-        var readItem = new JMenuItem(files.size() == 1 ? "Read" : "Read All");
-        readItem.addActionListener(e -> readFiles(fileContext));
-        menu.add(readItem);
-
         // Summarize
         var summarizeItem = new JMenuItem(files.size() == 1 ? "Summarize" : "Summarize All");
         boolean analyzerReady =
@@ -217,17 +216,120 @@ public class ContextMenuBuilder {
         summarizeItem.addActionListener(e -> summarizeFiles(fileContext));
         menu.add(summarizeItem);
 
-        menu.addSeparator();
-
-        // Run Tests
-        var runTestsItem = new JMenuItem("Run Tests");
+        // Run Tests (only show if all files are test files)
         boolean hasTestFiles = files.stream().allMatch(ContextManager::isTestFile);
-        runTestsItem.setEnabled(hasTestFiles);
-        if (!hasTestFiles) {
-            runTestsItem.setToolTipText("Non-test files in selection");
+        if (hasTestFiles) {
+            menu.addSeparator();
+            var runTestsItem = new JMenuItem("Run Tests");
+            runTestsItem.addActionListener(e -> runTests(fileContext));
+            menu.add(runTestsItem);
         }
-        runTestsItem.addActionListener(e -> runTests(fileContext));
-        menu.add(runTestsItem);
+    }
+
+    private void buildFilePathMenu() {
+        if (!(context instanceof FileMenuContext fileContext)) {
+            return;
+        }
+
+        var files = fileContext.files();
+        if (files.isEmpty()) {
+            return;
+        }
+
+        if (files.size() == 1) {
+            // Single file - add actions directly to main menu
+            var file = files.getFirst();
+            var singleFileContext =
+                    new FileMenuContext(List.of(file), fileContext.chrome(), fileContext.contextManager());
+
+            addFileActions(menu, singleFileContext);
+        } else {
+            // Multiple files - create submenus for each file (no bulk actions for MOP disambiguation)
+            for (var file : files) {
+                var submenu = new JMenu(file.toString());
+
+                // Create a context for this specific file
+                var singleFileContext =
+                        new FileMenuContext(List.of(file), fileContext.chrome(), fileContext.contextManager());
+
+                // Add file actions to this submenu
+                addFileActions(submenu, singleFileContext);
+
+                menu.add(submenu);
+            }
+        }
+    }
+
+    private JMenuItem createHistoryMenuItem(FileMenuContext context) {
+        var file = context.files().getFirst();
+        boolean hasGit = context.contextManager().getProject().hasGit();
+        var historyItem = new JMenuItem("Show History");
+        historyItem.addActionListener(e -> {
+            final var chrome = context.chrome();
+            chrome.addFileHistoryTab(file);
+        });
+        historyItem.setEnabled(hasGit);
+        if (!hasGit) {
+            historyItem.setToolTipText("Git not available for this project.");
+        }
+        return historyItem;
+    }
+
+    /**
+     * Helper method to add file actions (Show History, Edit, Read, Summarize, Run Tests) to a container for single-file
+     * contexts
+     */
+    private void addFileActions(Container parent, FileMenuContext singleFileContext) {
+        assert singleFileContext.files().size() == 1 : "addFileActions expects single file context";
+
+        var file = singleFileContext.files().getFirst();
+        boolean hasGit = singleFileContext.contextManager().getProject().hasGit();
+        boolean isTracked = singleFileContext
+                .contextManager()
+                .getProject()
+                .getRepo()
+                .getTrackedFiles()
+                .contains(file);
+        boolean analyzerReady =
+                singleFileContext.contextManager().getAnalyzerWrapper().isReady();
+        boolean isTestFile = ContextManager.isTestFile(file);
+
+        // Show History
+        var historyItem = new JMenuItem("Show History");
+        historyItem.addActionListener(e -> {
+            final var chrome = singleFileContext.chrome();
+            chrome.addFileHistoryTab(file);
+        });
+        historyItem.setEnabled(hasGit);
+        if (!hasGit) {
+            historyItem.setToolTipText("Git not available for this project.");
+        }
+        parent.add(historyItem);
+
+        parent.add(new JPopupMenu.Separator());
+
+        // Edit
+        var editItem = new JMenuItem("Edit");
+        editItem.addActionListener(e -> editFiles(singleFileContext));
+        editItem.setEnabled(isTracked);
+        if (!isTracked) {
+            editItem.setToolTipText("File not tracked by git");
+        }
+        parent.add(editItem);
+
+        // Summarize
+        var summarizeItem = new JMenuItem("Summarize");
+        summarizeItem.setEnabled(analyzerReady);
+        summarizeItem.addActionListener(e -> summarizeFiles(singleFileContext));
+        parent.add(summarizeItem);
+
+        // Run Tests (only if this file is a test file)
+        if (isTestFile) {
+            parent.add(new JPopupMenu.Separator());
+            var runTestItem = new JMenuItem("Run Test");
+            runTestItem.addActionListener(e -> runTests(singleFileContext));
+            parent.add(runTestItem);
+        }
     }
 
     // Symbol actions
@@ -296,7 +398,7 @@ public class ContextMenuBuilder {
         logger.info("Open in preview for symbol: {}", context.symbolName());
 
         var symbolName = context.symbolName();
-        context.contextManager().submitContextTask("Open in preview for " + symbolName, () -> {
+        context.contextManager().submitBackgroundTask("Open in preview for " + symbolName, () -> {
             var definition = findSymbolDefinition(context);
             definition.ifPresent(codeUnit -> openPreview(codeUnit, context));
         });
@@ -306,7 +408,7 @@ public class ContextMenuBuilder {
         logger.info("Open in project tree for symbol: {}", context.symbolName());
 
         var symbolName = context.symbolName();
-        context.contextManager().submitContextTask("Open in project tree for " + symbolName, () -> {
+        context.contextManager().submitBackgroundTask("Open in project tree for " + symbolName, () -> {
             var definition = findSymbolDefinition(context);
             if (definition.isPresent()) {
                 var projectFile = definition.get().source();
@@ -327,34 +429,10 @@ public class ContextMenuBuilder {
     }
 
     // File actions
-    private JMenuItem createHistoryMenuItem(FileMenuContext context) {
-        var file = context.files().getFirst();
-        boolean hasGit = context.contextManager().getProject().hasGit();
-        var historyItem = new JMenuItem("Show History");
-        historyItem.addActionListener(e -> {
-            final var chrome = context.chrome();
-            if (chrome != null) {
-                chrome.addFileHistoryTab(file);
-            } else {
-                logger.warn("GitPanel is null, cannot show history for {}", file);
-            }
-        });
-        historyItem.setEnabled(hasGit);
-        if (!hasGit) {
-            historyItem.setToolTipText("Git not available for this project.");
-        }
-        return historyItem;
-    }
 
     private void editFiles(FileMenuContext context) {
-        context.contextManager().submitContextTask("Edit files", () -> {
-            context.contextManager().editFiles(context.files());
-        });
-    }
-
-    private void readFiles(FileMenuContext context) {
-        context.contextManager().submitContextTask("Read files", () -> {
-            context.contextManager().addReadOnlyFiles(context.files());
+        context.contextManager().submitContextTask(() -> {
+            context.contextManager().addFiles(context.files());
         });
     }
 
@@ -367,13 +445,13 @@ public class ContextMenuBuilder {
                             JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        context.contextManager().submitContextTask("Summarize files", () -> {
+        context.contextManager().submitContextTask(() -> {
             context.contextManager().addSummaries(new HashSet<>(context.files()), Collections.emptySet());
         });
     }
 
     private void runTests(FileMenuContext context) {
-        context.contextManager().submitContextTask("Run selected tests", () -> {
+        context.contextManager().submitExclusiveAction(() -> {
             var testProjectFiles =
                     context.files().stream().filter(ContextManager::isTestFile).collect(Collectors.toSet());
 
@@ -388,17 +466,55 @@ public class ContextMenuBuilder {
     private void openPreview(CodeUnit symbol, SymbolMenuContext context) {
         logger.debug("Opening symbol in preview: {} in file: {}", symbol.fqName(), symbol.source());
 
-        context.contextManager().submitContextTask("Open preview for " + symbol.fqName(), () -> {
+        context.contextManager().submitBackgroundTask("Open preview for " + symbol.fqName(), () -> {
             SwingUtilities.invokeLater(() -> {
-                // Use Chrome's centralized preview system
-                context.chrome().previewFile(symbol.source());
+                // Try to get the symbol's source range to position the preview
+                var analyzer = context.contextManager().getAnalyzerWrapper().getNonBlocking();
+                var startLine = -1; // Default: no positioning
+
+                if (analyzer != null) {
+                    try {
+                        // Try direct TreeSitterAnalyzer cast first
+                        var tsAnalyzer = analyzer.as(io.github.jbellis.brokk.analyzer.TreeSitterAnalyzer.class);
+
+                        // If direct cast fails, try to get the delegate from MultiAnalyzer
+                        if (tsAnalyzer.isEmpty()
+                                && analyzer instanceof io.github.jbellis.brokk.analyzer.MultiAnalyzer multiAnalyzer) {
+                            var delegates = multiAnalyzer.getDelegates();
+
+                            // Get the appropriate delegate based on file extension
+                            var fileExtension = com.google.common.io.Files.getFileExtension(
+                                    symbol.source().absPath().toString());
+                            var language = io.github.jbellis.brokk.analyzer.Languages.fromExtension(fileExtension);
+
+                            var delegate = delegates.get(language);
+                            if (delegate != null) {
+                                tsAnalyzer = delegate.as(io.github.jbellis.brokk.analyzer.TreeSitterAnalyzer.class);
+                            }
+                        }
+
+                        startLine = tsAnalyzer
+                                .map(tsa -> tsa.getStartLineForCodeUnit(symbol))
+                                .orElse(-1);
+
+                        if (startLine >= 0) {
+                            logger.debug("Positioning preview at line {} for symbol {}", startLine, symbol.fqName());
+                        }
+                    } catch (Exception e) {
+                        logger.debug("Could not get start line for symbol {}: {}", symbol.fqName(), e.getMessage());
+                        // Fall back to default positioning
+                    }
+                }
+
+                // Use Chrome's positioned preview system
+                context.chrome().previewFile(symbol.source(), startLine);
             });
         });
     }
 
     // Symbol-based file operations (overloaded versions)
     private void editFiles(SymbolMenuContext context) {
-        context.contextManager().submitContextTask("Edit file", () -> {
+        context.contextManager().submitContextTask(() -> {
             var definition = findSymbolDefinition(context);
             if (definition.isPresent()) {
                 var file = definition.get().source();
@@ -413,17 +529,7 @@ public class ContextMenuBuilder {
                     return;
                 }
 
-                context.contextManager().editFiles(List.of(file));
-            }
-        });
-    }
-
-    private void readFiles(SymbolMenuContext context) {
-        context.contextManager().submitContextTask("Read file", () -> {
-            var definition = findSymbolDefinition(context);
-            if (definition.isPresent()) {
-                var file = definition.get().source();
-                context.contextManager().addReadOnlyFiles(List.of(file));
+                context.contextManager().addFiles(List.of(file));
             }
         });
     }
@@ -437,7 +543,7 @@ public class ContextMenuBuilder {
                             JOptionPane.INFORMATION_MESSAGE);
             return;
         }
-        context.contextManager().submitContextTask("Summarize file", () -> {
+        context.contextManager().submitContextTask(() -> {
             var definition = findSymbolDefinition(context);
             if (definition.isPresent()) {
                 var file = definition.get().source();

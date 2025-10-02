@@ -3,11 +3,9 @@ package io.github.jbellis.brokk;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.context.Context;
-import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.gui.InstructionsPanel;
-import io.github.jbellis.brokk.util.Messages;
+import java.awt.*;
 import java.util.List;
-import javax.swing.*;
 import org.jetbrains.annotations.Nullable;
 
 public interface IConsoleIO {
@@ -24,7 +22,7 @@ public interface IConsoleIO {
     }
 
     default int showConfirmDialog(
-            @Nullable JFrame frame, String message, String title, int optionType, int messageType) {
+            @Nullable Component parent, String message, String title, int optionType, int messageType) {
         throw new UnsupportedOperationException();
     }
 
@@ -34,6 +32,10 @@ public interface IConsoleIO {
 
     default void backgroundOutput(String summary, String details) {
         // pass
+    }
+
+    default void setLlmAndHistoryOutput(List<TaskEntry> history, TaskEntry taskEntry) {
+        llmOutput(taskEntry.toString(), ChatMessageType.SYSTEM, false, false);
     }
 
     enum MessageSubType {
@@ -50,11 +52,6 @@ public interface IConsoleIO {
 
     default void llmOutput(String token, ChatMessageType type) {
         llmOutput(token, type, false, false);
-    }
-
-    default void setLlmOutput(ContextFragment.TaskFragment newOutput) {
-        var firstMessage = newOutput.messages().getFirst();
-        llmOutput(Messages.getText(firstMessage), firstMessage.type());
     }
 
     default void systemOutput(String message) {
@@ -77,7 +74,7 @@ public interface IConsoleIO {
 
     default void hideSessionSwitchSpinner() {}
 
-    default List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
+    default List<ChatMessage> getLlmRawMessages() {
         throw new UnsupportedOperationException();
     }
 

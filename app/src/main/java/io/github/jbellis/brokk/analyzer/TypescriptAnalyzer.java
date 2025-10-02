@@ -142,9 +142,10 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
         String finalShortName;
         SkeletonType skeletonType = getSkeletonTypeForCapture(captureName);
 
+        final String shortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
         switch (skeletonType) {
             case CLASS_LIKE -> {
-                finalShortName = classChain.isEmpty() ? simpleName : classChain + "$" + simpleName;
+                finalShortName = shortName;
                 return CodeUnit.cls(file, packageName, finalShortName);
             }
             case FUNCTION_LIKE -> {
@@ -157,7 +158,7 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
                     // simpleName might be "anonymous_arrow_function" if #set! "default_name" was used and no var name
                     // found
                 }
-                finalShortName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
+                finalShortName = shortName;
                 return CodeUnit.fn(file, packageName, finalShortName);
             }
             case FIELD_LIKE -> {
@@ -617,16 +618,14 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     public boolean isTypeAlias(CodeUnit cu) {
         // Check if this field-type CodeUnit represents a type alias
         // We can identify this by checking if there are signatures that contain "type " and " = "
-        var sigList = withSignatures(signatures -> signatures.get(cu));
+        var sigList = signaturesOf(cu);
 
-        if (sigList != null) {
-            for (var sig : sigList) {
-                var hasType = sig.contains("type ") || sig.contains("export type ");
-                var hasEquals = sig.contains(" = ");
+        for (var sig : sigList) {
+            var hasType = sig.contains("type ") || sig.contains("export type ");
+            var hasEquals = sig.contains(" = ");
 
-                if (hasType && hasEquals) {
-                    return true;
-                }
+            if (hasType && hasEquals) {
+                return true;
             }
         }
 
@@ -725,7 +724,7 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     public Optional<String> getSkeleton(String fqName) {
         // Find the CodeUnit for this FQN - optimize with early termination
         CodeUnit foundCu = null;
-        for (CodeUnit cu : withSignatures(Map::keySet)) {
+        for (CodeUnit cu : withCodeUnitProperties(Map::keySet)) {
             if (cu.fqName().equals(fqName)) {
                 foundCu = cu;
                 break;
@@ -759,9 +758,9 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
 
     /** Find direct parent of a CodeUnit by looking in childrenByParent map */
     private @Nullable CodeUnit findDirectParent(CodeUnit cu) {
-        for (var entry : withChildrenByParent(Map::entrySet)) {
+        for (var entry : withCodeUnitProperties(Map::entrySet)) {
             CodeUnit parent = entry.getKey();
-            List<CodeUnit> children = entry.getValue();
+            List<CodeUnit> children = entry.getValue().children();
             if (children.contains(cu)) {
                 return parent;
             }

@@ -13,6 +13,7 @@ import org.treesitter.TreeSitterJava;
 public class JavaTreeSitterAnalyzer extends TreeSitterAnalyzer {
 
     private final Pattern LAMBDA_REGEX = Pattern.compile("(\\$anon|\\$\\d+)");
+    private static final Pattern LOCATION_SUFFIX = Pattern.compile(":[0-9]+(?::[0-9]+)?$");
 
     public JavaTreeSitterAnalyzer(IProject project) {
         super(project, Languages.JAVA, project.getExcludedDirectories());
@@ -69,12 +70,7 @@ public class JavaTreeSitterAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected CodeUnit createCodeUnit(
             ProjectFile file, String captureName, String simpleName, String packageName, String classChain) {
-        final char delimiter =
-                Optional.ofNullable(JAVA_SYNTAX_PROFILE.captureConfiguration().get(captureName)).stream()
-                                .anyMatch(x -> x.equals(SkeletonType.CLASS_LIKE))
-                        ? '$'
-                        : '.';
-        final String fqName = classChain.isEmpty() ? simpleName : classChain + delimiter + simpleName;
+        final String fqName = classChain.isEmpty() ? simpleName : classChain + "." + simpleName;
 
         var skeletonType = getSkeletonTypeForCapture(captureName);
         var type =
@@ -161,19 +157,103 @@ public class JavaTreeSitterAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
+    protected String formatFieldSignature(
+            TSNode fieldNode,
+            String src,
+            String exportPrefix,
+            String signatureText,
+            String baseIndent,
+            ProjectFile file) {
+        if (ENUM_CONSTANT.equals(fieldNode.getType())) {
+            return formatEnumConstant(fieldNode, signatureText, baseIndent);
+        }
+        return super.formatFieldSignature(fieldNode, src, exportPrefix, signatureText, baseIndent, file);
+    }
+
+    private String formatEnumConstant(TSNode fieldNode, String signatureText, String baseIndent) {
+        TSNode parent = fieldNode.getParent();
+        if (parent != null) {
+            int childCount = parent.getNamedChildCount();
+            boolean hasFollowingConstant = false;
+
+            // Compare by byte range to reliably identify the same node
+            int targetStart = fieldNode.getStartByte();
+            int targetEnd = fieldNode.getEndByte();
+
+            for (int i = 0; i < childCount; i++) {
+                TSNode child = parent.getNamedChild(i);
+                if (child != null
+                        && !child.isNull()
+                        && child.getStartByte() == targetStart
+                        && child.getEndByte() == targetEnd) {
+                    // Check if any subsequent named child is also an enum_constant
+                    for (int j = i + 1; j < childCount; j++) {
+                        TSNode next = parent.getNamedChild(j);
+                        if (next != null && !next.isNull() && ENUM_CONSTANT.equals(next.getType())) {
+                            hasFollowingConstant = true;
+                            break;
+                        }
+                    }
+                    break;
+                }
+            }
+            return baseIndent + signatureText + (hasFollowingConstant ? "," : "");
+        }
+        // Fallback: if structure not as expected, do not add terminating punctuation
+        return baseIndent + signatureText;
+    }
+
+    @Override
     protected String getLanguageSpecificCloser(CodeUnit cu) {
         return "}";
     }
 
     @Override
-    protected String nearestMethodName(String fqName) {
-        // Lambdas from LSP look something like `package.Class.Method$anon$357:32`, and we want `package.Class.Method`
-        var matcher = LAMBDA_REGEX.matcher(fqName);
-        if (matcher.find()) {
-            var match = matcher.group(1);
-            return fqName.substring(0, fqName.indexOf(match));
-        } else {
-            return fqName;
+    public Optional<CodeUnit> getDefinition(String fqName) {
+        // Normalize generics/anon/location suffixes for both class and method lookups
+        var normalized = normalizeFullName(fqName);
+        return super.getDefinition(normalized);
+    }
+
+    /**
+     * Strips Java generic type arguments (e.g., "<K, V extends X>") from any segments of the provided name. Handles
+     * nested generics by tracking angle bracket depth.
+     */
+    private String stripGenericTypeArguments(String name) {
+        if (name.isEmpty()) return name;
+        StringBuilder sb = new StringBuilder(name.length());
+        int depth = 0;
+        for (int i = 0; i < name.length(); i++) {
+            char c = name.charAt(i);
+            if (c == '<') {
+                depth++;
+                continue;
+            }
+            if (c == '>') {
+                if (depth > 0) depth--;
+                continue;
+            }
+            if (depth == 0) {
+                sb.append(c);
+            }
         }
+        return sb.toString();
+    }
+
+    @Override
+    protected String normalizeFullName(String fqName) {
+        // Normalize: strip generics, anonymous/lambda fragments, and trailing location suffixes
+        var s = stripGenericTypeArguments(fqName);
+
+        // Strip anonymous/lambda suffixes like $anon... or $<digits>...
+        var matcher = LAMBDA_REGEX.matcher(s);
+        if (matcher.find()) {
+            s = s.substring(0, matcher.start());
+        }
+
+        // Strip trailing source-location suffixes like :16 or :123:45
+        s = LOCATION_SUFFIX.matcher(s).replaceFirst("");
+
+        return s;
     }
 }

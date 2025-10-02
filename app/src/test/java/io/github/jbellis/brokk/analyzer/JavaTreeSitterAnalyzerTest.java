@@ -75,7 +75,7 @@ public class JavaTreeSitterAnalyzerTest {
 
     @Test
     public void extractMethodSourceNested() {
-        final var sourceOpt = analyzer.getMethodSource("A$AInner$AInnerInner.method7", true);
+        final var sourceOpt = analyzer.getMethodSource("A.AInner.AInnerInner.method7", true);
         assertTrue(sourceOpt.isPresent());
         final var source = sourceOpt.get().trim().stripIndent();
 
@@ -116,13 +116,13 @@ public class JavaTreeSitterAnalyzerTest {
         final var source = sourceOpt.get();
         // Verify the source contains class definition and methods
         assertTrue(source.contains("class A {"));
-        assertTrue(source.contains("public void method1()"));
+        assertTrue(source.contains("void method1()"));
         assertTrue(source.contains("public String method2(String input)"));
     }
 
     @Test
     public void getClassSourceNestedTest() {
-        final var sourceOpt = analyzer.getClassSource("A$AInner", true);
+        final var sourceOpt = analyzer.getClassSource("A.AInner", true);
         assertTrue(sourceOpt.isPresent());
         final var source = sourceOpt.get().stripIndent();
         // Verify the source contains inner class definition
@@ -143,7 +143,7 @@ public class JavaTreeSitterAnalyzerTest {
 
     @Test
     public void getClassSourceTwiceNestedTest() {
-        final var sourceOpt = analyzer.getClassSource("A$AInner$AInnerInner", true);
+        final var sourceOpt = analyzer.getClassSource("A.AInner.AInnerInner", true);
         assertTrue(sourceOpt.isPresent());
         final var source = sourceOpt.get().stripIndent();
         // Verify the source contains inner class definition
@@ -162,7 +162,7 @@ public class JavaTreeSitterAnalyzerTest {
 
     @Test
     public void getClassSourceNotFoundTest() {
-        assertThrows(SymbolNotFoundException.class, () -> analyzer.getClassSource("A$NonExistent", true));
+        assertThrows(SymbolNotFoundException.class, () -> analyzer.getClassSource("A.NonExistent", true));
     }
 
     @Test
@@ -180,21 +180,21 @@ public class JavaTreeSitterAnalyzerTest {
                 """
                 public class A {
                   void method1()
-                  String method2(String input)
-                  String method2(String input, int otherInput)
-                  Function<Integer, Integer> method3()
-                  int method4(double foo, Integer bar)
-                  void method5()
-                  void method6()
-                  void run()
+                  public String method2(String input)
+                  public String method2(String input, int otherInput)
+                  public Function<Integer, Integer> method3()
+                  public static int method4(double foo, Integer bar)
+                  public void method5()
+                  public void method6()
+                  public void run()
                   public class AInner {
                     public class AInnerInner {
-                      void method7()
+                      public void method7()
                     }
                   }
                   public static class AInnerStatic {
                   }
-                  void usesInnerClass()
+                  private void usesInnerClass()
                 }
                 """
                         .trim()
@@ -213,12 +213,30 @@ public class JavaTreeSitterAnalyzerTest {
                 public class D {
                   public static int field1;
                   private String field2;
-                  void methodD1()
-                  void methodD2()
+                  public void methodD1()
+                  public void methodD2()
                   private static class DSubStatic {
                   }
                   private class DSub {
                   }
+                }
+                """
+                        .trim()
+                        .stripIndent();
+        assertEquals(expected, skeleton);
+    }
+
+    @Test
+    public void getSkeletonTestEnum() {
+        final var skeletonOpt = analyzer.getSkeleton("EnumClass");
+        assertTrue(skeletonOpt.isPresent());
+        final var skeleton = skeletonOpt.get().trim().stripIndent();
+
+        final var expected =
+                """
+                public enum EnumClass {
+                  FOO,
+                  BAR
                 }
                 """
                         .trim()
@@ -253,24 +271,25 @@ public class JavaTreeSitterAnalyzerTest {
                 .toList();
         final var expected = List.of(
                 "A",
-                "A$AInner",
-                "A$AInner$AInnerInner",
-                "A$AInnerStatic",
+                "A.AInner",
+                "A.AInner.AInnerInner",
+                "A.AInnerStatic",
                 "AnnotatedClass",
-                "AnnotatedClass$InnerHelper",
+                "AnnotatedClass.InnerHelper",
                 "AnonymousUsage",
-                "AnonymousUsage$NestedClass",
+                "AnonymousUsage.NestedClass",
                 "B",
                 "BaseClass",
                 "C",
-                "C$Foo",
+                "C.Foo",
                 "CamelClass",
                 "CustomAnnotation",
                 "CyclicMethods",
                 "D",
-                "D$DSub",
-                "D$DSubStatic",
+                "D.DSub",
+                "D.DSubStatic",
                 "E",
+                "EnumClass",
                 "F",
                 "Interface",
                 "MethodReturner",
@@ -293,8 +312,8 @@ public class JavaTreeSitterAnalyzerTest {
         final var expected = Set.of(
                 // Classes
                 CodeUnit.cls(file, "", "D"),
-                CodeUnit.cls(file, "", "D$DSub"),
-                CodeUnit.cls(file, "", "D$DSubStatic"),
+                CodeUnit.cls(file, "", "D.DSub"),
+                CodeUnit.cls(file, "", "D.DSubStatic"),
                 // Methods
                 CodeUnit.fn(file, "", "D.methodD1"),
                 CodeUnit.fn(file, "", "D.methodD2"),
@@ -364,8 +383,8 @@ public class JavaTreeSitterAnalyzerTest {
                         CodeUnit.field(file, "", "D.field1"),
                         CodeUnit.field(file, "", "D.field2"),
                         // Classes
-                        CodeUnit.cls(file, "", "D$DSubStatic"),
-                        CodeUnit.cls(file, "", "D$DSub"))
+                        CodeUnit.cls(file, "", "D.DSubStatic"),
+                        CodeUnit.cls(file, "", "D.DSub"))
                 .sorted()
                 .toList();
         assertEquals(expected, members);
@@ -384,8 +403,8 @@ public class JavaTreeSitterAnalyzerTest {
 
         final var expected = Stream.of(
                         // Classes
-                        CodeUnit.cls(file, "", "D$DSub"),
-                        CodeUnit.cls(file, "", "D$DSubStatic"),
+                        CodeUnit.cls(file, "", "D.DSub"),
+                        CodeUnit.cls(file, "", "D.DSubStatic"),
                         // Methods
                         CodeUnit.fn(file, "", "D.methodD1"),
                         CodeUnit.fn(file, "", "D.methodD2"),
@@ -441,15 +460,15 @@ public class JavaTreeSitterAnalyzerTest {
     @Test
     public void testNearestMethodName() {
         // regular method
-        assertEquals("package.Class.method", analyzer.nearestMethodName("package.Class.method"));
+        assertEquals("package.Class.method", analyzer.normalizeFullName("package.Class.method"));
         // method with lambda/anon class
-        assertEquals("package.Class.method", analyzer.nearestMethodName("package.Class.method$anon$357:32"));
+        assertEquals("package.Class.method", analyzer.normalizeFullName("package.Class.method$anon$357:32"));
         // method with anon class (just digits)
-        assertEquals("package.Class.method", analyzer.nearestMethodName("package.Class.method$1"));
+        assertEquals("package.Class.method", analyzer.normalizeFullName("package.Class.method$1"));
         // method in nested class
-        assertEquals("package.A$AInner.method", analyzer.nearestMethodName("package.A$AInner.method"));
+        assertEquals("package.A.AInner.method", analyzer.normalizeFullName("package.A.AInner.method"));
         // method with lambda in nested class
-        assertEquals("package.A$AInner.method", analyzer.nearestMethodName("package.A$AInner.method$anon$1"));
+        assertEquals("package.A.AInner.method", analyzer.normalizeFullName("package.A.AInner.method$anon$1"));
     }
 
     @Test
@@ -531,8 +550,8 @@ public class JavaTreeSitterAnalyzerTest {
 
     @Test
     public void getClassSourceWithInnerClassJavadocsTest() {
-        final var sourceOpt = analyzer.getClassSource("AnnotatedClass$InnerHelper", true);
-        assertTrue(sourceOpt.isPresent(), "Should find AnnotatedClass$InnerHelper");
+        final var sourceOpt = analyzer.getClassSource("AnnotatedClass.InnerHelper", true);
+        assertTrue(sourceOpt.isPresent(), "Should find AnnotatedClass.InnerHelper");
         final var source = sourceOpt.get();
 
         // Verify inner class Javadocs are captured
@@ -615,5 +634,61 @@ public class JavaTreeSitterAnalyzerTest {
         assertTrue(source.contains("The annotation value"), "Should contain annotation method description");
         assertTrue(source.contains("@return the value string"), "Should contain annotation method @return tag");
         assertTrue(source.contains("Priority level"), "Should contain priority method description");
+    }
+
+    @Test
+    public void testNormalizationStripsGenericsInClassNames() {
+        // Based on log example: SlidingWindowCache<K, V extends Disposable>.getCachedKeys
+        assertEquals(
+                "io.github.jbellis.brokk.util.SlidingWindowCache.getCachedKeys",
+                analyzer.normalizeFullName(
+                        "io.github.jbellis.brokk.util.SlidingWindowCache<K, V extends Disposable>.getCachedKeys"));
+
+        // Class lookup with generics on the type
+        assertTrue(
+                analyzer.getClassSource("A<String>", false).isPresent(), "Class lookup with generics should normalize");
+
+        // Method lookup with generics on the containing class
+        assertTrue(
+                analyzer.getMethodSource("A<Integer>.method1", false).isPresent(),
+                "Method lookup with class generics should normalize");
+
+        // Nested classes with generics on each segment
+        assertTrue(
+                analyzer.getMethodSource("A.AInner<List<String>>.AInnerInner<Map<Integer, String>>.method7", false)
+                        .isPresent(),
+                "Nested class method with generics should normalize");
+    }
+
+    @Test
+    public void testNormalizationHandlesAnonymousAndLocationSuffix() {
+        // Based on log example: createPopupMenu$anon$328:16
+        assertEquals("package.Class.method", analyzer.normalizeFullName("package.Class.method$anon$328:16"));
+
+        // Ensure anonymous + location suffix normalizes for real method lookups
+        assertTrue(
+                analyzer.getMethodSource("A.method6$anon$1:42", false).isPresent(),
+                "Anonymous and location suffixes should normalize for method source lookup");
+
+        // Location suffix without anon
+        assertTrue(
+                analyzer.getMethodSource("A.method1:16", false).isPresent(),
+                "Location suffix alone should normalize for method source lookup");
+
+        // Anonymous with just digits
+        assertTrue(
+                analyzer.getMethodSource("A.method6$1", false).isPresent(),
+                "Anonymous digit suffix should normalize for method source lookup");
+    }
+
+    @Test
+    public void testDefinitionAndSourcesWithNormalizedConstructorNames() {
+        // Based on log example: Type.Type for constructor (and possibly with generics on the type)
+        assertTrue(
+                analyzer.getMethodSource("B<B>.B", true).isPresent(),
+                "Constructor lookup with generics on the type should normalize and resolve");
+
+        // Also ensure plain constructor lookup works (control)
+        assertTrue(analyzer.getMethodSource("B.B", true).isPresent(), "Constructor lookup should resolve");
     }
 }

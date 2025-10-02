@@ -17,22 +17,11 @@ import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
 import io.github.jbellis.brokk.prompts.QuickEditPrompts;
-import io.github.jbellis.brokk.util.Environment;
-import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
 import java.io.IOException;
-import java.nio.channels.FileChannel;
-import java.nio.channels.FileLock;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.Paths;
-import java.nio.file.StandardOpenOption;
 import java.time.Duration;
 import java.util.*;
-import java.util.function.BiFunction;
-import java.util.function.Supplier;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
@@ -72,16 +61,23 @@ public class CodeAgent {
     }
 
     public enum Option {
-        PRESERVE_RAW_MESSAGES,
         DEFER_BUILD
     }
 
-    private TaskResult runTaskInternal(
-            String userInput,
-            Set<Option> options,
-            BiFunction<ConversationState, EditState, List<ChatMessage>> messagesSupplier,
-            Supplier<Set<CodePrompts.InstructionsFlags>> flagsSupplier) {
+    /**
+     * @param userInput The user's goal/instructions.
+     * @return A TaskResult containing the conversation history and original file contents
+     */
+    public TaskResult runTask(String userInput, Set<Option> options) {
+        contextManager.getAnalyzerWrapper().pause();
+        try {
+            return runTaskInternal(userInput, options);
+        } finally {
+            contextManager.getAnalyzerWrapper().resume();
+        }
+    }
 
+    private @NotNull TaskResult runTaskInternal(String userInput, Set<Option> options) {
         var collectMetrics = "true".equalsIgnoreCase(System.getenv("BRK_CODEAGENT_METRICS"));
         @Nullable Metrics metrics = collectMetrics ? new Metrics() : null;
 
@@ -98,18 +94,17 @@ public class CodeAgent {
         int blocksAppliedWithoutBuild = 0;
 
         String buildError = "";
-        var blocks = new ArrayList<EditBlock.SearchReplaceBlock>(); // This will be part of EditState
+        var blocks = new ArrayList<EditBlock.SearchReplaceBlock>(); // This will be part of WorkspaceState
         Map<ProjectFile, String> originalFileContents = new HashMap<>();
 
         var msg = "Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput));
         io.systemOutput(msg);
-
         TaskResult.StopDetails stopDetails = null;
-        var parser = EditBlockParser.instance;
 
-        // Conversation bootstrap
+        var parser = EditBlockParser.instance;
+        // We'll collect the conversation as ChatMessages to store in context history.
         var taskMessages = new ArrayList<ChatMessage>();
-        var instructionsFlags = requireNonNull(flagsSupplier.get(), "flagsSupplier must not return null");
+        var instructionsFlags = getInstructionsFlags();
         UserMessage nextRequest = CodePrompts.instance.codeRequest(
                 userInput.trim(),
                 CodePrompts.instance.codeReminder(contextManager.getService(), model),
@@ -128,10 +123,17 @@ public class CodeAgent {
                 break;
             }
 
-            // Build turn messages via supplier
+            // Make the LLM request
             StreamingResult streamingResult;
             try {
-                var allMessagesForLlm = messagesSupplier.apply(cs, es);
+                var allMessagesForLlm = CodePrompts.instance.collectCodeMessages(
+                        contextManager,
+                        model,
+                        parser,
+                        cs.taskMessages(),
+                        requireNonNull(cs.nextRequest(), "nextRequest must be set before sending to LLM"),
+                        es.changedFiles(),
+                        Set.of());
                 var llmStartNanos = System.nanoTime();
                 streamingResult = coder.sendRequest(allMessagesForLlm, true);
                 if (metrics != null) {
@@ -144,7 +146,7 @@ public class CodeAgent {
                 continue; // let main loop interruption check handle
             }
 
-            // REQUEST
+            // REQUEST PHASE handles the result of sendLlmRequest
             var requestOutcome = requestPhase(cs, es, streamingResult, metrics);
             if (requestOutcome instanceof Step.Fatal fatalReq) {
                 stopDetails = fatalReq.stopDetails();
@@ -153,22 +155,30 @@ public class CodeAgent {
             cs = requestOutcome.cs();
             es = requestOutcome.es();
 
-            // PARSE
-            var parseOutcome = parsePhase(cs, es, streamingResult.text(), streamingResult.isPartial(), parser, metrics);
+            // PARSE PHASE parses edit blocks
+            var parseOutcome = parsePhase(
+                    cs,
+                    es,
+                    streamingResult.text(),
+                    streamingResult.isPartial(),
+                    parser,
+                    metrics); // Ensure parser is available
             if (parseOutcome instanceof Step.Fatal fatalParse) {
                 stopDetails = fatalParse.stopDetails();
                 break;
             }
             if (parseOutcome instanceof Step.Retry retryParse) {
-                if (metrics != null) metrics.parseRetries++;
+                if (metrics != null) {
+                    metrics.parseRetries++;
+                }
                 cs = retryParse.cs();
                 es = retryParse.es();
-                continue;
+                continue; // Restart main loop
             }
             cs = parseOutcome.cs();
             es = parseOutcome.es();
 
-            // APPLY
+            // APPLY PHASE applies blocks
             var applyOutcome = applyPhase(cs, es, parser, metrics);
             if (applyOutcome instanceof Step.Fatal fatalApply) {
                 stopDetails = fatalApply.stopDetails();
@@ -177,13 +187,13 @@ public class CodeAgent {
             if (applyOutcome instanceof Step.Retry retryApply) {
                 cs = retryApply.cs();
                 es = retryApply.es();
-                continue;
+                continue; // Restart main loop
             }
             cs = applyOutcome.cs();
             es = applyOutcome.es();
 
-            // After a successful apply, compact the turn into a clean, synthetic summary
-            // if the turn had more than a single user/AI pair; for simple one-shot turns,
+            // After a successful apply, consider compacting the turn into a clean, synthetic summary.
+            // Only do this if the turn had more than a single user/AI pair; for simple one-shot turns,
             // keep the original messages for clarity.
             if (es.blocksAppliedWithoutBuild() > 0) {
                 int msgsThisTurn = cs.taskMessages().size() - cs.turnStartIndex();
@@ -237,9 +247,7 @@ public class CodeAgent {
                 : userInput + " [" + stopDetails.reason().name() + "]";
         // architect auto-compresses the task entry so let's give it the full history to work with, quickModel is cheap
         // Prepare messages for TaskEntry log: filter raw messages and keep S/R blocks verbatim
-        var finalMessages = options.contains(Option.PRESERVE_RAW_MESSAGES)
-                ? List.copyOf(io.getLlmRawMessages(false))
-                : prepareMessagesForTaskEntryLog(io.getLlmRawMessages(false));
+        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages());
         return new TaskResult(
                 "Code: " + finalActionDescription,
                 new ContextFragment.TaskFragment(contextManager, finalMessages, userInput),
@@ -250,42 +258,21 @@ public class CodeAgent {
     private @NotNull Set<CodePrompts.InstructionsFlags> getInstructionsFlags() {
         var hasMergeMarkers = contextManager
                         .liveContext()
-                        .editableFiles()
+                        .fileFragments()
                         .flatMap(cf -> cf.files().stream())
                         .anyMatch(f -> f.read()
                                 .map(s -> s.contains("BRK_CONFLICT_BEGIN"))
                                 .orElse(false))
                 && contextManager
                         .liveContext()
-                        .editableFiles()
+                        .fileFragments()
                         .flatMap(cf -> cf.files().stream())
                         .anyMatch(f -> f.read()
                                 .map(s -> s.contains("BRK_CONFLICT_END"))
                                 .orElse(false));
-        return hasMergeMarkers ? EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS) : Set.of();
-    }
-
-    /** Multi-file mode: no singleFile, no extra read-only messages, flags auto-detected. */
-    public TaskResult runTask(String userInput, Set<Option> options) {
-        BiFunction<ConversationState, EditState, List<ChatMessage>> messagesSupplier = (cs, es) -> {
-            try {
-                return CodePrompts.instance.collectCodeMessages(
-                        contextManager,
-                        model,
-                        EditBlockParser.instance,
-                        cs.taskMessages(),
-                        requireNonNull(cs.nextRequest(), "nextRequest must be set before sending to LLM"),
-                        es.changedFiles(),
-                        Set.of());
-            } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                throw new RuntimeException(e);
-            }
-        };
-
-        Supplier<Set<CodePrompts.InstructionsFlags>> flagsSupplier = this::getInstructionsFlags;
-
-        return runTaskInternal(userInput, options, messagesSupplier, flagsSupplier);
+        return hasMergeMarkers
+                ? EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS)
+                : Set.<CodePrompts.InstructionsFlags>of();
     }
 
     public TaskResult runSingleFileEdit(
@@ -293,22 +280,108 @@ public class CodeAgent {
             String instructions,
             List<ChatMessage> readOnlyMessages,
             Set<CodePrompts.InstructionsFlags> flags) {
+        // 0.  Setup: coder, parser, initial messages, and initial state
+        var coder = contextManager.getLlm(model, "Code (single-file): " + instructions, true);
+        coder.setOutput(io);
 
-        BiFunction<ConversationState, EditState, List<ChatMessage>> messagesSupplier = (cs, es) -> {
-            return CodePrompts.instance.getSingleFileCodeMessages(
+        EditBlockParser parser = EditBlockParser.instance;
+
+        UserMessage initialRequest = CodePrompts.instance.codeRequest(
+                instructions, CodePrompts.instance.codeReminder(contextManager.getService(), model), parser, flags);
+
+        var conversationState = new ConversationState(new ArrayList<>(), initialRequest, 0);
+        var editState = new EditState(new ArrayList<>(), 0, 0, 0, 0, "", new HashSet<>(), new HashMap<>());
+
+        logger.debug("Code Agent engaged in single-file mode for %s: `%s…`"
+                .formatted(file.getFileName(), LogDescription.getShortDescription(instructions)));
+
+        TaskResult.StopDetails stopDetails;
+
+        // 1.  Main FSM loop (request → parse → apply)
+        while (true) {
+            // ----- 1-a.  Construct messages for this turn --------------------
+            List<ChatMessage> llmMessages = CodePrompts.instance.getSingleFileCodeMessages(
                     contextManager.getProject().getStyleGuide(),
-                    EditBlockParser.instance,
+                    parser,
                     readOnlyMessages,
-                    cs.taskMessages(),
-                    requireNonNull(cs.nextRequest(), "nextRequest must be set before sending to LLM"),
+                    conversationState.taskMessages(),
+                    requireNonNull(conversationState.nextRequest(), "nextRequest must be set before sending to LLM"),
                     file,
                     flags);
-        };
 
-        Supplier<Set<CodePrompts.InstructionsFlags>> flagsSupplier = () -> flags;
+            // ----- 1-b.  Send to LLM -----------------------------------------
+            StreamingResult streamingResult;
+            try {
+                streamingResult = coder.sendRequest(llmMessages, true);
+            } catch (InterruptedException ie) {
+                Thread.currentThread().interrupt();
+                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED);
+                break;
+            }
 
-        // Defer build for single-file edits as intended
-        return runTaskInternal(instructions, EnumSet.of(Option.DEFER_BUILD), messagesSupplier, flagsSupplier);
+            // ----- 1-c.  REQUEST PHASE ---------------------------------------
+            var step = requestPhase(conversationState, editState, streamingResult, null);
+            if (step instanceof Step.Fatal(TaskResult.StopDetails details)) {
+                stopDetails = details;
+                break;
+            }
+            conversationState = step.cs();
+            editState = step.es();
+
+            // ----- 1-d.  PARSE PHASE -----------------------------------------
+            step = parsePhase(
+                    conversationState, editState, streamingResult.text(), streamingResult.isPartial(), parser, null);
+            if (step instanceof Step.Retry retry) {
+                conversationState = retry.cs();
+                editState = retry.es();
+                continue; // back to while-loop top
+            }
+            if (step instanceof Step.Fatal(TaskResult.StopDetails details)) {
+                stopDetails = details;
+                break;
+            }
+            conversationState = step.cs();
+            editState = step.es();
+
+            // ----- 1-e.  APPLY PHASE -----------------------------------------
+            step = applyPhase(conversationState, editState, parser, null);
+            if (step instanceof Step.Retry retry2) {
+                conversationState = retry2.cs();
+                editState = retry2.es();
+                continue;
+            }
+            if (step instanceof Step.Fatal fatal3) {
+                stopDetails = fatal3.stopDetails();
+                break;
+            }
+            conversationState = step.cs();
+            editState = step.es();
+
+            // ----- 1-f.  Termination checks ----------------------------------
+            if (editState.pendingBlocks().isEmpty()) {
+                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
+                break;
+            }
+
+            if (Thread.currentThread().isInterrupted()) {
+                stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED);
+                break;
+            }
+        }
+
+        // 2.  Produce TaskResult
+        assert stopDetails != null;
+        var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages());
+
+        String finalAction = (stopDetails.reason() == TaskResult.StopReason.SUCCESS)
+                ? instructions
+                : instructions + " [" + stopDetails.reason().name() + "]";
+
+        return new TaskResult(
+                "Code: " + finalAction,
+                new ContextFragment.TaskFragment(contextManager, finalMessages, instructions),
+                editState.changedFiles(),
+                stopDetails);
     }
 
     void report(String message) {
@@ -477,11 +550,8 @@ public class CodeAgent {
             String errorMessage = Objects.toString(result.error().getMessage(), "Unknown LLM error during quick edit");
             stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, errorMessage);
             io.toolError("Quick edit failed: " + errorMessage);
-        } else if (result.text().isBlank()) {
-            stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.EMPTY_RESPONSE);
-            io.toolError("LLM returned empty response for quick edit.");
         } else {
-            // Success from LLM perspective (no error, text is not blank)
+            // Success from LLM perspective
             pendingHistory.add(result.aiMessage());
             stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
         }
@@ -492,23 +562,6 @@ public class CodeAgent {
                 new ContextFragment.TaskFragment(contextManager, pendingHistory, "Quick Edit: " + file.getFileName()),
                 Set.of(file),
                 stopDetails);
-    }
-
-    /** Formats the most recent build error for the LLM retry prompt. */
-    private static String formatBuildErrorsForLLM(String latestBuildError) {
-        return """
-                The build failed with the following error:
-
-                %s
-
-                Please analyze the error message, review the conversation history for previous attempts, and provide SEARCH/REPLACE blocks to fix the error.
-
-                IMPORTANT: If you determine that the build errors are not improving or are going in circles after reviewing the history,
-                do your best to explain the problem but DO NOT provide any edits.
-                Otherwise, provide the edits as usual.
-                """
-                .stripIndent()
-                .formatted(latestBuildError);
     }
 
     /**
@@ -538,6 +591,10 @@ public class CodeAgent {
             super(stopDetails.reason().name() + ": " + stopDetails.explanation());
             this.stopDetails = stopDetails;
         }
+
+        public EditStopException(TaskResult.StopReason stopReason) {
+            this(new TaskResult.StopDetails(stopReason));
+        }
     }
 
     /**
@@ -548,17 +605,12 @@ public class CodeAgent {
     Step requestPhase(
             ConversationState cs, EditState es, StreamingResult streamingResultFromLlm, @Nullable Metrics metrics) {
         var llmError = streamingResultFromLlm.error();
-        if (streamingResultFromLlm.isEmpty()) {
+        if (llmError != null) {
             String message;
             TaskResult.StopDetails fatalDetails;
-            if (llmError != null) {
-                message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending task";
-                fatalDetails = new TaskResult.StopDetails(
-                        TaskResult.StopReason.LLM_ERROR, requireNonNull(llmError.getMessage()));
-            } else {
-                message = "Empty LLM response even after retries. Ending task";
-                fatalDetails = new TaskResult.StopDetails(TaskResult.StopReason.EMPTY_RESPONSE, message);
-            }
+            message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending task";
+            fatalDetails =
+                    new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, requireNonNull(llmError.getMessage()));
             io.toolError(message);
             return new Step.Fatal(fatalDetails);
         }
@@ -575,39 +627,6 @@ public class CodeAgent {
     private EditBlock.EditResult applyBlocksAndHandleErrors(
             List<EditBlock.SearchReplaceBlock> blocksToApply, Set<ProjectFile> changedFilesCollector)
             throws EditStopException, InterruptedException {
-        // Identify files referenced by blocks that are not already editable
-        final var invalidFileBlocks = new HashSet<EditBlock.FailedBlock>();
-        var filesToAdd = blocksToApply.stream()
-                .filter(editBlock -> Objects.nonNull(editBlock.rawFileName()))
-                .distinct()
-                .map(editBlock -> {
-                    final var f = editBlock.rawFileName();
-                    try {
-                        return contextManager.toFile(f);
-                    } catch (IllegalArgumentException e) {
-                        invalidFileBlocks.add(
-                                new EditBlock.FailedBlock(editBlock, EditBlock.EditBlockFailureReason.FILE_NOT_FOUND));
-                        return null;
-                    }
-                })
-                .filter(Objects::nonNull)
-                .filter(file -> !contextManager.getEditableFiles().contains(file))
-                .toList();
-
-        // Check for conflicts with read-only files
-        var readOnlyFiles = filesToAdd.stream()
-                .filter(file -> contextManager.getReadonlyProjectFiles().contains(file))
-                .toList();
-        if (!readOnlyFiles.isEmpty()) {
-            var msg =
-                    "LLM attempted to edit read-only file(s): %s.\nNo edits applied. Mark the file(s) editable or clarify the approach."
-                            .formatted(readOnlyFiles.stream()
-                                    .map(ProjectFile::toString)
-                                    .collect(Collectors.joining(",")));
-            reportComplete(msg);
-            var filenames = readOnlyFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(","));
-            throw new EditStopException(new TaskResult.StopDetails(TaskResult.StopReason.READ_ONLY_EDIT, filenames));
-        }
 
         EditBlock.EditResult editResult;
         try {
@@ -619,7 +638,6 @@ public class CodeAgent {
         }
 
         changedFilesCollector.addAll(editResult.originalContents().keySet());
-        editResult.failedBlocks().addAll(invalidFileBlocks);
         return editResult;
     }
 
@@ -637,22 +655,23 @@ public class CodeAgent {
             return new Step.Fatal(stopDetails);
         }
 
-        String latestBuildError;
+        String buildError;
         try {
-            latestBuildError = performBuildVerification();
-            latestBuildError = sanitizeBuildOutput(latestBuildError);
+            buildError = BuildAgent.runVerification(contextManager);
         } catch (InterruptedException e) {
             logger.debug("CodeAgent interrupted during build verification.");
             Thread.currentThread().interrupt();
             return new Step.Fatal(new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
         }
 
-        if (latestBuildError.isEmpty()) {
+        // Base success/failure decision on raw build result, not processed output
+        if (buildError.isEmpty()) {
             // Build succeeded or was skipped by performBuildVerification
+            logger.debug("Build verification succeeded");
             reportComplete("Success!");
             return new Step.Fatal(TaskResult.StopReason.SUCCESS);
         } else {
-            // Build failed
+            // Build failed - use raw error for decisions, sanitized for storage, processed for LLM context
             if (metrics != null) {
                 metrics.buildFailures++;
             }
@@ -662,14 +681,15 @@ public class CodeAgent {
                 reportComplete("Build failed %d consecutive times; aborting.".formatted(newBuildFailures));
                 return new Step.Fatal(new TaskResult.StopDetails(
                         TaskResult.StopReason.BUILD_ERROR,
-                        "Build failed %d consecutive times:\n%s".formatted(newBuildFailures, latestBuildError)));
+                        "Build failed %d consecutive times:\n%s".formatted(newBuildFailures, buildError)));
             }
-            UserMessage nextRequestForBuildFailure = new UserMessage(formatBuildErrorsForLLM(latestBuildError));
+            // Use processed output for LLM context, but fallback to sanitized if pipeline processing returned empty
+            UserMessage nextRequestForBuildFailure = new UserMessage(CodePrompts.buildFeedbackPrompt());
             var newCs = new ConversationState(
                     cs.taskMessages(),
                     nextRequestForBuildFailure,
                     cs.taskMessages().size());
-            var newEs = es.afterBuildFailure(latestBuildError);
+            var newEs = es.afterBuildFailure(buildError);
             report("Asking LLM to fix build/lint failures");
             return new Step.Retry(newCs, newEs);
         }
@@ -698,7 +718,7 @@ public class CodeAgent {
             int succeededCount = attemptedBlockCount - failedBlocks.size();
             int newBlocksAppliedWithoutBuild = es.blocksAppliedWithoutBuild() + succeededCount;
 
-            // Update originalFileContents in the EditState being built for the next step
+            // Update originalFileContents in the workspace state being built for the next step
             Map<ProjectFile, String> nextOriginalFileContents = new HashMap<>(es.originalFileContents());
             editResult.originalContents().forEach(nextOriginalFileContents::putIfAbsent);
 
@@ -755,7 +775,7 @@ public class CodeAgent {
             if (e.stopDetails.reason() == TaskResult.StopReason.READ_ONLY_EDIT) {
                 // already reported by applyBlocksAndHandleErrors
             } else if (e.stopDetails.reason() == TaskResult.StopReason.IO_ERROR) {
-                io.toolError(requireNonNull(e.stopDetails.explanation()));
+                io.toolError(e.stopDetails.explanation());
             } else if (e.stopDetails.reason() == TaskResult.StopReason.APPLY_ERROR) {
                 reportComplete(e.stopDetails.explanation());
             }
@@ -765,125 +785,6 @@ public class CodeAgent {
             Thread.currentThread().interrupt(); // Preserve interrupt status
             return new Step.Fatal(new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
         }
-    }
-
-    private String performBuildVerification() throws InterruptedException {
-        var verificationCommand = BuildAgent.determineVerificationCommand(contextManager);
-        if (verificationCommand == null || verificationCommand.isBlank()) {
-            report("No verification command specified, skipping build/check.");
-            return "";
-        }
-
-        // Enforce single-build execution when requested
-        boolean noConcurrentBuilds = "true".equalsIgnoreCase(System.getenv("BRK_NO_CONCURRENT_BUILDS"));
-        if (!noConcurrentBuilds) {
-            return runVerificationCommand(verificationCommand);
-        }
-
-        Path lockDir = Paths.get(System.getProperty("java.io.tmpdir"), "brokk");
-        try {
-            Files.createDirectories(lockDir);
-        } catch (IOException e) {
-            logger.warn("Unable to create lock directory {}; proceeding without build lock", lockDir, e);
-            return runVerificationCommand(verificationCommand);
-        }
-
-        var repoNameForLock = getOriginRepositoryName();
-        Path lockFile = lockDir.resolve(repoNameForLock + ".lock");
-
-        try (FileChannel channel = FileChannel.open(lockFile, StandardOpenOption.CREATE, StandardOpenOption.WRITE);
-                FileLock lock = channel.lock()) {
-            logger.debug("Acquired build lock {}", lockFile);
-            return runVerificationCommand(verificationCommand);
-        } catch (IOException ioe) {
-            logger.warn("Failed to acquire file lock {}; proceeding without it", lockFile, ioe);
-            return runVerificationCommand(verificationCommand);
-        }
-    }
-
-    public String getOriginRepositoryName() {
-        var url = contextManager.getRepo().getRemoteUrl();
-        if (url == null || url.isBlank()) {
-            // Fallback: use directory name of repo root
-            return contextManager.getRepo().getGitTopLevel().getFileName().toString();
-        }
-
-        // Strip trailing ".git", if any
-        if (url.endsWith(".git")) {
-            url = url.substring(0, url.length() - 4);
-        }
-
-        // SSH URLs use ':', HTTPS uses '/'
-        int idx = Math.max(url.lastIndexOf('/'), url.lastIndexOf(':'));
-        if (idx >= 0 && idx < url.length() - 1) {
-            return url.substring(idx + 1);
-        }
-
-        throw new IllegalArgumentException("Unable to parse git repo url " + url);
-    }
-
-    /**
-     * Executes the given verification command, streaming output back to the console. Returns an empty string on
-     * success, or the combined error/output when the command exits non-zero.
-     */
-    private String runVerificationCommand(String verificationCommand) throws InterruptedException {
-        io.llmOutput("\nRunning verification command: " + verificationCommand, ChatMessageType.CUSTOM);
-        String shellLang = ExecutorConfig.getShellLanguageFromProject(contextManager.getProject());
-        io.llmOutput("\n```" + shellLang + "\n", ChatMessageType.CUSTOM);
-        try {
-            var output = Environment.instance.runShellCommand(
-                    verificationCommand,
-                    contextManager.getProject().getRoot(),
-                    line -> io.llmOutput(line + "\n", ChatMessageType.CUSTOM),
-                    Environment.UNLIMITED_TIMEOUT);
-            logger.debug("Verification command successful. Output: {}", output);
-            io.llmOutput("\n```", ChatMessageType.CUSTOM);
-            return "";
-        } catch (Environment.SubprocessException e) {
-            io.llmOutput("\n```", ChatMessageType.CUSTOM); // Close the markdown block
-            // Add the combined error and output to the history for the next request
-            return e.getMessage() + "\n\n" + e.getOutput();
-        }
-    }
-
-    /**
-     * Sanitize build output by relativizing absolute paths that begin with the project root.
-     *
-     * <p>Behavior: - Handles both Unix-style and Windows-style absolute paths. - Converts the project root path to both
-     * forward- and back-slash forms and appends a trailing separator, so that only paths that are clearly children of
-     * the project root are matched. - Replacement is case-insensitive to accommodate tooling differences. - The root
-     * markers are only removed when they appear as a directory prefix of a larger path (root + separator) and when
-     * preceded by a non-path character boundary. This prevents accidental removal when the root string appears as part
-     * of some other token, and avoids removing the root itself when it stands alone.
-     *
-     * <p>Examples: - Unix: /home/user/repo/src/Main.java -> src/Main.java - Windows: C:\repo\pkg\mod.py -> pkg\mod.py
-     */
-    private String sanitizeBuildOutput(String text) {
-        var root = contextManager.getProject().getRoot().toAbsolutePath().normalize();
-        var rootAbs = root.toString();
-
-        // Build forward- and back-slash variants with a trailing separator
-        var rootFwd = rootAbs.replace('\\', '/');
-        if (!rootFwd.endsWith("/")) {
-            rootFwd = rootFwd + "/";
-        }
-        var rootBwd = rootAbs.replace('/', '\\');
-        if (!rootBwd.endsWith("\\")) {
-            rootBwd = rootBwd + "\\";
-        }
-
-        // Case-insensitive replacement and boundary-checked:
-        // - (?<![A-Za-z0-9._-]) ensures the match is not preceded by a typical path/token character.
-        // - The trailing separator in rootFwd/rootBwd ensures we only match a directory prefix of a larger path.
-        // - (?=\S) ensures there is at least one non-whitespace character following the prefix (i.e., a larger path).
-        var sanitized = text;
-        var forwardPattern = Pattern.compile("(?i)(?<![A-Za-z0-9._-])" + Pattern.quote(rootFwd) + "(?=\\S)");
-        var backwardPattern = Pattern.compile("(?i)(?<![A-Za-z0-9._-])" + Pattern.quote(rootBwd) + "(?=\\S)");
-
-        sanitized = forwardPattern.matcher(sanitized).replaceAll("");
-        sanitized = backwardPattern.matcher(sanitized).replaceAll("");
-
-        return sanitized;
     }
 
     /** next FSM state */
@@ -979,8 +880,7 @@ public class CodeAgent {
             String lastBuildError,
             Set<ProjectFile> changedFiles,
             Map<ProjectFile, String> originalFileContents) {
-
-        /** Returns a new EditState with updated pending blocks and parse failures. */
+        /** Returns a new WorkspaceState with updated pending blocks and parse failures. */
         EditState withPendingBlocks(List<EditBlock.SearchReplaceBlock> newPendingBlocks, int newParseFailures) {
             return new EditState(
                     newPendingBlocks,
@@ -994,8 +894,8 @@ public class CodeAgent {
         }
 
         /**
-         * Returns a new EditState after a build failure, updating the error message. Also resets the per-turn baseline
-         * (originalFileContents) for the next turn.
+         * Returns a new WorkspaceState after a build failure, updating the error message. Also resets the per-turn
+         * baseline (originalFileContents) for the next turn.
          */
         EditState afterBuildFailure(String newBuildError) {
             return new EditState(
@@ -1009,7 +909,7 @@ public class CodeAgent {
                     new HashMap<>()); // Clear per-turn baseline
         }
 
-        /** Returns a new EditState after applying blocks, updating relevant fields. */
+        /** Returns a new WorkspaceState after applying blocks, updating relevant fields. */
         EditState afterApply(
                 List<EditBlock.SearchReplaceBlock> newPendingBlocks,
                 int newApplyFailures,
