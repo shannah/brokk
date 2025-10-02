@@ -134,19 +134,22 @@ public class SearchAgent {
             var allowedToolNames = calculateAllowedToolNames();
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
 
-            var terminalToolNames = new ArrayList<String>();
+            // Agent-owned terminal tools (instance methods)
+            var agentTerminalTools = new ArrayList<String>();
             if (allowedTerminals.contains(Terminal.ANSWER)) {
-                terminalToolNames.add("answer");
-            }
-            if (allowedTerminals.contains(Terminal.TASK_LIST)) {
-                terminalToolNames.add("createTaskList");
+                agentTerminalTools.add("answer");
             }
             if (allowedTerminals.contains(Terminal.WORKSPACE)) {
-                terminalToolNames.add("workspaceComplete");
+                agentTerminalTools.add("workspaceComplete");
             }
             // Always allow abort
-            terminalToolNames.add("abortSearch");
-            toolSpecs.addAll(toolRegistry.getTools(this, terminalToolNames));
+            agentTerminalTools.add("abortSearch");
+            toolSpecs.addAll(toolRegistry.getTools(this, agentTerminalTools));
+
+            // Global terminal tool(s) implemented outside SearchAgent (e.g., in SearchTools)
+            if (allowedTerminals.contains(Terminal.TASK_LIST)) {
+                toolSpecs.addAll(toolRegistry.getRegisteredTools(List.of("createTaskList")));
+            }
 
             // Decide next action(s)
             io.llmOutput("\n# Planning", ChatMessageType.AI, true, false);
