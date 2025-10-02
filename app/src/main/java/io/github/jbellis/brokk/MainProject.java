@@ -1254,7 +1254,6 @@ public final class MainProject extends AbstractProject {
             props.remove(FORCE_TOOL_EMULATION_KEY);
         }
         saveGlobalProperties(props);
-
     }
 
     public static String getBrokkKey() {

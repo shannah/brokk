@@ -1186,7 +1186,6 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
         if (forceToolEmulationCheckbox != null) {
             MainProject.setForceToolEmulation(forceToolEmulationCheckbox.isSelected());
             logger.debug("Applied Force Tool Emulation: {}", forceToolEmulationCheckbox.isSelected());
-
         }
 
         // Appearance Tab
