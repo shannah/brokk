@@ -9,12 +9,8 @@
     "version": "1.0.0",
     "jdeploy": {
         "jdk": false,
-        "args": ["@jdeploy.args"],
+        "args": ["--add-modules jdk.incubator.vector"],
         "configFile": "{{ user.home }}/.config/brokk/jdeploy.json",
-        "files" : [{
-            "dir": ".",
-            "includes": "jdeploy.args"
-        }],
         "publishTargets": [{
             "name": "github: brokk",
             "type": "GITHUB",
