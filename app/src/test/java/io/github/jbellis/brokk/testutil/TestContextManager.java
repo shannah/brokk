@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.testutil;
 
-import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.IAnalyzerWrapper;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IContextManager;
@@ -10,13 +9,12 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.git.InMemoryRepo;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
-import org.jetbrains.annotations.Nullable;
-
 import java.io.File;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
 import java.util.concurrent.CompletableFuture;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Lightweight Test IContextManager used in unit tests.

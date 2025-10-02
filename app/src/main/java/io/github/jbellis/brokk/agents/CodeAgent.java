@@ -12,7 +12,6 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.*;
 import io.github.jbellis.brokk.Llm.StreamingResult;
-import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.prompts.CodePrompts;
@@ -23,7 +22,6 @@ import io.github.jbellis.brokk.util.Messages;
 import java.io.IOException;
 import java.time.Duration;
 import java.util.*;
-import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
@@ -71,7 +69,8 @@ public class CodeAgent {
      * @return A TaskResult containing the conversation history and original file contents
      */
     public TaskResult runTask(String userInput, Set<Option> options) {
-        // pause watching for external changes (so they don't get added to activity history while we're still making changes);
+        // pause watching for external changes (so they don't get added to activity history while we're still making
+        // changes);
         // this means that we're responsible for refreshing the analyzer when we make changes
         contextManager.getAnalyzerWrapper().pause();
         try {
@@ -125,7 +124,8 @@ public class CodeAgent {
                 break;
             }
 
-            // "Update everything in the workspace" wouldn't be necessary if we were 100% sure that the analyzer were up to date
+            // "Update everything in the workspace" wouldn't be necessary if we were 100% sure that the analyzer were up
+            // to date
             // before we paused it, but empirically that is not the case as of this writing.
             var filesToRefresh = es.changedFiles().isEmpty() ? contextManager.getFilesInContext() : es.changedFiles();
             var analyzerFuture = contextManager.getAnalyzerWrapper().updateFiles(filesToRefresh);

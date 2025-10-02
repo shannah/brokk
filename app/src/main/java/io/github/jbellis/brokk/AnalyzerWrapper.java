@@ -47,8 +47,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
     private final LoggingExecutorService analyzerExecutor;
     private volatile @Nullable Thread analyzerExecutorThread;
 
-    public AnalyzerWrapper(
-            IProject project, @Nullable AnalyzerListener listener, IConsoleIO io) {
+    public AnalyzerWrapper(IProject project, @Nullable AnalyzerListener listener, IConsoleIO io) {
         this.project = project;
         this.root = project.getRoot();
         gitRepoRoot = project.hasGit() ? project.getRepo().getGitTopLevel() : null;
@@ -62,6 +61,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
         // Create a single-threaded executor for analyzer refresh tasks (wrapped with logging).
         var threadFactory = new ThreadFactory() {
             private final ThreadFactory delegate = Executors.defaultThreadFactory();
+
             @Override
             public Thread newThread(Runnable r) {
                 Thread t = delegate.newThread(r);
@@ -136,9 +136,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
                 IAnalyzer result = requireNonNull(prev).update();
                 long duration = System.currentTimeMillis() - startTime;
                 logger.info(
-                        "Library ingestion: {} analyzer refresh completed in {}ms",
-                        getLanguageDescription(),
-                        duration);
+                        "Library ingestion: {} analyzer refresh completed in {}ms", getLanguageDescription(), duration);
                 return result;
             });
         }
@@ -400,15 +398,13 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
     }
 
     /**
-     * Refreshes the analyzer by scheduling a job on the analyzerExecutor.
-     * The function controls whether a new analyzer is created, or an
-     * optimistic or pessimistic incremental rebuild. The function receives the
-     * current analyzer (possibly {@code null}) as its argument and must return
-     * the new analyzer to become current.
+     * Refreshes the analyzer by scheduling a job on the analyzerExecutor. The function controls whether a new analyzer
+     * is created, or an optimistic or pessimistic incremental rebuild. The function receives the current analyzer
+     * (possibly {@code null}) as its argument and must return the new analyzer to become current.
      *
-     * Returns the Future representing the scheduled task.
+     * <p>Returns the Future representing the scheduled task.
      *
-     * Synchronized to simplify reasoning about pause/resume; otherwise is inherently threadsafe.
+     * <p>Synchronized to simplify reasoning about pause/resume; otherwise is inherently threadsafe.
      */
     private synchronized CompletableFuture<IAnalyzer> refresh(Function<@Nullable IAnalyzer, IAnalyzer> fn) {
         logger.trace("Scheduling analyzer refresh task");
@@ -454,8 +450,8 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
 
         // Prevent blocking on the analyzer's own executor thread.
         if (Thread.currentThread() == analyzerExecutorThread) {
-            throw new IllegalStateException("Attempted to call blocking get() from the analyzer's own executor thread " +
-                                            "before the analyzer was ready. This would cause a deadlock.");
+            throw new IllegalStateException("Attempted to call blocking get() from the analyzer's own executor thread "
+                    + "before the analyzer was ready. This would cause a deadlock.");
         }
 
         // Otherwise, this must be the very first build (or a failed one); we'll have to wait for it to be ready.
