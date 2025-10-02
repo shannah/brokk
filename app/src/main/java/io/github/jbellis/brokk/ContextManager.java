@@ -60,7 +60,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private IConsoleIO io; // for UI feedback - Initialized in createGui
 
     @SuppressWarnings("NullAway.Init")
-    private AnalyzerWrapper analyzerWrapper; // also initialized in createGui/createHeadless
+    private IAnalyzerWrapper analyzerWrapper; // also initialized in createGui/createHeadless
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
@@ -571,7 +571,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     @Override
-    public AnalyzerWrapper getAnalyzerWrapper() {
+    public IAnalyzerWrapper getAnalyzerWrapper() {
         return analyzerWrapper;
     }
 

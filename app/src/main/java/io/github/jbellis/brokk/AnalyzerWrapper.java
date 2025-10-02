@@ -22,12 +22,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
+public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper {
     private final Logger logger = LogManager.getLogger(AnalyzerWrapper.class);
-
-    public static final String ANALYZER_BUSY_MESSAGE =
-            "Code Intelligence is still being built. Please wait until completion.";
-    public static final String ANALYZER_BUSY_TITLE = "Analyzer Busy";
 
     @Nullable
     private final AnalyzerListener listener; // can be null if no one is listening
@@ -184,6 +180,7 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
         }
     }
 
+    @Override
     public CompletableFuture<IAnalyzer> updateFiles(Set<ProjectFile> relevantFiles) {
         return refresh(prev -> {
             long startTime = System.currentTimeMillis();
@@ -313,14 +310,17 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
         return analyzer;
     }
 
+    @Override
     public boolean providesInterproceduralAnalysis() {
         return project.getAnalyzerLanguages().stream().anyMatch(Language::providesInterproceduralAnalysis);
     }
 
+    @Override
     public boolean providesSummaries() {
         return project.getAnalyzerLanguages().stream().anyMatch(Language::providesSummaries);
     }
 
+    @Override
     public boolean providesSourceCode() {
         return project.getAnalyzerLanguages().stream().anyMatch(Language::providesSourceCode);
     }
@@ -437,6 +437,7 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
     }
 
     /** Get the analyzer, showing a spinner UI while waiting if requested. */
+    @Override
     public IAnalyzer get() throws InterruptedException {
         // Prevent calling blocking get() from the EDT.
         if (SwingUtilities.isEventDispatchThread()) {
@@ -469,26 +470,24 @@ public class AnalyzerWrapper implements AutoCloseable, IWatchService.Listener {
     }
 
     /** @return null if analyzer is not ready yet */
-    @Nullable
-    public IAnalyzer getNonBlocking() {
+    @Override
+    public @Nullable IAnalyzer getNonBlocking() {
         return currentAnalyzer;
     }
 
-    /** @return true if the analyzer is ready for use, false if still building */
-    public boolean isReady() {
-        return getNonBlocking() != null;
-    }
-
+    @Override
     public void requestRebuild() {
         externalRebuildRequested = true;
     }
 
     /** Pause the file watching service. */
+    @Override
     public synchronized void pause() {
         watchService.pause();
     }
 
     /** Resume the file watching service. */
+    @Override
     public synchronized void resume() {
         watchService.resume();
     }

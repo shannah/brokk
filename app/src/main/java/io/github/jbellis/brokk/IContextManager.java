@@ -158,7 +158,7 @@ public interface IContextManager {
         return allFiles.stream().filter(ContextManager::isTestFile).toList();
     }
 
-    default AnalyzerWrapper getAnalyzerWrapper() {
+    default IAnalyzerWrapper getAnalyzerWrapper() {
         throw new UnsupportedOperationException();
     }
 

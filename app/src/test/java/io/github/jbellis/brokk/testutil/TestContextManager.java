@@ -1,7 +1,7 @@
 package io.github.jbellis.brokk.testutil;
 
 import io.github.jbellis.brokk.AnalyzerWrapper;
-import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IAnalyzerWrapper;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Service;
@@ -10,13 +10,13 @@ import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.git.InMemoryRepo;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
+import org.jetbrains.annotations.Nullable;
+
 import java.io.File;
 import java.nio.file.Path;
 import java.util.HashSet;
 import java.util.Set;
-import java.util.concurrent.Callable;
 import java.util.concurrent.CompletableFuture;
-import java.util.concurrent.Future;
 
 /**
  * Lightweight Test IContextManager used in unit tests.
@@ -36,7 +36,7 @@ public final class TestContextManager implements IContextManager {
     private final Context liveContext;
 
     // Test-friendly AnalyzerWrapper that uses a "quick runner" to return the mockAnalyzer immediately.
-    private final AnalyzerWrapper analyzerWrapper;
+    private final IAnalyzerWrapper analyzerWrapper;
 
     public TestContextManager(Path projectRoot, IConsoleIO consoleIO) {
         this(new TestProject(projectRoot, Languages.JAVA), consoleIO, new HashSet<>(), new TestAnalyzer());
@@ -54,7 +54,22 @@ public final class TestContextManager implements IContextManager {
         this.stubService = new TestService(this.project);
         this.liveContext = new Context(this, "Test context");
 
-        this.analyzerWrapper = new AnalyzerWrapper(this.project, null, this.consoleIO);
+        this.analyzerWrapper = new IAnalyzerWrapper() {
+            @Override
+            public IAnalyzer get() throws InterruptedException {
+                return analyzer;
+            }
+
+            @Override
+            public @Nullable IAnalyzer getNonBlocking() {
+                return analyzer;
+            }
+
+            @Override
+            public CompletableFuture<IAnalyzer> updateFiles(Set<ProjectFile> relevantFiles) {
+                return CompletableFuture.completedFuture(analyzer);
+            }
+        };
     }
 
     public TestContextManager(Path projectRoot, Set<String> editableFiles) {
@@ -93,7 +108,7 @@ public final class TestContextManager implements IContextManager {
     }
 
     @Override
-    public AnalyzerWrapper getAnalyzerWrapper() {
+    public IAnalyzerWrapper getAnalyzerWrapper() {
         return analyzerWrapper;
     }
 
