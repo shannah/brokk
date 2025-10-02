@@ -235,14 +235,15 @@ public class EditBlockParser {
 
     /**
      * Scan lines starting immediately after "<<<<<<< SEARCH" until we find the matching top-level ">>>>>>> REPLACE".
-     * While scanning, we treat "=======" as the divider between before/after only when we are at top-level
-     * (depth == 0).
+     * While scanning, we treat "=======" as the divider between before/after only when we are at top-level (depth ==
+     * 0).
      *
      * <p>Nesting rules:
+     *
      * <ul>
-     *   <li>Any subsequent "<<<<<<< SEARCH" inside the payload increases depth (nested edit block literal).</li>
-     *   <li>Any ">>>>>>> REPLACE" decreases depth; it only terminates the scan when depth == 0 (the top-level end).</li>
-     *   <li>Generic git-conflict markers (e.g., "<<<<<<< HEAD" / ">>>>>>> branch") also adjust depth.</li>
+     *   <li>Any subsequent "<<<<<<< SEARCH" inside the payload increases depth (nested edit block literal).
+     *   <li>Any ">>>>>>> REPLACE" decreases depth; it only terminates the scan when depth == 0 (the top-level end).
+     *   <li>Generic git-conflict markers (e.g., "<<<<<<< HEAD" / ">>>>>>> branch") also adjust depth.
      * </ul>
      *
      * <p>Nested markers therefore do not interfere with our parsing and are preserved verbatim in the payload.

@@ -70,7 +70,6 @@ public final class TestContextManager implements IContextManager {
         this.analyzerWrapper = new AnalyzerWrapper(this.project, quickRunner, /*listener=*/ null, this.consoleIO);
     }
 
-
     public TestContextManager(Path projectRoot, Set<String> editableFiles) {
         this(
                 new TestProject(projectRoot, Languages.JAVA),

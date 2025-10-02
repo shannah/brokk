@@ -2,11 +2,8 @@ package io.github.jbellis.brokk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.EditBlock.OutputBlock;
 import io.github.jbellis.brokk.prompts.EditBlockParser;
-
-import java.util.List;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
@@ -303,11 +300,10 @@ class EditBlockParserTest {
                 "Error message should mention SEARCH/REPLACE");
     }
 
-
     @Test
     void testParseThreeFilesOneBlockEach() {
         String input =
-        """
+                """
         ```
         src/main/java/io/github/jbellis/brokk/ContextManager.java
         <<<<<<< SEARCH
@@ -347,13 +343,13 @@ class EditBlockParserTest {
                    ```
         "".formatted(filename, search, replace);
         }
-        
+
         @Test
         =======
         package io.github.jbellis.brokk;
-        
+
         import java.util.Optional;
-        
+
         class ContextManagerRedactionTest {
             private String createSingleBlockMessage(String filename, String search, String replace) {
                 return ""
@@ -391,9 +387,7 @@ class EditBlockParserTest {
         // Block 2 assertions
         var b2 = blocks.get(1);
         assertEquals("src/main/java/io/github/jbellis/brokk/agents/CodeAgent.java", b2.rawFileName());
-        assertEquals(
-                "    private List<ChatMessage> prepareMessagesForTaskEntryLog() {\n",
-                b2.beforeText());
+        assertEquals("    private List<ChatMessage> prepareMessagesForTaskEntryLog() {\n", b2.beforeText());
         String expectedAfter2 =
                 """
                     /**
@@ -409,7 +403,7 @@ class EditBlockParserTest {
         var b3 = blocks.get(2);
         assertEquals("src/test/java/io/github/jbellis/brokk/ContextManagerRedactionTest.java", b3.rawFileName());
         String expectedBefore3 =
-        """
+                """
         package io.github.jbellis.brokk;
 
         class ContextManagerRedactionTest {
@@ -425,11 +419,11 @@ class EditBlockParserTest {
                    ```
         "".formatted(filename, search, replace);
         }
-        
+
         @Test
         """;
         String expectedAfter3 =
-        """
+                """
         package io.github.jbellis.brokk;
 
         import java.util.Optional;

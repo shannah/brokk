@@ -2,24 +2,21 @@ package io.github.jbellis.brokk;
 
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
-import io.github.jbellis.brokk.analyzer.BrokkFile;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolRegistry;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-
 import java.io.File;
-import java.io.IOException;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.*;
 import java.util.stream.Collectors;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 
 /** Interface for context manager functionality */
 public interface IContextManager {
@@ -213,7 +210,12 @@ public interface IContextManager {
     }
 
     default Set<CodePrompts.InstructionsFlags> instructionsFlags() {
-        return instructionsFlags(getProject(), topContext().getEditableFragments().flatMap(f -> f.files().stream()).collect(Collectors.toSet()));
+        return instructionsFlags(
+                getProject(),
+                topContext()
+                        .getEditableFragments()
+                        .flatMap(f -> f.files().stream())
+                        .collect(Collectors.toSet()));
     }
 
     static Set<CodePrompts.InstructionsFlags> instructionsFlags(IProject project, Set<ProjectFile> editableFiles) {
@@ -221,15 +223,16 @@ public interface IContextManager {
         var languages = project.getAnalyzerLanguages();
 
         // we'll inefficiently read the files every time this method is called but at least we won't do it twice
-        var fileContents = editableFiles.stream().collect(Collectors.toMap(f -> f, f -> f.read().orElse("")));
+        var fileContents = editableFiles.stream()
+                .collect(Collectors.toMap(f -> f, f -> f.read().orElse("")));
 
         // set InstructionsFlags.SYNTAX_AWARE if all editable files' extensions are supported by one of `languages`
         var unsupported = fileContents.keySet().stream()
                 .filter(f -> {
                     var ext = f.extension();
                     return ext.isEmpty()
-                           || languages.stream()
-                                   .noneMatch(lang -> lang.getExtensions().contains(ext));
+                            || languages.stream()
+                                    .noneMatch(lang -> lang.getExtensions().contains(ext));
                 })
                 .collect(Collectors.toSet());
         if (unsupported.isEmpty()) {

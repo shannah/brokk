@@ -208,7 +208,7 @@ public abstract class CodePrompts {
                                   <workspace_editable>
                                   You are editing A SINGLE FILE in this Workspace.
                                   This represents the current state of the file.
-    
+
                                   <file path="%s">
                                   %s
                                   </file>
@@ -744,7 +744,8 @@ public abstract class CodePrompts {
     }
 
     protected static String instructions(String input, Set<InstructionsFlags> flags, String reminder) {
-        var searchContents = """
+        var searchContents =
+                """
         4. One of the following SEARCH types:
           - Line-based SEARCH: a contiguous chunk of the EXACT lines to search for in the existing source code,
           - Full-file SEARCH: a single line `BRK_ENTIRE_FILE` indicating replace-the-entire-file (or create-new-file)
@@ -754,19 +755,22 @@ public abstract class CodePrompts {
         """;
 
         if (flags.contains(InstructionsFlags.SYNTAX_AWARE)) {
-            searchContents += """
+            searchContents +=
+                    """
            - Syntax-aware SEARCH: a single line consisting of BRK_CLASS or BRK_FUNCTION, followed by the FULLY QUALIFIED class or function name:
              `BRK_[CLASS|FUNCTION] $fqname`. This applies to any named class-like (struct, record, interface, etc)
              or function-like (method, static method) entity, but NOT anonymous ones.""";
             hints = "- Use syntax-aware SEARCH when you are rewriting an entire class or function.\n" + hints;
         }
         if (flags.contains(InstructionsFlags.MERGE_AGENT_MARKERS)) {
-            searchContents += """
+            searchContents +=
+                    """
             - Conflict SEARCH: a single line consisting of the conflict marker ID: `BRK_CONFLICT_$n`
               where $n is the conflict number.""";
             hints = "- ALWAYS use conflict SEARCH when you are fixing conflicts.\n" + hints;
         }
-        hints += """
+        hints +=
+                """
         - Line-based SEARCH is jack of all trades, master of none. Accuracy degrades as the number of lines grows.
           Use when none of the more specialized and more efficient options is a good fit.
           Include just the changing lines, plus a few surrounding lines if needed for uniqueness.
@@ -775,7 +779,9 @@ public abstract class CodePrompts {
 
         var examples = buildExamples(flags);
 
-        var intro = flags.isEmpty() ? "" : "The *SEARCH/REPLACE* engine has been upgraded and supports more powerful features than simple line-based edits; pay close attention to the instructions. ";
+        var intro = flags.isEmpty()
+                ? ""
+                : "The *SEARCH/REPLACE* engine has been upgraded and supports more powerful features than simple line-based edits; pay close attention to the instructions. ";
 
         return """
 <rules>
@@ -840,15 +846,13 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
     /**
      * Builds example SEARCH/REPLACE blocks that demonstrate correct formatting.
      *
-     * The examples use a single Java source file (src/main/java/com/acme/Foo.java) and show:
-     *  - A "Before" workspace excerpt (when MERGE_AGENT_MARKERS is enabled, this includes an actual conflict block)
-     *  - A line-based SEARCH edit
-     *  - Optional syntax-aware edits (BRK_FUNCTION and BRK_CLASS) when enabled
-     *  - A full-file replacement using BRK_ENTIRE_FILE
-     *  - Optional conflict-range fix using BRK_CONFLICT_1 when MERGE_AGENT_MARKERS is enabled
+     * <p>The examples use a single Java source file (src/main/java/com/acme/Foo.java) and show: - A "Before" workspace
+     * excerpt (when MERGE_AGENT_MARKERS is enabled, this includes an actual conflict block) - A line-based SEARCH edit
+     * - Optional syntax-aware edits (BRK_FUNCTION and BRK_CLASS) when enabled - A full-file replacement using
+     * BRK_ENTIRE_FILE - Optional conflict-range fix using BRK_CONFLICT_1 when MERGE_AGENT_MARKERS is enabled
      *
-     * The examples are illustrative only and intended to show the exact wire format,
-     * not working diffs against a real repository.
+     * <p>The examples are illustrative only and intended to show the exact wire format, not working diffs against a
+     * real repository.
      */
     private static String buildExamples(Set<InstructionsFlags> flags) {
         var parts = new ArrayList<String>();
@@ -899,7 +903,8 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
                 }
                 </file>
               </workspace_example>
-              """.stripIndent()
+              """
+                        .stripIndent()
                 : """
               ### Before: Current Workspace excerpt
 
@@ -927,14 +932,16 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
                 }
                 </file>
               </workspace_example>
-              """.stripIndent();
+              """
+                        .stripIndent();
 
         parts.add(before);
 
         int ex = 1;
 
         // ---------- Example 1: Line-based SEARCH ----------
-        parts.add("""
+        parts.add(
+                """
               ### Example %d — Line-based SEARCH (modify a fragment outside of a method)
 
               ```
@@ -946,12 +953,15 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
               import java.util.List;
               >>>>>>> REPLACE
               ```
-              """.formatted(ex++).stripIndent());
+              """
+                        .formatted(ex++)
+                        .stripIndent());
 
         // ---------- Syntax-aware examples (only if enabled) ----------
         if (flags.contains(InstructionsFlags.SYNTAX_AWARE)) {
             // BRK_FUNCTION: replace a single method by fully qualified name
-            parts.add("""
+            parts.add(
+                    """
                   ### Example %d — Syntax-aware SEARCH for a function (BRK_FUNCTION)
 
                   ```
@@ -964,11 +974,14 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
                   }
                   >>>>>>> REPLACE
                   ```
-                  """.formatted(ex++).stripIndent());
+                  """
+                            .formatted(ex++)
+                            .stripIndent());
 
             // BRK_CLASS: replace the entire class body by fully qualified name
             // Note: For BRK_CLASS, provide the class block (not package/imports) as the replacement.
-            parts.add("""
+            parts.add(
+                    """
                   ### Example %d — Syntax-aware SEARCH for an entire class (BRK_CLASS)
 
                   ```
@@ -998,11 +1011,14 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
                   }
                   >>>>>>> REPLACE
                   ```
-                  """.formatted(ex++).stripIndent());
+                  """
+                            .formatted(ex++)
+                            .stripIndent());
         }
 
         // ---------- Example: Full-file replacement using BRK_ENTIRE_FILE ----------
-        parts.add("""
+        parts.add(
+                """
               ### Example %d — Full-file replacement (BRK_ENTIRE_FILE)
 
               ```
@@ -1034,11 +1050,14 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
               }
               >>>>>>> REPLACE
               ```
-              """.formatted(ex++).stripIndent());
+              """
+                        .formatted(ex++)
+                        .stripIndent());
 
         // ---------- Conflict-range fix (only if enabled) ----------
         if (flags.contains(InstructionsFlags.MERGE_AGENT_MARKERS)) {
-            parts.add("""
+            parts.add(
+                    """
                   ### Example %d — Conflict range fix (BRK_CONFLICT markers)
 
                   The SEARCH is a **single line** that targets the entire conflict region, regardless of its contents.
@@ -1061,7 +1080,9 @@ Follow the existing code style, and ONLY EVER RETURN CHANGES IN A *SEARCH/REPLAC
                   }
                   >>>>>>> REPLACE
                   ```
-                  """.formatted(ex++).stripIndent());
+                  """
+                            .formatted(ex++)
+                            .stripIndent());
         }
 
         return String.join("\n\n", parts).strip();

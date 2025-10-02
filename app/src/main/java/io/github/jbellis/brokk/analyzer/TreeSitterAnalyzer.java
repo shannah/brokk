@@ -810,9 +810,9 @@ public abstract class TreeSitterAnalyzer
     }
 
     @Override
-public Set<String> getMethodSources(String fqName, boolean includeComments) {
-    return getDefinition(fqName) // Finds the single CodeUnit representing this FQN (due to CodeUnit equality for
-            // overloads)
+    public Set<String> getMethodSources(String fqName, boolean includeComments) {
+        return getDefinition(fqName) // Finds the single CodeUnit representing this FQN (due to CodeUnit equality for
+                // overloads)
                 .filter(CodeUnit::isFunction)
                 .map(cu -> {
                     List<Range> rangesForOverloads = rangesOf(cu);
@@ -854,7 +854,7 @@ public Set<String> getMethodSources(String fqName, boolean includeComments) {
                                 cu,
                                 fqName);
                     }
-                        return methodSources;
+                    return methodSources;
                 })
                 .orElse(Collections.emptySet());
     }

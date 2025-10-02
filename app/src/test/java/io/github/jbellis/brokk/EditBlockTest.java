@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.github.jbellis.brokk.analyzer.JavaTreeSitterAnalyzer;
-import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.analyzer.update.UpdateTestUtil;
@@ -148,7 +147,7 @@ class EditBlockTest {
         String edit =
                 """
                       Here's the change:
-    
+
                       ```
                       filename/to/a/file2.txt
                       <<<<<<< SEARCH
@@ -157,9 +156,9 @@ class EditBlockTest {
                       three
                       >>>>>>> REPLACE
                       ```
-    
+
                       another change
-    
+
                       ```
                       filename/to/a/file1.txt
                       <<<<<<< SEARCH
@@ -168,7 +167,7 @@ class EditBlockTest {
                       two
                       >>>>>>> REPLACE
                       ```
-    
+
                       Hope you like it!
                       """;
 
@@ -181,7 +180,6 @@ class EditBlockTest {
         assertEquals("one\n", blocks[1].beforeText());
         assertEquals("two\n", blocks[1].afterText());
     }
-
 
     @Test
     void testApplyEditsCreatesNewFile(@TempDir Path tempDir)
@@ -200,7 +198,7 @@ class EditBlockTest {
                           Updated text
                           >>>>>>> REPLACE
                           ```
-    
+
                           ```
                           newFile.txt
                           <<<<<<< SEARCH
@@ -457,7 +455,6 @@ class EditBlockTest {
         assertTrue(io.getErrorLog().isEmpty(), "No IO errors expected");
     }
 
-
     /**
      * These tests illustrate how the new "forgiving" parse logic works when we don't see a "filename =======" divider
      * between SEARCH and REPLACE, but do see a standalone "=======" line. If exactly one such line is found, we use it
@@ -695,9 +692,9 @@ class EditBlockTest {
         Path testFile = tempDir.resolve("conf.txt");
 
         String conflictBlock = "BRK_CONFLICT_BEGIN_1\n"
-                               + "BRK_OUR_VERSION abc\n"
-                               + "abc Some conflicting line\n"
-                               + "BRK_CONFLICT_END_1\n";
+                + "BRK_OUR_VERSION abc\n"
+                + "abc Some conflicting line\n"
+                + "BRK_CONFLICT_END_1\n";
 
         String originalContent = "start\n" + conflictBlock + "end\n";
         Files.writeString(testFile, originalContent);

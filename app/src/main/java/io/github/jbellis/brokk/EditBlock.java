@@ -345,11 +345,10 @@ public class EditBlock {
 
     /**
      * Attempts perfect/whitespace replacements, then tries "...", then fuzzy. Returns the post-replacement content.
-     * Also supports special *marker* search targets:
-     * - BRK_CONFLICT_$n (new single-line syntax; replaces BEGIN/END-delimited region with index $n)
-     * - BRK_CONFLICT_BEGIN_<n>...BRK_CONFLICT_END_<n> (back-compat: old behavior where SEARCH contained the whole region)
-     * - BRK_CLASS <fqcn> (existing)
-     * - BRK_FUNCTION <fqMethodName> (existing; rejects overloads as ambiguous)
+     * Also supports special *marker* search targets: - BRK_CONFLICT_$n (new single-line syntax; replaces
+     * BEGIN/END-delimited region with index $n) - BRK_CONFLICT_BEGIN_<n>...BRK_CONFLICT_END_<n> (back-compat: old
+     * behavior where SEARCH contained the whole region) - BRK_CLASS <fqcn> (existing) - BRK_FUNCTION <fqMethodName>
+     * (existing; rejects overloads as ambiguous)
      *
      * <p>For BRK_CLASS/BRK_FUNCTION, we fetch the exact source via SourceCodeProvider and then proceed as a normal line
      * edit using that snippet as the search block.
@@ -365,8 +364,7 @@ public class EditBlock {
         var conflictLineMatcher = Pattern.compile("^BRK_CONFLICT_(\\d+)\\s*$").matcher(trimmedTarget);
         if (conflictLineMatcher.matches()) {
             var num = conflictLineMatcher.group(1);
-            var regionPattern = Pattern.compile(
-                    "BRK_CONFLICT_BEGIN_" + Pattern.quote(num)
+            var regionPattern = Pattern.compile("BRK_CONFLICT_BEGIN_" + Pattern.quote(num)
                     + "[\\s\\S]*?BRK_CONFLICT_END_" + Pattern.quote(num)
                     + "(?:\\r?\\n)?");
             var scan = regionPattern.matcher(content);
@@ -379,8 +377,7 @@ public class EditBlock {
                 throw new NoMatchException("No matching conflict block found for BRK_CONFLICT_" + num);
             }
             if (count > 1) {
-                throw new AmbiguousMatchException(
-                        "Multiple matching conflict blocks found for BRK_CONFLICT_" + num);
+                throw new AmbiguousMatchException("Multiple matching conflict blocks found for BRK_CONFLICT_" + num);
             }
             // Replace the (only) conflict region
             return regionPattern.matcher(content).replaceFirst(Matcher.quoteReplacement(replace));
@@ -412,8 +409,12 @@ public class EditBlock {
         ContentLines replaceCL = prep(replace);
 
         if (logger.isDebugEnabled()) {
-            logger.debug("Original content (non-whitespace):\n{}", originalCL.lines().stream().map(EditBlock::nonWhitespace).collect(Collectors.joining("\n")));
-            logger.debug("Target snippet (non-whitespace):\n{}", targetCl.lines().stream().map(EditBlock::nonWhitespace).collect(Collectors.joining("\n")));
+            logger.debug(
+                    "Original content (non-whitespace):\n{}",
+                    originalCL.lines().stream().map(EditBlock::nonWhitespace).collect(Collectors.joining("\n")));
+            logger.debug(
+                    "Target snippet (non-whitespace):\n{}",
+                    targetCl.lines().stream().map(EditBlock::nonWhitespace).collect(Collectors.joining("\n")));
         }
 
         String[] originalLinesArray = originalCL.lines().toArray(String[]::new);
@@ -431,7 +432,9 @@ public class EditBlock {
             }
         } catch (IllegalArgumentException e) {
             // Do not mask unexpected pairing errors from "..."; log and continue to the final NoMatch.
-            logger.debug("Ignoring malformed '...' placeholder usage while attempting partial replacement: {}", e.getMessage());
+            logger.debug(
+                    "Ignoring malformed '...' placeholder usage while attempting partial replacement: {}",
+                    e.getMessage());
         }
 
         if (targetCl.lines().size() > 2 && targetCl.lines().getFirst().trim().isEmpty()) {
@@ -679,8 +682,8 @@ public class EditBlock {
     }
 
     /**
-     * Resolve BRK_CLASS / BRK_FUNCTION markers to source snippets via the analyzer without mutating files.
-     * Returns null if the target is not a BRK marker. Throws on not found or ambiguous cases.
+     * Resolve BRK_CLASS / BRK_FUNCTION markers to source snippets via the analyzer without mutating files. Returns null
+     * if the target is not a BRK marker. Throws on not found or ambiguous cases.
      */
     private static @Nullable String resolveBrkSnippet(IContextManager contextManager, String trimmedTarget)
             throws NoMatchException, AmbiguousMatchException, InterruptedException {
@@ -738,7 +741,7 @@ public class EditBlock {
             }
             if (sources.size() > 1) {
                 throw new AmbiguousMatchException("Multiple overloads found for '" + fqName + "' (" + sources.size()
-                                                  + "). Please provide a non-overloaded, unique name and re-run.");
+                        + "). Please provide a non-overloaded, unique name and re-run.");
             }
             return sources.iterator().next();
         }

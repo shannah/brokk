@@ -26,7 +26,6 @@ import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 import org.jetbrains.annotations.VisibleForTesting;
 
@@ -256,8 +255,8 @@ public class CodeAgent {
 
     /**
      * Runs a “single-file edit” session in which the LLM is asked to modify exactly {@code file}. The method drives the
-     * same request / parse / apply FSM that {@link #runTask(String, Set)} uses, but it stops after all
-     * SEARCH/REPLACE blocks have been applied (no build verification is performed).
+     * same request / parse / apply FSM that {@link #runTask(String, Set)} uses, but it stops after all SEARCH/REPLACE
+     * blocks have been applied (no build verification is performed).
      *
      * @param file the file to edit
      * @param instructions user instructions describing the desired change

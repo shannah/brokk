@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk.testutil;
 
 import io.github.jbellis.brokk.analyzer.*;
-
 import java.util.List;
 import java.util.Map;
 import java.util.Optional;
