@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
+import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.SessionManager;
@@ -8,7 +9,6 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.FrozenFragment;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
 import java.awt.*;
 import java.io.File;
@@ -89,7 +89,9 @@ public final class ContextExplorer extends JFrame {
         sessionsSorter.setComparator(0, Comparator.comparing(String::valueOf));
         sessionsSorter.setComparator(2, Comparator.comparingInt(o -> {
             String types = (String) o;
-            return types.isEmpty() ? 0 : (int) types.chars().filter(ch -> ch == ',').count() + 1;
+            return types.isEmpty()
+                    ? 0
+                    : (int) types.chars().filter(ch -> ch == ',').count() + 1;
         }));
         sessionsTable.getTableHeader().setReorderingAllowed(false);
         // Column widths
@@ -481,11 +483,7 @@ public final class ContextExplorer extends JFrame {
 
     private void exportSession() {
         if (selectedSessionId == null) {
-            JOptionPane.showMessageDialog(
-                    this,
-                    "No session selected.",
-                    "Export Error",
-                    JOptionPane.WARNING_MESSAGE);
+            JOptionPane.showMessageDialog(this, "No session selected.", "Export Error", JOptionPane.WARNING_MESSAGE);
             return;
         }
 
@@ -512,12 +510,13 @@ public final class ContextExplorer extends JFrame {
                                 new ArrayList<>());
                     } else if (row instanceof FragmentRow fr && current != null) {
                         var f = fr.fragment();
-                        current.fragments().add(new FragmentExport(
-                                f.id(),
-                                f.getType().name(),
-                                f.shortDescription(),
-                                fr.lineCount(),
-                                f.syntaxStyle()));
+                        current.fragments()
+                                .add(new FragmentExport(
+                                        f.id(),
+                                        f.getType().name(),
+                                        f.shortDescription(),
+                                        fr.lineCount(),
+                                        f.syntaxStyle()));
                     }
                 }
                 if (current != null) {
@@ -541,11 +540,7 @@ public final class ContextExplorer extends JFrame {
                         .collect(Collectors.joining("\n"));
 
                 var exportPath = sessionsDir.resolve(sessionIdLocal.toString() + ".jsonl");
-                Files.writeString(
-                        exportPath,
-                        jsonl,
-                        StandardOpenOption.CREATE,
-                        StandardOpenOption.TRUNCATE_EXISTING);
+                Files.writeString(exportPath, jsonl, StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING);
                 logger.info("Exported session {} to {}", sessionIdLocal, exportPath);
                 return exportPath;
             }
@@ -563,10 +558,7 @@ public final class ContextExplorer extends JFrame {
                     Thread.currentThread().interrupt();
                     logger.error("Export interrupted", e);
                     JOptionPane.showMessageDialog(
-                            ContextExplorer.this,
-                            "Export interrupted.",
-                            "Export Error",
-                            JOptionPane.ERROR_MESSAGE);
+                            ContextExplorer.this, "Export interrupted.", "Export Error", JOptionPane.ERROR_MESSAGE);
                 } catch (ExecutionException e) {
                     logger.error("Failed to export session", e);
                     var cause = e.getCause();
@@ -589,12 +581,7 @@ public final class ContextExplorer extends JFrame {
             int historyLines,
             List<FragmentExport> fragments) {}
 
-    private record FragmentExport(
-            String id,
-            String type,
-            String shortDescription,
-            int lineCount,
-            String syntaxStyle) {}
+    private record FragmentExport(String id, String type, String shortDescription, int lineCount, String syntaxStyle) {}
 
     public static void main(String[] args) {
         try {
