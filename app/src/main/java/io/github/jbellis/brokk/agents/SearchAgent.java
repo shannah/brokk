@@ -622,7 +622,7 @@ public class SearchAgent {
 
     private String summarizeResult(
             String query, ToolExecutionRequest request, String rawResult, @Nullable String reasoning)
-            throws RuntimeException {
+            throws InterruptedException {
         var sys = new SystemMessage(
                 """
                         You are a code expert extracting ALL information relevant to the given goal
@@ -648,13 +648,7 @@ public class SearchAgent {
                         """
                         .stripIndent()
                         .formatted(query, reasoning == null ? "" : reasoning, request.name(), rawResult));
-        Llm.StreamingResult sr;
-        try {
-            sr = llm.sendRequest(List.of(sys, user));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
+        Llm.StreamingResult sr = llm.sendRequest(List.of(sys, user));
         if (sr.error() != null) {
             return rawResult; // fallback to raw
         }
