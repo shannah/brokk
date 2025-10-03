@@ -407,9 +407,9 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
      * <p>Synchronized to simplify reasoning about pause/resume; otherwise is inherently threadsafe.
      */
     private synchronized CompletableFuture<IAnalyzer> refresh(Function<IAnalyzer, IAnalyzer> fn) {
-        requireNonNull(currentAnalyzer);
         logger.trace("Scheduling analyzer refresh task");
         return analyzerExecutor.submit(() -> {
+            requireNonNull(currentAnalyzer);
             if (listener != null) {
                 listener.beforeEachBuild();
             }
