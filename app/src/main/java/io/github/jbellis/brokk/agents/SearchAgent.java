@@ -577,6 +577,7 @@ public class SearchAgent {
     public String abortSearch(
             @P("Clear explanation of why the question cannot be answered from this codebase.") String explanation) {
         logger.debug("abortSearch selected with explanation length {}", explanation.length());
+        io.llmOutput(explanation, ChatMessageType.AI);
         return explanation;
     }
 
