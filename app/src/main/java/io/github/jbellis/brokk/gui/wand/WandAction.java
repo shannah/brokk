@@ -71,13 +71,10 @@ public class WandAction {
                 </draft_prompt>
 
                 <goal>
-                Take the draft prompt and rewrite it so it is:
-                - Clear
-                - Concise
-                - Structured
-                - Leverages information from the Workspace but without speculating beyond what you know for sure
+                Take the draft prompt and rewrite it so it is clear, concise, and well-structured.
+                You may leverage information from the Workspace, but do not speculate beyond what you know for sure.
 
-                Output only the improved prompt.
+                Output only the improved prompt in 2-4 paragraphs.
                 </goal>
                 """
                         .formatted(
