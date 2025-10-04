@@ -5,13 +5,12 @@ import static org.junit.jupiter.api.Assertions.*;
 
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
+import io.github.jbellis.brokk.util.Messages;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Objects;
 import java.util.Set;
-import org.eclipse.jdt.core.compiler.CategorizedProblem;
 import org.eclipse.jdt.core.compiler.IProblem;
 import org.junit.jupiter.api.Test;
 
@@ -40,23 +39,29 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
         return new JavaParseResult(javaFile, step);
     }
 
-    // PJ-1: parseJavaPhase stores diagnostics and continues on syntax errors
+    // PJ-1: parseJavaPhase retries on syntax errors
     @Test
-    void testParseJavaPhase_withSyntaxErrors_storesDiagnostics_andContinues() throws IOException {
+    void testParseJavaPhase_withSyntaxErrors_requestsRetry() throws IOException {
         var badSource = """
                 class Bad { void m( { } }
                 """;
         var res = runParseJava("Bad.java", badSource);
 
-        var diagMap = res.step().es().javaLintDiagnostics();
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
+        var retry = (CodeAgent.Step.Retry) res.step();
+
+        // nextRequest prompt should mention syntax/identifier errors
+        var retryText = Messages.getText(requireNonNull(retry.cs().nextRequest()));
+        assertNotNull(retryText);
+        assertTrue(retryText.contains("Java syntax or identifier errors were detected"));
+
+        // diagnostics captured and state updated as a "failure" retry
+        var diagMap = retry.es().javaLintDiagnostics();
         assertFalse(diagMap.isEmpty(), "Expected diagnostics to be stored");
-        var diags = requireNonNull(diagMap.get(res.file()), "Expected entry for the edited file");
-        assertTrue(
-                diags.stream().anyMatch(d -> Objects.equals(d.categoryId(), CategorizedProblem.CAT_SYNTAX)),
-                "Expected at least one SYNTAX-category diagnostic");
-        assertTrue(
-                res.step().es().changedFiles().contains(res.file()),
-                "Changed files should still include the Java file");
+        assertFalse(retry.es().lastBuildError().isEmpty(), "Expected diagnostic summary to be captured");
+        assertEquals(1, retry.es().consecutiveBuildFailures(), "Should increment consecutive build failures");
+        assertEquals(0, retry.es().blocksAppliedWithoutBuild(), "Should reset edits-since-last-build to 0");
+        assertTrue(retry.es().changedFiles().contains(res.file()), "Changed files should still include the Java file");
     }
 
     // PJ-2: parseJavaPhase continues on clean parse (no syntax errors), diagnostics empty
@@ -70,6 +75,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("Ok.java", okSource);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -82,6 +88,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
     void testParseJavaPhase_blankFile_ok() throws IOException {
         var res = runParseJava("Blank.java", "");
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -97,6 +104,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("ImportErr.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -115,14 +123,15 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("TypeMismatch.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
     }
 
-    // PJ-9: parseJavaPhase - uninitialized local variable should store diagnostics and continue
+    // PJ-9: parseJavaPhase - uninitialized local variable should store diagnostics and retry
     @Test
-    void testParseJavaPhase_uninitializedLocal_storesDiagnostics_andContinues() throws IOException {
+    void testParseJavaPhase_uninitializedLocal_requestsRetry() throws IOException {
         var src =
                 """
                 class UninitLocal {
@@ -134,14 +143,15 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("UninitLocal.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.problemId() == IProblem.UninitializedLocalVariable), diags.toString());
     }
 
-    // PJ-10: parseJavaPhase - missing return value in non-void method should store diagnostics and continue
+    // PJ-10: parseJavaPhase - missing return value in non-void method should store diagnostics and retry
     @Test
-    void testParseJavaPhase_missingReturn_storesDiagnostics_andContinues() throws IOException {
+    void testParseJavaPhase_missingReturn_requestsRetry() throws IOException {
         var src =
                 """
                 class NeedsReturn {
@@ -153,18 +163,18 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("NeedsReturn.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.ShouldReturnValue), diags.toString());
     }
 
-    // PJ-6: parseJavaPhase - multiple files with syntax/identifier errors aggregate diagnostics and continue
+    // PJ-6: parseJavaPhase - multiple files with syntax/identifier errors aggregate diagnostics and retry
     @Test
-    void testParseJavaPhase_multipleFiles_collectsDiagnostics_andContinues() throws IOException {
+    void testParseJavaPhase_multipleFiles_collectsDiagnostics_andRequestsRetry() throws IOException {
         var f1 = contextManager.toFile("Bad1.java");
         var s1 = """
                 class Bad1 { void m( { int a = b; } }
                 """; // syntax + undefined
-        // identifier
         f1.write(s1);
         contextManager.addEditableFile(f1);
 
@@ -181,12 +191,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 List.of(), 0, 0, 0, 1, "", new HashSet<>(Set.of(f1, f2)), new HashMap<>(), new HashMap<>());
 
         var result = codeAgent.parseJavaPhase(cs, es, null);
+        assertInstanceOf(CodeAgent.Step.Retry.class, result);
+
         var diags = result.es().javaLintDiagnostics();
         assertFalse(diags.isEmpty(), "Diagnostics should be present");
         // Ensure diagnostics map contains entries for the files we created
         assertTrue(diags.containsKey(f1), "Diagnostics should include Bad1.java entry");
         assertTrue(diags.containsKey(f2), "Diagnostics should include Bad2.java entry");
-        assertEquals(1, result.es().blocksAppliedWithoutBuild(), "Edits-since-last-build should remain unchanged");
+        assertEquals(0, result.es().blocksAppliedWithoutBuild(), "Edits-since-last-build should reset on retry");
     }
 
     // PJ-7: parseJavaPhase - undefined class/type usage should be ignored (continue, diagnostics empty)
@@ -202,6 +214,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("MissingClassUse.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -224,6 +237,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("MissingMethodUse.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -246,6 +260,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("FakeCA.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -265,6 +280,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("QualifierMissingType.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -272,7 +288,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
 
     // PJ-13: override mismatch should surface diagnostics ("must override or implement a supertype method")
     @Test
-    void testParseJavaPhase_overrideMismatch_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_overrideMismatch_requestsRetry() throws IOException {
         var src =
                 """
                 class OverrideErr {
@@ -282,6 +298,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("OverrideErr.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.description().contains("override or implement a supertype method")),
@@ -290,7 +307,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
 
     // PJ-14: class must implement inherited abstract method should surface diagnostics
     @Test
-    void testParseJavaPhase_mustImplementAbstractMethod_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_mustImplementAbstractMethod_requestsRetry() throws IOException {
         var src =
                 """
                 abstract class AbstractHighlight {
@@ -303,16 +320,16 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("HighlightOriginal.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.description().contains("must implement the inherited abstract method")),
                 diags.toString());
     }
 
-    // PJ-15: invalid foreach target should surface diagnostics ("Can only iterate over an array or an instance of
-    // java.lang.Iterable")
+    // PJ-15: invalid foreach target should surface diagnostics
     @Test
-    void testParseJavaPhase_invalidForEach_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_invalidForEach_requestsRetry() throws IOException {
         var src =
                 """
                 class ForEachBad {
@@ -324,6 +341,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("ForEachBad.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.description()
@@ -333,7 +351,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
 
     // PJ-16: ThreadLocal.withInitial with lambda that returns void should surface diagnostics
     @Test
-    void testParseJavaPhase_withInitialLambdaMismatch_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_withInitialLambdaMismatch_requestsRetry() throws IOException {
         var src =
                 """
                 class TLBad {
@@ -342,6 +360,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("TLBad.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream()
@@ -352,7 +371,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
 
     // PJ-17: undefined constructor IOException(Object) should surface diagnostics
     @Test
-    void testParseJavaPhase_undefinedConstructorIOException_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_undefinedConstructorIOException_requestsRetry() throws IOException {
         var src =
                 """
                 class BadCtor {
@@ -364,6 +383,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("BadCtor.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.description().contains("constructor IOException(Object) is undefined")),
@@ -372,8 +392,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
 
     // PJ-18: incompatible return types for inherited methods should surface diagnostics
     @Test
-    void testParseJavaPhase_incompatibleReturnTypesForInheritedMethods_reportsDiagnostic_andContinues()
-            throws IOException {
+    void testParseJavaPhase_incompatibleReturnTypesForInheritedMethods_requestsRetry() throws IOException {
         var src =
                 """
                 interface PathFragment {
@@ -386,6 +405,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("GitFileFragment.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.description().contains("return type is incompatible")),
@@ -406,13 +426,15 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("MissingExternalTypeViaVar.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
     }
-    // PJ-20: parseJavaPhase - redefined local variable should store diagnostics and continue
+
+    // PJ-20: parseJavaPhase - redefined local variable should store diagnostics and retry
     @Test
-    void testParseJavaPhase_redefinedLocal_storesDiagnostics_andContinues() throws IOException {
+    void testParseJavaPhase_redefinedLocal_requestsRetry() throws IOException {
         var src =
                 """
                 class RedefLocal {
@@ -424,6 +446,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("RedefLocal.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.RedefinedLocal), diags.toString());
     }
@@ -453,14 +476,15 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 );
         var step = codeAgent.parseJavaPhase(cs, es, null);
 
+        assertInstanceOf(CodeAgent.Step.Continue.class, step);
         assertTrue(
                 step.es().javaLintDiagnostics().isEmpty(),
                 step.es().javaLintDiagnostics().toString());
     }
 
-    // PJ-22: parseJavaPhase - redefined argument (duplicate parameter) should store diagnostics and continue
+    // PJ-22: parseJavaPhase - redefined argument (duplicate parameter) should store diagnostics and retry
     @Test
-    void testParseJavaPhase_redefinedArgument_storesDiagnostics_andContinues() throws IOException {
+    void testParseJavaPhase_redefinedArgument_requestsRetry() throws IOException {
         var src =
                 """
                 class RedefArg {
@@ -469,13 +493,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("RedefArg.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.RedefinedArgument), diags.toString());
     }
 
-    // PJ-23: parseJavaPhase - finally block that does not complete normally should store diagnostics and continue
+    // PJ-23: parseJavaPhase - finally block that does not complete normally should store diagnostics and retry
     @Test
-    void testParseJavaPhase_finallyMustCompleteNormally_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_finallyMustCompleteNormally_requestsRetry() throws IOException {
         var src =
                 """
                 class FinallyBad {
@@ -492,14 +517,15 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 """;
         var res = runParseJava("FinallyBad.java", src);
 
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.problemId() == IProblem.FinallyMustCompleteNormally), diags.toString());
     }
 
-    // PJ-24: duplicate case inside switch should be reported (local, pre-build)
+    // PJ-24: duplicate case inside switch should be reported
     @Test
-    void testParseJavaPhase_duplicateCase_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_duplicateCase_requestsRetry() throws IOException {
         var src =
                 """
                 class SwDupCase {
@@ -512,13 +538,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("SwDupCase.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.DuplicateCase), diags.toString());
     }
 
     // PJ-25: duplicate default inside switch should be reported
     @Test
-    void testParseJavaPhase_duplicateDefault_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_duplicateDefault_requestsRetry() throws IOException {
         var src =
                 """
                 class SwDupDefault {
@@ -531,13 +558,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("SwDupDefault.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.DuplicateDefaultCase), diags.toString());
     }
 
     // PJ-27: void method returning a value should be reported
     @Test
-    void testParseJavaPhase_voidMethodReturnsValue_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_voidMethodReturnsValue_requestsRetry() throws IOException {
         var src =
                 """
                 class VoidReturnVal {
@@ -545,13 +573,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("VoidReturnVal.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.VoidMethodReturnsValue), diags.toString());
     }
 
     // PJ-28: non-abstract/non-native method missing a body should be reported
     @Test
-    void testParseJavaPhase_methodRequiresBody_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_methodRequiresBody_requestsRetry() throws IOException {
         var src =
                 """
                 class MissingBody {
@@ -559,13 +588,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("MissingBody.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.MethodRequiresBody), diags.toString());
     }
 
     // PJ-29: var initialized to null should be reported
     @Test
-    void testParseJavaPhase_varInitializedToNull_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_varInitializedToNull_requestsRetry() throws IOException {
         var src =
                 """
                 class VarNullInit {
@@ -573,13 +603,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("VarNullInit.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.VarLocalInitializedToNull), diags.toString());
     }
 
     // PJ-30: var initialized to a void expression should be reported
     @Test
-    void testParseJavaPhase_varInitializedToVoid_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_varInitializedToVoid_requestsRetry() throws IOException {
         var src =
                 """
                 class VarVoidInit {
@@ -587,13 +618,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("VarVoidInit.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.VarLocalInitializedToVoid), diags.toString());
     }
 
     // PJ-31: var with array initializer literal should be reported
     @Test
-    void testParseJavaPhase_varArrayInitializer_reportsDiagnostic() throws IOException {
+    void testParseJavaPhase_varArrayInitializer_requestsRetry() throws IOException {
         var src =
                 """
                 class VarArrayInit {
@@ -601,6 +633,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("VarArrayInit.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(
                 diags.stream().anyMatch(d -> d.problemId() == IProblem.VarLocalCannotBeArrayInitalizers),
@@ -609,7 +642,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
 
     // PJ-32: unreachable code should be reported
     @Test
-    void testParseJavaPhase_unreachableCode_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_unreachableCode_requestsRetry() throws IOException {
         var src =
                 """
                 class Unreachable {
@@ -620,13 +653,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("Unreachable.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.CodeCannotBeReached), diags.toString());
     }
 
     // PJ-33: return inside a static initializer should be reported
     @Test
-    void testParseJavaPhase_returnInInitializer_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_returnInInitializer_requestsRetry() throws IOException {
         var src =
                 """
                 class ReturnInInit {
@@ -636,13 +670,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("ReturnInInit.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.CannotReturnInInitializer), diags.toString());
     }
 
     // PJ-35: invalid break outside loop/switch should be reported
     @Test
-    void testParseJavaPhase_invalidBreak_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_invalidBreak_requestsRetry() throws IOException {
         var src =
                 """
                 class BadBreak {
@@ -652,13 +687,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("BadBreak.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.InvalidBreak), diags.toString());
     }
 
     // PJ-36: invalid continue outside loop should be reported
     @Test
-    void testParseJavaPhase_invalidContinue_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_invalidContinue_requestsRetry() throws IOException {
         var src =
                 """
                 class BadContinue {
@@ -668,13 +704,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("BadContinue.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.InvalidContinue), diags.toString());
     }
 
     // PJ-37: undefined label should be reported
     @Test
-    void testParseJavaPhase_undefinedLabel_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_undefinedLabel_requestsRetry() throws IOException {
         var src =
                 """
                 class UndefLabel {
@@ -686,13 +723,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("UndefLabel.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.UndefinedLabel), diags.toString());
     }
 
     // PJ-38: invalid primitive type in synchronized should be reported
     @Test
-    void testParseJavaPhase_invalidTypeToSynchronized_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_invalidTypeToSynchronized_requestsRetry() throws IOException {
         var src =
                 """
                 class SyncBadType {
@@ -703,13 +741,14 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("SyncBadType.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.InvalidTypeToSynchronized), diags.toString());
     }
 
     // PJ-39: null in synchronized should be reported
     @Test
-    void testParseJavaPhase_invalidNullToSynchronized_reportsDiagnostic_andContinues() throws IOException {
+    void testParseJavaPhase_invalidNullToSynchronized_requestsRetry() throws IOException {
         var src =
                 """
                 class SyncNull {
@@ -720,6 +759,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
                 }
                 """;
         var res = runParseJava("SyncNull.java", src);
+        assertInstanceOf(CodeAgent.Step.Retry.class, res.step());
         var diags = requireNonNull(res.step().es().javaLintDiagnostics().get(res.file()));
         assertTrue(diags.stream().anyMatch(d -> d.problemId() == IProblem.InvalidNullToSynchronized), diags.toString());
     }
@@ -735,6 +775,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
             }
             """;
         var res = runParseJava("GitRepo.java", src);
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -755,8 +796,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
             """;
         var res = runParseJava("ColorMismatch.java", src);
 
-        // With the pre-change CodeAgent, javaLintDiagnostics will contain a ParameterMismatch, so this assertion FAILS.
-        // After the fix (suppress when type info is shaky), diagnostics should be empty and this passes.
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
@@ -777,6 +817,7 @@ public class CodeAgentJavaParseTest extends CodeAgentTest {
             }
             """;
         var res = runParseJava("ForEachUnknown.java", src);
+        assertInstanceOf(CodeAgent.Step.Continue.class, res.step());
         assertTrue(
                 res.step().es().javaLintDiagnostics().isEmpty(),
                 res.step().es().javaLintDiagnostics().toString());
