@@ -940,7 +940,7 @@ public class HistoryOutputPanel extends JPanel {
 
         // "Clear Output" button (drop Task History)
         SwingUtilities.invokeLater(() -> {
-            clearButton.setIcon(Icons.TRASH);
+            clearButton.setIcon(Icons.CLEAR_ALL);
         });
         clearButton.setToolTipText("Clear the output");
         clearButton.addActionListener(e -> {
