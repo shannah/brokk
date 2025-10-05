@@ -56,7 +56,8 @@ public final class GitUiUtil {
             try {
                 var diff = repo.diffFiles(selectedFiles);
                 if (diff.isEmpty()) {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No uncommitted changes found for selected files");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "No uncommitted changes found for selected files");
                     return;
                 }
                 var description = "Diff of %s".formatted(formatFileList(selectedFiles));
@@ -65,7 +66,9 @@ public final class GitUiUtil {
                         : SyntaxDetector.fromExtension(selectedFiles.getFirst().extension());
                 var fragment = new ContextFragment.StringFragment(contextManager, diff, description, syntaxStyle);
                 contextManager.addVirtualFragment(fragment);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Added uncommitted diff for " + selectedFiles.size() + " file(s) to context");
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Added uncommitted diff for " + selectedFiles.size() + " file(s) to context");
             } catch (Exception ex) {
                 chrome.toolError("Error capturing uncommitted diff: " + ex.getMessage());
             }
@@ -89,7 +92,8 @@ public final class GitUiUtil {
             try {
                 var diff = repo.showFileDiff(commitId + "^", commitId, file);
                 if (diff.isEmpty()) {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No changes found for " + file.getFileName());
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "No changes found for " + file.getFileName());
                     return;
                 }
                 String shortHash = ((GitRepo) repo).shortHash(commitId);
@@ -97,7 +101,8 @@ public final class GitUiUtil {
                 var syntaxStyle = SyntaxDetector.fromExtension(file.extension());
                 var fragment = new ContextFragment.StringFragment(contextManager, diff, description, syntaxStyle);
                 contextManager.addVirtualFragment(fragment);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Added changes for " + file.getFileName() + " to context");
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Added changes for " + file.getFileName() + " to context");
             } catch (Exception e) {
                 chrome.toolError("Error adding file change to context: " + e.getMessage());
             }
@@ -150,7 +155,8 @@ public final class GitUiUtil {
                 });
             } catch (GitAPIException e) {
                 logger.warn(e);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Error retrieving file content: " + e.getMessage());
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Error retrieving file content: " + e.getMessage());
             }
         });
     }
@@ -179,7 +185,8 @@ public final class GitUiUtil {
                 // Diff is from oldestCommit's parent up to newestCommit.
                 String diff = repo.showDiff(newestCommitId, oldestCommitId + "^");
                 if (diff.isEmpty()) {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No changes found in the selected commit range");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "No changes found in the selected commit range");
                     return;
                 }
 
@@ -264,7 +271,9 @@ public final class GitUiUtil {
                         .filter(s -> !s.isEmpty())
                         .collect(Collectors.joining("\n\n"));
                 if (diffs.isEmpty()) {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No changes found for the selected files in the commit range");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "No changes found for the selected files in the commit range");
                     return;
                 }
                 var firstShort = ((GitRepo) repo).shortHash(firstCommitId);
@@ -280,7 +289,9 @@ public final class GitUiUtil {
                         : SyntaxDetector.fromExtension(files.getFirst().extension());
                 var fragment = new ContextFragment.StringFragment(contextManager, diffs, description, syntaxStyle);
                 contextManager.addVirtualFragment(fragment);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Added changes for selected files in commit range to context");
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Added changes for selected files in commit range to context");
             } catch (Exception ex) {
                 chrome.toolError("Error adding file changes from range to context: " + ex.getMessage());
             }
@@ -612,14 +623,18 @@ public final class GitUiUtil {
             try {
                 var diff = repo.showDiff(compareBranchName, baseBranchName);
                 if (diff.isEmpty()) {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format("No differences found between %s and %s", compareBranchName, baseBranchName));
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            String.format("No differences found between %s and %s", compareBranchName, baseBranchName));
                     return;
                 }
                 var description = "Diff of %s vs %s".formatted(compareBranchName, baseBranchName);
                 var fragment =
                         new ContextFragment.StringFragment(cm, diff, description, SyntaxConstants.SYNTAX_STYLE_NONE);
                 cm.addVirtualFragment(fragment);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format("Added diff of %s vs %s to context", compareBranchName, baseBranchName));
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        String.format("Added diff of %s vs %s to context", compareBranchName, baseBranchName));
             } catch (Exception ex) {
                 logger.warn(
                         "Error capturing diff between branches {} and {}: {}",
@@ -652,8 +667,10 @@ public final class GitUiUtil {
             try {
                 repo.checkoutFilesFromCommit(commitId, files);
                 SwingUtilities.invokeLater(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
-                                        "Successfully rolled back %d file(s) to commit %s", files.size(), shortCommitId));
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            String.format(
+                                    "Successfully rolled back %d file(s) to commit %s", files.size(), shortCommitId));
                     // Refresh Git panels to show the changed files
                     chrome.updateCommitPanel();
                 });
@@ -714,9 +731,11 @@ public final class GitUiUtil {
 
                 String diff = repo.showDiff(prHeadSha, effectiveBaseSha);
                 if (diff.isEmpty()) {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
-                                        "No differences found for PR #%d (head: %s, effective base: %s)",
-                                        prNumber, repo.shortHash(prHeadSha), repo.shortHash(effectiveBaseSha)));
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            String.format(
+                                    "No differences found for PR #%d (head: %s, effective base: %s)",
+                                    prNumber, repo.shortHash(prHeadSha), repo.shortHash(effectiveBaseSha)));
                     return;
                 }
 
@@ -739,7 +758,9 @@ public final class GitUiUtil {
 
                 var fragment = new ContextFragment.StringFragment(cm, diff, description, syntaxStyle);
                 cm.addVirtualFragment(fragment);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format("Added diff for PR #%d (%s) to context", prNumber, prTitle));
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        String.format("Added diff for PR #%d (%s) to context", prNumber, prTitle));
 
             } catch (Exception ex) {
                 logger.warn("Error capturing diff for PR #{}: {}", prNumber, ex.getMessage(), ex);

@@ -306,7 +306,9 @@ public final class BrokkCli implements Callable<Integer> {
         // --- Deep Scan ------------------------------------------------------
         if (deepScan) {
             io.showNotification(IConsoleIO.NotificationRole.INFO, "# Workspace (pre-scan)");
-            io.showNotification(IConsoleIO.NotificationRole.INFO, ContextFragment.getSummary(cm.topContext().allFragments()));
+            io.showNotification(
+                    IConsoleIO.NotificationRole.INFO,
+                    ContextFragment.getSummary(cm.topContext().allFragments()));
 
             String goalForScan = Stream.of(
                             architectPrompt, codePrompt, askPrompt, searchAnswerPrompt, searchTasksPrompt)
@@ -316,10 +318,13 @@ public final class BrokkCli implements Callable<Integer> {
             var scanModel = taskModelOverride == null ? cm.getSearchModel() : taskModelOverride;
             var agent = new ContextAgent(cm, scanModel, goalForScan, true);
             var recommendations = agent.getRecommendations(false);
-            io.showNotification(IConsoleIO.NotificationRole.INFO, "Deep Scan token usage: " + recommendations.tokenUsage());
+            io.showNotification(
+                    IConsoleIO.NotificationRole.INFO, "Deep Scan token usage: " + recommendations.tokenUsage());
 
             if (recommendations.success()) {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Deep Scan suggested "
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Deep Scan suggested "
                                 + recommendations.fragments().stream()
                                         .map(ContextFragment::shortDescription)
                                         .toList());
@@ -339,7 +344,9 @@ public final class BrokkCli implements Callable<Integer> {
 
         // --- Run Action ---
         io.showNotification(IConsoleIO.NotificationRole.INFO, "# Workspace (pre-task)");
-        io.showNotification(IConsoleIO.NotificationRole.INFO, ContextFragment.getSummary(cm.topContext().allFragments()));
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                ContextFragment.getSummary(cm.topContext().allFragments()));
 
         TaskResult result = null;
         // Decide scope action/input

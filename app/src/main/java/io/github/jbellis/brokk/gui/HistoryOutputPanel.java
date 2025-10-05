@@ -1013,7 +1013,8 @@ public class HistoryOutputPanel extends JPanel {
                 .reduce((first, second) -> second);
 
         if (historyOpt.isEmpty()) {
-            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No conversation history found in the current workspace.");
+            chrome.showNotification(
+                    IConsoleIO.NotificationRole.INFO, "No conversation history found in the current workspace.");
             return;
         }
 
@@ -1158,7 +1159,10 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     private JPanel createNotificationCard(
-            IConsoleIO.NotificationRole role, String message, @Nullable Runnable onAccept, @Nullable Runnable onReject) {
+            IConsoleIO.NotificationRole role,
+            String message,
+            @Nullable Runnable onAccept,
+            @Nullable Runnable onReject) {
         var colors = resolveNotificationColors(role);
         Color bg = colors.get(0);
         Color fg = colors.get(1);

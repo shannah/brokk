@@ -155,7 +155,9 @@ public final class NodeJsDependencyHelper {
                 }
                 copyNodePackage(sourceRoot, targetRoot);
                 javax.swing.SwingUtilities.invokeLater(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "NPM package copied to " + targetRoot + ". Reopen project to incorporate the new files.");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "NPM package copied to " + targetRoot + ". Reopen project to incorporate the new files.");
                     if (currentListener != null) currentListener.dependencyImportFinished(pkg.displayName());
                 });
             } catch (Exception ex) {

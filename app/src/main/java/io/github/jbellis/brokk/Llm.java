@@ -279,8 +279,8 @@ public class Llm {
                     logger.debug(th);
                     var retryable = !(th instanceof NonRetriableException);
                     // Immediate feedback for user
-                    String message = "LLM Error: " + th.getMessage()
-                            + (retryable ? " (retry-able)" : " (non-retriable)");
+                    String message =
+                            "LLM Error: " + th.getMessage() + (retryable ? " (retry-able)" : " (non-retriable)");
                     io.showNotification(IConsoleIO.NotificationRole.INFO, message);
                     errorRef.set(th);
                     if (echo && addJsonFence && fenceOpen.get()) {
@@ -303,7 +303,8 @@ public class Llm {
                 cancelled.set(true);
                 logger.debug(mapped);
                 var retryable = !(mapped instanceof NonRetriableException);
-                String message = "LLM Error: " + mapped.getMessage() + (retryable ? " (retry-able)" : " (non-retriable)");
+                String message =
+                        "LLM Error: " + mapped.getMessage() + (retryable ? " (retry-able)" : " (non-retriable)");
                 io.showNotification(IConsoleIO.NotificationRole.INFO, message);
                 errorRef.set(mapped);
                 if (echo && addJsonFence && fenceOpen.get()) {
@@ -520,16 +521,22 @@ public class Llm {
 
             // Busywait with countdown
             if (backoffSeconds > 1) {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
-                                "LLM issue on attempt %d/%d (retrying in %d seconds).", attempt, maxAttempts, backoffSeconds));
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        String.format(
+                                "LLM issue on attempt %d/%d (retrying in %d seconds).",
+                                attempt, maxAttempts, backoffSeconds));
             } else {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, String.format("LLM issue on attempt %d/%d (retrying).", attempt, maxAttempts));
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        String.format("LLM issue on attempt %d/%d (retrying).", attempt, maxAttempts));
             }
             long endTime = System.currentTimeMillis() + backoffSeconds * 1000;
             while (System.currentTimeMillis() < endTime) {
                 long remain = endTime - System.currentTimeMillis();
                 if (remain <= 0) break;
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Retrying in %.1f seconds...".formatted(remain / 1000.0));
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Retrying in %.1f seconds...".formatted(remain / 1000.0));
                 Thread.sleep(Math.min(remain, 100));
             }
         }

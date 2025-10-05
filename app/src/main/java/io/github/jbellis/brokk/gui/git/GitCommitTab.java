@@ -228,9 +228,11 @@ public class GitCommitTab extends JPanel {
                     workflowService,
                     filesToCommit,
                     commitResult -> { // This is the onCommitSuccessCallback
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Committed "
-                                                + getRepo().shortHash(commitResult.commitId())
-                                                + ": " + commitResult.firstLine());
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Committed "
+                                        + getRepo().shortHash(commitResult.commitId())
+                                        + ": " + commitResult.firstLine());
                         updateCommitPanel(); // Refresh file list
                         chrome.updateLogTab();
                         chrome.selectCurrentBranchInLogTab();
@@ -738,10 +740,12 @@ public class GitCommitTab extends JPanel {
 
         SwingUtilities.invokeLater(() -> {
             if (selectedFiles.isEmpty()) {
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "All changes stashed successfully: " + stashDescription);
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "All changes stashed successfully: " + stashDescription);
             } else {
                 String fileList = GitUiUtil.formatFileList(selectedFiles);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Stashed " + fileList + ": " + stashDescription);
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Stashed " + fileList + ": " + stashDescription);
             }
             updateCommitPanel(); // Refresh file list
             chrome.updateLogTab(); // Refresh log

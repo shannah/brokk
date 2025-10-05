@@ -359,7 +359,8 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                     }
 
                     SwingUtilities.invokeLater(() -> {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Deleted " + fileList + ". Use Ctrl+Z to undo.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Deleted " + fileList + ". Use Ctrl+Z to undo.");
                     });
                 } catch (Exception ex) {
                     logger.error("Error deleting selected files", ex);
@@ -849,7 +850,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         List<File> clipboardFiles = getFilesFromClipboard();
 
         if (clipboardFiles.isEmpty()) {
-            chrome.systemOutput("No files in clipboard to paste");
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No files in clipboard to paste");
             return;
         }
 
@@ -892,7 +893,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
             @Override
             protected void process(List<String> chunks) {
                 for (String message : chunks) {
-                    chrome.systemOutput(message);
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, message);
                 }
             }
 
@@ -1145,7 +1146,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                 @Override
                 protected void process(List<String> chunks) {
                     for (String message : chunks) {
-                        chrome.systemOutput(message);
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, message);
                     }
                 }
 

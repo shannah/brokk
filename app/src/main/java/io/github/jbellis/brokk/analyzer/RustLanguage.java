@@ -193,7 +193,9 @@ public class RustLanguage implements Language {
                 }
                 copyRustCrate(sourceRoot, targetRoot);
                 javax.swing.SwingUtilities.invokeLater(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Rust crate copied to " + targetRoot + ". Reopen project to incorporate the new files.");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Rust crate copied to " + targetRoot + ". Reopen project to incorporate the new files.");
                     if (currentListener != null) currentListener.dependencyImportFinished(pkg.displayName());
                 });
             } catch (Exception ex) {

@@ -1625,7 +1625,8 @@ public class WorkspacePanel extends JPanel {
                     if (selectedMethod != null && callGraph != null) {
                         contextManager.addCallersForMethod(selectedMethod, dialog.getDepth(), callGraph);
                     } else {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Method selection incomplete or cancelled.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Method selection incomplete or cancelled.");
                     }
                 }
             } catch (CancellationException cex) {
@@ -1658,7 +1659,8 @@ public class WorkspacePanel extends JPanel {
                     if (selectedMethod != null && callGraph != null) {
                         contextManager.calleesForMethod(selectedMethod, dialog.getDepth(), callGraph);
                     } else {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Method selection incomplete or cancelled.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Method selection incomplete or cancelled.");
                     }
                 }
             } catch (CancellationException cex) {
@@ -1866,18 +1868,22 @@ public class WorkspacePanel extends JPanel {
                     // Try to handle as image URL first
                     if (ImageUtil.isImageUri(uri, httpClient)) {
                         try {
-                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Fetching image from " + clipboardText);
+                            chrome.showNotification(
+                                    IConsoleIO.NotificationRole.INFO, "Fetching image from " + clipboardText);
                             java.awt.Image image = ImageUtil.downloadImage(uri, httpClient);
                             if (image != null) {
                                 contextManager.addPastedImageFragment(image);
-                                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Pasted image from URL added to context");
+                                chrome.showNotification(
+                                        IConsoleIO.NotificationRole.INFO, "Pasted image from URL added to context");
                                 chrome.actionComplete();
                                 return; // Image handled, done with paste action
                             } else {
                                 logger.warn(
                                         "URL {} identified as image by ImageUtil, but downloadImage returned null. Falling back to text.",
                                         clipboardText);
-                                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Could not load image from URL. Trying to fetch as text.");
+                                chrome.showNotification(
+                                        IConsoleIO.NotificationRole.INFO,
+                                        "Could not load image from URL. Trying to fetch as text.");
                             }
                         } catch (
                                 Exception e) { // Catching general exception as downloadImage might throw various things
@@ -1886,14 +1892,17 @@ public class WorkspacePanel extends JPanel {
                                     "Failed to fetch or decode image from URL {}: {}. Falling back to text.",
                                     clipboardText,
                                     e.getMessage());
-                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Failed to load image from URL: " + e.getMessage() + ". Trying to fetch as text.");
+                            chrome.showNotification(
+                                    IConsoleIO.NotificationRole.INFO,
+                                    "Failed to load image from URL: " + e.getMessage() + ". Trying to fetch as text.");
                             // Fall through to fetching as text
                         }
                     }
 
                     // Fallback: If not an image URL or image fetching failed, try to fetch as text
                     try {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Fetching content from " + clipboardText);
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Fetching content from " + clipboardText);
                         content = WorkspaceTools.fetchUrlContent(uri);
                         content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                         wasUrl = true;

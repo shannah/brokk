@@ -304,7 +304,9 @@ public class ArchitectAgent {
                     && workspaceTokenSize > (ArchitectPrompts.WORKSPACE_CRITICAL_THRESHOLD * minInputTokenLimit);
 
             if (criticalWorkspaceSize) {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        String.format(
                                 "Workspace size (%,d tokens) is %.0f%% of limit %,d. Tool usage restricted to workspace modification.",
                                 workspaceTokenSize,
                                 (double) workspaceTokenSize / minInputTokenLimit * 100,
@@ -350,7 +352,9 @@ public class ArchitectAgent {
                 logger.debug(
                         "Error from LLM while deciding next action: {}",
                         result.error().getMessage());
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Error from LLM while deciding next action (see debug log for details)");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Error from LLM while deciding next action (see debug log for details)");
                 return resultWithMessages(StopReason.LLM_ERROR);
             }
             // show thinking
