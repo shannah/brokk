@@ -288,12 +288,12 @@ public class ContextHistory {
             if (!trackedToStage.isEmpty() && project.hasGit()) {
                 try {
                     project.getRepo().add(trackedToStage);
-                    io.systemOutput("Restored and staged files: "
-                            + String.join(
-                                    ", ",
-                                    trackedToStage.stream()
-                                            .map(Object::toString)
-                                            .toList()));
+                    io.showNotification(IConsoleIO.NotificationRole.INFO, "Restored and staged files: "
+                                        + String.join(
+                                                ", ",
+                                                trackedToStage.stream()
+                                                        .map(Object::toString)
+                                                        .toList()));
                 } catch (Exception e) {
                     var msg = "Failed to stage restored files during undo: " + e.getMessage();
                     io.toolError(msg, "Undo Error");
@@ -344,10 +344,10 @@ public class ContextHistory {
                             Files.deleteIfExists(file.absPath());
                         }
                     }
-                    io.systemOutput("Deleted files as part of redo: "
-                            + String.join(
-                                    ", ",
-                                    filesToDelete.stream().map(Object::toString).toList()));
+                    io.showNotification(IConsoleIO.NotificationRole.INFO, "Deleted files as part of redo: "
+                                        + String.join(
+                                                ", ",
+                                                filesToDelete.stream().map(Object::toString).toList()));
                 } catch (Exception e) {
                     io.toolError("Failed to delete files during redo: " + e.getMessage(), "Redo error");
                     logger.error("Failed to delete files during redo", e);
@@ -450,7 +450,7 @@ public class ContextHistory {
                             pf.write(newContent);
                             var restoredFiles = new ArrayList<String>();
                             restoredFiles.add(pf.toString());
-                            io.systemOutput("Restored files: " + String.join(", ", restoredFiles));
+                            io.showNotification(IConsoleIO.NotificationRole.INFO, "Restored files: " + String.join(", ", restoredFiles));
                             io.updateWorkspace();
                         }
                     } catch (IOException e) {

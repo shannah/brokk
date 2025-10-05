@@ -1056,8 +1056,7 @@ public class GitIssuesTab extends JPanel implements SettingsChangeListener {
                         ? ""
                         : " with " + details.comments().size() + " comment(s)";
                 String imageMessage = capturedImageCount == 0 ? "" : " and " + capturedImageCount + " image(s)";
-                chrome.systemOutput(
-                        "Issue " + header.id() + " captured to workspace" + commentMessage + imageMessage + ".");
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Issue " + header.id() + " captured to workspace" + commentMessage + imageMessage + ".");
 
             } catch (Exception e) { // General catch for robustness
                 logger.error("Failed to capture all details for issue {}: {}", header.id(), e.getMessage(), e);
@@ -1149,15 +1148,14 @@ public class GitIssuesTab extends JPanel implements SettingsChangeListener {
                     e.getMessage());
             // Fallback to the one initialized in GitIssuesTab constructor (might be unauthenticated)
             clientToUse = this.httpClient; // Assumes this.httpClient is still available and initialized
-            chrome.systemOutput(
-                    "Could not get authenticated client for image download. Private images might not load. Error: "
-                            + e.getMessage());
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Could not get authenticated client for image download. Private images might not load. Error: "
+                                + e.getMessage());
         }
 
         for (URI imageUri : attachmentUris) {
             try {
                 if (ImageUtil.isImageUri(imageUri, clientToUse)) {
-                    chrome.systemOutput("Downloading image: " + imageUri.toString());
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Downloading image: " + imageUri.toString());
                     java.awt.Image image = ImageUtil.downloadImage(imageUri, clientToUse);
                     if (image != null) {
                         String description = String.format("Issue %s: Image", header.id());
@@ -1190,9 +1188,9 @@ public class GitIssuesTab extends JPanel implements SettingsChangeListener {
                 if (!body.isBlank()) {
                     StringSelection stringSelection = new StringSelection(body);
                     Toolkit.getDefaultToolkit().getSystemClipboard().setContents(stringSelection, null);
-                    chrome.systemOutput("Issue " + header.id() + " description copied to clipboard.");
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Issue " + header.id() + " description copied to clipboard.");
                 } else {
-                    chrome.systemOutput("Issue " + header.id() + " has no description to copy.");
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Issue " + header.id() + " has no description to copy.");
                 }
             } catch (IOException e) {
                 logger.error("Failed to load issue details for copy: {}", header.id(), e);

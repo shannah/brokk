@@ -7,6 +7,7 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.CodeUnitType;
@@ -1016,7 +1017,7 @@ public class WorkspacePanel extends JPanel {
                             .collect(Collectors.toCollection(java.util.LinkedHashSet::new));
 
                     if (projectFiles.isEmpty()) {
-                        chrome.systemOutput("No project files found in drop");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No project files found in drop");
                         return false;
                     }
 
@@ -1036,7 +1037,7 @@ public class WorkspacePanel extends JPanel {
                     }
                     var selection = DropActionDialog.show(chrome.getFrame(), canSummarize, pointer);
                     if (selection == null) {
-                        chrome.systemOutput("Drop canceled");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Drop canceled");
                         return false;
                     }
                     switch (selection) {
@@ -1592,10 +1593,10 @@ public class WorkspacePanel extends JPanel {
                         && !selection.symbol().isBlank()) {
                     contextManager.usageForIdentifier(selection.symbol(), selection.includeTestFiles());
                 } else {
-                    chrome.systemOutput("No symbol selected.");
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No symbol selected.");
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput("Symbol selection canceled.");
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Symbol selection canceled.");
             }
             // No finally needed, submitContextTask handles enabling buttons
         });
@@ -1617,18 +1618,18 @@ public class WorkspacePanel extends JPanel {
 
                 var dialog = showCallGraphDialog("Select Method", true);
                 if (dialog == null || !dialog.isConfirmed()) { // Check confirmed state
-                    chrome.systemOutput("No method selected.");
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No method selected.");
                 } else {
                     var selectedMethod = dialog.getSelectedMethod();
                     var callGraph = dialog.getCallGraph();
                     if (selectedMethod != null && callGraph != null) {
                         contextManager.addCallersForMethod(selectedMethod, dialog.getDepth(), callGraph);
                     } else {
-                        chrome.systemOutput("Method selection incomplete or cancelled.");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Method selection incomplete or cancelled.");
                     }
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput("Method selection canceled.");
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Method selection canceled.");
             }
             // No finally needed, submitContextTask handles enabling buttons
         });
@@ -1650,18 +1651,18 @@ public class WorkspacePanel extends JPanel {
 
                 var dialog = showCallGraphDialog("Select Method for Callees", false);
                 if (dialog == null || !dialog.isConfirmed()) {
-                    chrome.systemOutput("No method selected.");
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No method selected.");
                 } else {
                     var selectedMethod = dialog.getSelectedMethod();
                     var callGraph = dialog.getCallGraph();
                     if (selectedMethod != null && callGraph != null) {
                         contextManager.calleesForMethod(selectedMethod, dialog.getDepth(), callGraph);
                     } else {
-                        chrome.systemOutput("Method selection incomplete or cancelled.");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Method selection incomplete or cancelled.");
                     }
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput("Method selection canceled.");
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Method selection canceled.");
             }
             // No finally needed, submitContextTask handles enabling buttons
         });
@@ -1718,7 +1719,7 @@ public class WorkspacePanel extends JPanel {
                     case RUN_TESTS -> doRunTestsAction(selectedFragments);
                 }
             } catch (CancellationException cex) {
-                chrome.systemOutput(action + " canceled.");
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, action + " canceled.");
             } finally {
                 SwingUtilities.invokeLater(chrome::focusInput);
             }
@@ -1739,7 +1740,7 @@ public class WorkspacePanel extends JPanel {
         var sel = new java.awt.datatransfer.StringSelection(content);
         var cb = java.awt.Toolkit.getDefaultToolkit().getSystemClipboard();
         cb.setContents(sel, sel);
-        chrome.systemOutput("Content copied to clipboard");
+        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Content copied to clipboard");
     }
 
     private String getSelectedContent(List<? extends ContextFragment> selectedFragments) {
@@ -1818,7 +1819,7 @@ public class WorkspacePanel extends JPanel {
 
                     if (image != null) {
                         contextManager.addPastedImageFragment(image);
-                        chrome.systemOutput("Pasted image added to context");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Pasted image added to context");
                         return;
                     }
                 }
@@ -1865,18 +1866,18 @@ public class WorkspacePanel extends JPanel {
                     // Try to handle as image URL first
                     if (ImageUtil.isImageUri(uri, httpClient)) {
                         try {
-                            chrome.systemOutput("Fetching image from " + clipboardText);
+                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Fetching image from " + clipboardText);
                             java.awt.Image image = ImageUtil.downloadImage(uri, httpClient);
                             if (image != null) {
                                 contextManager.addPastedImageFragment(image);
-                                chrome.systemOutput("Pasted image from URL added to context");
+                                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Pasted image from URL added to context");
                                 chrome.actionComplete();
                                 return; // Image handled, done with paste action
                             } else {
                                 logger.warn(
                                         "URL {} identified as image by ImageUtil, but downloadImage returned null. Falling back to text.",
                                         clipboardText);
-                                chrome.systemOutput("Could not load image from URL. Trying to fetch as text.");
+                                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Could not load image from URL. Trying to fetch as text.");
                             }
                         } catch (
                                 Exception e) { // Catching general exception as downloadImage might throw various things
@@ -1885,15 +1886,14 @@ public class WorkspacePanel extends JPanel {
                                     "Failed to fetch or decode image from URL {}: {}. Falling back to text.",
                                     clipboardText,
                                     e.getMessage());
-                            chrome.systemOutput(
-                                    "Failed to load image from URL: " + e.getMessage() + ". Trying to fetch as text.");
+                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Failed to load image from URL: " + e.getMessage() + ". Trying to fetch as text.");
                             // Fall through to fetching as text
                         }
                     }
 
                     // Fallback: If not an image URL or image fetching failed, try to fetch as text
                     try {
-                        chrome.systemOutput("Fetching content from " + clipboardText);
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Fetching content from " + clipboardText);
                         content = WorkspaceTools.fetchUrlContent(uri);
                         content = HtmlToMarkdown.maybeConvertToMarkdown(content);
                         wasUrl = true;
@@ -1918,7 +1918,7 @@ public class WorkspacePanel extends JPanel {
             if (stacktrace == null) {
                 // addStackTraceFragment sends its own messages
                 String message = wasUrl ? "URL content fetched and added" : "Clipboard content added as text";
-                chrome.systemOutput(message);
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, message);
             }
         } else {
             chrome.toolError("Unsupported clipboard content type");

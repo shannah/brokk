@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.IssueProvider;
 import io.github.jbellis.brokk.MainProject;
@@ -225,12 +226,10 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
                                     } else {
                                         if (Objects.equals(detailsResult, BuildAgent.BuildDetails.EMPTY)) {
                                             logger.warn("Initial Build Agent returned empty details. Using defaults.");
-                                            chrome.systemOutput(
-                                                    "Initial Build Agent completed but found no specific details. Using defaults.");
+                                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Initial Build Agent completed but found no specific details. Using defaults.");
                                         } else {
                                             logger.info("Initial build details determined successfully.");
-                                            chrome.systemOutput(
-                                                    "Initial build details determined. Settings panel updated.");
+                                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Initial build details determined. Settings panel updated.");
                                         }
                                     }
                                     loadBuildPanelSettings(); // Load settings for the build panel now
@@ -757,7 +756,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
 
         var refreshBtn = new MaterialButton("Refresh Code Intelligence Now");
         refreshBtn.addActionListener(e -> {
-            chrome.systemOutput("Requesting analyzer refresh...");
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Requesting analyzer refresh...");
             try {
                 chrome.getContextManager().requestRebuild();
             } catch (Exception ex) {
@@ -1279,7 +1278,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
 
         manualInferBuildTaskFuture = cm.submitExclusiveAction(() -> {
             try {
-                chrome.systemOutput("Starting Build Agent...");
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Starting Build Agent...");
                 var agent = new BuildAgent(
                         proj, cm.getLlm(cm.getSearchModel(), "Infer build details"), cm.getToolRegistry());
                 var newBuildDetails = agent.execute();
@@ -1292,7 +1291,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
                     SwingUtilities.invokeLater(() -> {
                         if (isCancellation) {
                             logger.info("Build Agent execution cancelled by user");
-                            chrome.systemOutput("Build Inference Agent cancelled.");
+                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Build Inference Agent cancelled.");
                             JOptionPane.showMessageDialog(
                                     SettingsProjectPanel.this,
                                     "Build Inference Agent cancelled.",
@@ -1316,7 +1315,7 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
                     // Do not save here, only update UI fields. applySettings will save.
                     SwingUtilities.invokeLater(() -> {
                         updateBuildDetailsFieldsFromAgent(newBuildDetails);
-                        chrome.systemOutput("Build Agent finished. Review and apply settings.");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Build Agent finished. Review and apply settings.");
                     });
                 }
             } catch (Exception ex) {

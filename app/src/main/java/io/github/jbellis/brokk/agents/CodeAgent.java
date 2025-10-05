@@ -110,7 +110,7 @@ public class CodeAgent {
         Map<ProjectFile, String> originalFileContents = new HashMap<>();
 
         var msg = "Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput));
-        io.systemOutput(msg);
+        io.showNotification(IConsoleIO.NotificationRole.INFO, msg);
         TaskResult.StopDetails stopDetails;
 
         var parser = EditBlockParser.instance;

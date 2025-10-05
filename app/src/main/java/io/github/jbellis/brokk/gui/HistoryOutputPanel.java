@@ -11,6 +11,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.MainProject;
@@ -113,16 +114,9 @@ public class HistoryOutputPanel extends JPanel {
     private final Path notificationsFile;
     private boolean isDisplayingNotification = false;
 
-    public static enum NotificationRole {
-        ERROR,
-        CONFIRM,
-        COST,
-        INFO
-    }
-
     // Resolve notification colors from ThemeColors for current theme.
     // Returns a list of [background, foreground, border] colors.
-    private java.util.List<Color> resolveNotificationColors(NotificationRole role) {
+    private java.util.List<Color> resolveNotificationColors(IConsoleIO.NotificationRole role) {
         boolean isDark = chrome.themeManager.isDarkTheme();
         return switch (role) {
             case ERROR ->
@@ -1010,7 +1004,7 @@ public class HistoryOutputPanel extends JPanel {
             WorkspacePanel.ContextAction action, String noContextMessage) {
         var ctx = contextManager.selectedContext();
         if (ctx == null) {
-            chrome.systemOutput(noContextMessage);
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, noContextMessage);
             return;
         }
 
@@ -1019,7 +1013,7 @@ public class HistoryOutputPanel extends JPanel {
                 .reduce((first, second) -> second);
 
         if (historyOpt.isEmpty()) {
-            chrome.systemOutput("No conversation history found in the current workspace.");
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No conversation history found in the current workspace.");
             return;
         }
 
@@ -1028,7 +1022,7 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     // Notification API
-    public void showNotification(NotificationRole role, String message) {
+    public void showNotification(IConsoleIO.NotificationRole role, String message) {
         Runnable r = () -> {
             var entry = new NotificationEntry(role, message, System.currentTimeMillis());
             notifications.add(entry);
@@ -1046,7 +1040,7 @@ public class HistoryOutputPanel extends JPanel {
 
     public void showConfirmNotification(String message, Runnable onAccept, Runnable onReject) {
         Runnable r = () -> {
-            var entry = new NotificationEntry(NotificationRole.CONFIRM, message, System.currentTimeMillis());
+            var entry = new NotificationEntry(IConsoleIO.NotificationRole.CONFIRM, message, System.currentTimeMillis());
             notifications.add(entry);
             updateNotificationsButton();
             persistNotificationsAsync();
@@ -1056,7 +1050,7 @@ public class HistoryOutputPanel extends JPanel {
             } else {
                 notificationAreaPanel.removeAll();
                 isDisplayingNotification = true;
-                JPanel card = createNotificationCard(NotificationRole.CONFIRM, message, onAccept, onReject);
+                JPanel card = createNotificationCard(IConsoleIO.NotificationRole.CONFIRM, message, onAccept, onReject);
                 notificationAreaPanel.add(card);
                 animateNotificationCard(card);
                 notificationAreaPanel.revalidate();
@@ -1164,7 +1158,7 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     private JPanel createNotificationCard(
-            NotificationRole role, String message, @Nullable Runnable onAccept, @Nullable Runnable onReject) {
+            IConsoleIO.NotificationRole role, String message, @Nullable Runnable onAccept, @Nullable Runnable onReject) {
         var colors = resolveNotificationColors(role);
         Color bg = colors.get(0);
         Color fg = colors.get(1);
@@ -1189,7 +1183,7 @@ public class HistoryOutputPanel extends JPanel {
         var actions = new JPanel(new FlowLayout(FlowLayout.RIGHT, 4, 0));
         actions.setOpaque(false);
 
-        if (role == NotificationRole.CONFIRM) {
+        if (role == IConsoleIO.NotificationRole.CONFIRM) {
             var acceptBtn = new MaterialButton("Accept");
             acceptBtn.setToolTipText("Accept");
             acceptBtn.addActionListener(e -> {
@@ -1231,9 +1225,9 @@ public class HistoryOutputPanel extends JPanel {
         return card;
     }
 
-    private static String compactMessageForToolbar(NotificationRole role, String message) {
+    private static String compactMessageForToolbar(IConsoleIO.NotificationRole role, String message) {
         // Show full details for COST; compact other long messages to keep the toolbar tidy
-        if (role == NotificationRole.COST) {
+        if (role == IConsoleIO.NotificationRole.COST) {
             return message;
         }
         int max = 160;
@@ -1364,9 +1358,9 @@ public class HistoryOutputPanel extends JPanel {
                 if ("1".equals(parts[0])) continue;
                 if (!"2".equals(parts[0])) continue;
 
-                NotificationRole role;
+                IConsoleIO.NotificationRole role;
                 try {
-                    role = NotificationRole.valueOf(parts[1]);
+                    role = IConsoleIO.NotificationRole.valueOf(parts[1]);
                 } catch (IllegalArgumentException iae) {
                     continue;
                 }
@@ -1544,11 +1538,11 @@ public class HistoryOutputPanel extends JPanel {
 
     // Simple container for notifications
     private static class NotificationEntry {
-        final NotificationRole role;
+        final IConsoleIO.NotificationRole role;
         final String message;
         final long timestamp;
 
-        NotificationEntry(NotificationRole role, String message, long timestamp) {
+        NotificationEntry(IConsoleIO.NotificationRole role, String message, long timestamp) {
             this.role = role;
             this.message = message;
             this.timestamp = timestamp;
@@ -2162,7 +2156,7 @@ public class HistoryOutputPanel extends JPanel {
     private void openDiffPreview(Context ctx) {
         var prev = previousContextMap.get(ctx.id());
         if (prev == null) {
-            chrome.systemOutput("No previous context to diff against.");
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No previous context to diff against.");
             return;
         }
 
@@ -2174,7 +2168,7 @@ public class HistoryOutputPanel extends JPanel {
 
     private void showDiffWindow(Context ctx, List<Context.DiffEntry> diffs) {
         if (diffs.isEmpty()) {
-            chrome.systemOutput("No changes to show.");
+            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No changes to show.");
             return;
         }
 

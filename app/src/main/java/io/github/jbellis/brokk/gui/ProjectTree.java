@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.FileSystemEventListener;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -407,7 +408,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                     }
 
                     SwingUtilities.invokeLater(() -> {
-                        chrome.systemOutput("Deleted " + fileList + ". Use Ctrl+Z to undo.");
+                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Deleted " + fileList + ". Use Ctrl+Z to undo.");
                     });
                 } catch (Exception ex) {
                     logger.error("Error deleting selected files", ex);
