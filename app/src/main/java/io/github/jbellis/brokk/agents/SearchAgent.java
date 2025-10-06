@@ -161,7 +161,7 @@ public class SearchAgent {
             }
 
             // Decide next action(s)
-            io.llmOutput("\n# Planning", ChatMessageType.AI, true, false);
+            io.llmOutput("\n**Brokk** is preparing the next actions…", ChatMessageType.AI, true, false);
             var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, this), true);
             if (result.error() != null || result.isEmpty()) {
                 var details =
@@ -517,14 +517,15 @@ public class SearchAgent {
 
     private void addInitialContextToWorkspace() throws InterruptedException {
         var contextAgent = new ContextAgent(cm, cm.getService().getScanModel(), goal, true);
-        io.llmOutput("\nPerforming initial project scan", ChatMessageType.CUSTOM);
+        io.llmOutput("\n**Brokk Context Engine** analyzing repository context…", ChatMessageType.AI, true, false);
 
         var recommendation = contextAgent.getRecommendations(true);
         if (!recommendation.reasoning().isEmpty()) {
-            io.llmOutput("\n\nReasoning for recommendations: " + recommendation.reasoning(), ChatMessageType.CUSTOM);
+            io.llmOutput(
+                    "\n\nReasoning for contextual insights: " + recommendation.reasoning(), ChatMessageType.CUSTOM);
         }
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
-            io.llmOutput("\n\nNo additional recommended context found", ChatMessageType.CUSTOM);
+            io.llmOutput("\n\nNo additional context insights found", ChatMessageType.CUSTOM);
             return;
         }
 
@@ -542,7 +543,9 @@ public class SearchAgent {
                             .syntaxStyle()));
         } else {
             WorkspaceTools.addToWorkspace(cm, recommendation);
-            io.llmOutput("\n\nScan complete; added recommendations to the Workspace.", ChatMessageType.CUSTOM);
+            io.llmOutput(
+                    "\n\n**Brokk Context Engine** complete — contextual insights added to Workspace.",
+                    ChatMessageType.CUSTOM);
         }
     }
 
