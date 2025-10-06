@@ -984,11 +984,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public void updateBuildFragment(boolean success, String buildOutput) {
         var desc = ContextFragment.BUILD_RESULTS.description();
-        pushContext(currentLiveCtx -> {
+        pushContextQuietly(currentTopCtx -> {
             // Collect build-related fragments to drop:
             //  - Legacy: BuildFragment (BUILD_LOG)
             //  - New: StringFragment with description "Latest Build Results"
-            var idsToDrop = currentLiveCtx
+            var idsToDrop = currentTopCtx
                     .virtualFragments()
                     .filter(f -> f.getType() == ContextFragment.FragmentType.BUILD_LOG
                             || (f.getType() == ContextFragment.FragmentType.STRING
@@ -997,7 +997,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     .map(ContextFragment::id)
                     .toList();
 
-            var modified = idsToDrop.isEmpty() ? currentLiveCtx : currentLiveCtx.removeFragmentsByIds(idsToDrop);
+            var modified = idsToDrop.isEmpty() ? currentTopCtx : currentTopCtx.removeFragmentsByIds(idsToDrop);
 
             if (success) {
                 logger.debug(
@@ -1438,6 +1438,22 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         }
         return newLiveContext;
+    }
+
+    /**
+     * Pushes context changes silently using a generator function. The generator is applied to the current `topContext()`
+     * (frozen context) instead of `liveContext()`. This creates a new context state without triggering history compression
+     * or other side effects.
+     *
+     * @param contextGenerator A function that takes the current top context and returns an updated context.
+     * @return The new top context, or the existing top context if no changes were made by the generator.
+     */
+    public Context pushContextQuietly(Function<Context, Context> contextGenerator) {
+        var newTopContext = contextHistory.pushQuietly(contextGenerator);
+        if (!topContext().equals(newTopContext)) {
+            contextPushed(newTopContext);
+        }
+        return newTopContext;
     }
 
     private void contextPushed(Context frozen) {
