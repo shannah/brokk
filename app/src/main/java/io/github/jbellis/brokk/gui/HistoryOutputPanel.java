@@ -1667,7 +1667,6 @@ public class HistoryOutputPanel extends JPanel {
         if (!blocked) {
             activeStreamingWindows.forEach(
                     window -> window.getMarkdownOutputPanel().setBlocking(false));
-            activeStreamingWindows.clear();
         }
     }
 
