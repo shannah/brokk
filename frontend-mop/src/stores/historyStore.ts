@@ -46,21 +46,27 @@ export function onHistoryEvent(evt: BrokkEvent): void {
                         type: 'SYSTEM',
                         markdown: evt.summary,
                         streaming: false,
+                        reasoning: false
                     });
                 } else {
                     (evt.messages ?? []).forEach(msg => {
+                        const isReasoning = !!msg.reasoning;
                         entries.push({
                             seq: nextHistoryBubbleSeq++,
                             threadId: threadId,
                             type: msg.msgType,
                             markdown: msg.text,
                             streaming: false,
+                            reasoning: isReasoning,
+                            reasoningComplete: isReasoning,
+                            isCollapsed: isReasoning,
                         });
                     });
                 }
 
                 const newTask: HistoryTask = {
                     threadId: threadId,
+                    taskSequence: evt.taskSequence,
                     compressed: evt.compressed,
                     entries: entries,
                 };
@@ -96,6 +102,19 @@ export function reparseAll(): void {
             }
         }
         return tasks;
+    });
+}
+
+export function deleteHistoryTaskByThreadId(threadId: number): void {
+    historyStore.update(tasks => {
+        const task = tasks.find(t => t.threadId === threadId);
+        if (task) {
+            // Notify backend to drop this history entry by TaskEntry.sequence
+            window.javaBridge?.deleteHistoryTask?.(task.taskSequence);
+            // Optimistic local cleanup
+            task.entries.forEach(entry => unregister(entry.seq));
+        }
+        return tasks.filter(t => t.threadId !== threadId);
     });
 }
 

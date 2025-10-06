@@ -217,17 +217,13 @@ public final class ContextMenuUtils {
         // Edit option
         JMenuItem editItem = new JMenuItem("Edit " + targetRef.getFullPath());
         editItem.addActionListener(e1 -> {
-            withTemporaryListenerDetachment(
-                    chrome,
-                    () -> {
-                        if (targetRef.getRepoFile() != null) {
-                            cm.editFiles(List.of(targetRef.getRepoFile()));
-                        } else {
-                            chrome.toolError(
-                                    "Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
-                        }
-                    },
-                    "Edit files");
+            withTemporaryListenerDetachment(chrome, () -> {
+                if (targetRef.getRepoFile() != null) {
+                    cm.addFiles(List.of(targetRef.getRepoFile()));
+                } else {
+                    chrome.toolError("Cannot edit file: " + targetRef.getFullPath() + " - no ProjectFile available");
+                }
+            });
         });
         // Disable for dependency projects
         if (!cm.getProject().hasGit()) {
@@ -235,23 +231,6 @@ public final class ContextMenuUtils {
             editItem.setToolTipText("Editing not available without Git");
         }
         menu.add(editItem);
-
-        // Read option
-        JMenuItem readItem = new JMenuItem("Read " + targetRef.getFullPath());
-        readItem.addActionListener(e1 -> {
-            withTemporaryListenerDetachment(
-                    chrome,
-                    () -> {
-                        if (targetRef.getRepoFile() != null) {
-                            cm.addReadOnlyFiles(List.of(targetRef.getRepoFile()));
-                        } else {
-                            chrome.toolError(
-                                    "Cannot read file: " + targetRef.getFullPath() + " - no ProjectFile available");
-                        }
-                    },
-                    "Read files");
-        });
-        menu.add(readItem);
 
         // Summarize option
         JMenuItem summarizeItem = new JMenuItem("Summarize " + targetRef.getFullPath());
@@ -264,20 +243,17 @@ public final class ContextMenuUtils {
                                 JOptionPane.INFORMATION_MESSAGE);
                 return;
             }
-            withTemporaryListenerDetachment(
-                    chrome,
-                    () -> {
-                        if (targetRef.getRepoFile() == null) {
-                            chrome.toolError("Cannot summarize: " + targetRef.getFullPath()
-                                    + " - ProjectFile information not available");
-                        } else {
-                            boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
-                            if (!success) {
-                                chrome.toolError("No summarizable code found");
-                            }
-                        }
-                    },
-                    "Summarize files");
+            withTemporaryListenerDetachment(chrome, () -> {
+                if (targetRef.getRepoFile() == null) {
+                    chrome.toolError("Cannot summarize: " + targetRef.getFullPath()
+                            + " - ProjectFile information not available");
+                } else {
+                    boolean success = cm.addSummaries(Set.of(targetRef.getRepoFile()), Set.of());
+                    if (!success) {
+                        chrome.toolError("No summarizable code found");
+                    }
+                }
+            });
         });
         menu.add(summarizeItem);
         menu.addSeparator();
@@ -291,8 +267,8 @@ public final class ContextMenuUtils {
     }
 
     /** Helper method to detach context listener temporarily while performing operations. */
-    private static void withTemporaryListenerDetachment(Chrome chrome, Runnable action, String taskDescription) {
+    private static void withTemporaryListenerDetachment(Chrome chrome, Runnable action) {
         // Access the contextManager from Chrome and call submitContextTask on it
-        chrome.getContextManager().submitContextTask(taskDescription, action);
+        chrome.getContextManager().submitContextTask(action);
     }
 }

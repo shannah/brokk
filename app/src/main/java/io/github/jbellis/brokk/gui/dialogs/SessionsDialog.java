@@ -13,6 +13,8 @@ import io.github.jbellis.brokk.difftool.utils.Colors;
 import io.github.jbellis.brokk.gui.ActivityTableRenderers;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.WorkspacePanel;
+import io.github.jbellis.brokk.gui.components.LoadingTextBox;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
@@ -31,6 +33,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
@@ -43,13 +46,16 @@ import org.jetbrains.annotations.Nullable;
 
 /** Modal dialog for managing sessions with Activity log, Workspace panel, and MOP preview */
 public class SessionsDialog extends JDialog {
+    private static final int SEARCH_DEBOUNCE_DELAY = 300;
     private final Chrome chrome;
     private final ContextManager contextManager;
 
     // Sessions table components
     private JTable sessionsTable;
     private DefaultTableModel sessionsTableModel;
-    private JButton closeButton;
+    private LoadingTextBox searchBox;
+    private MaterialButton closeButton;
+    private Timer searchDebounceTimer;
 
     // Activity history components
     private JTable activityTable;
@@ -79,6 +85,8 @@ public class SessionsDialog extends JDialog {
     }
 
     private void initializeComponents() {
+        searchBox = new LoadingTextBox("Search sessions", 20, chrome);
+
         // Initialize sessions table model with Active, Session Name, Date, and hidden SessionInfo columns
         sessionsTableModel = new DefaultTableModel(new Object[] {"Active", "Session Name", "Date", "SessionInfo"}, 0) {
             @Override
@@ -161,7 +169,11 @@ public class SessionsDialog extends JDialog {
         this.arrowLayerUI = new ResetArrowLayerUI(this.activityTable, this.activityTableModel);
 
         // Initialize buttons
-        closeButton = new JButton("Close");
+        closeButton = new MaterialButton("Close");
+
+        // Initialize timer
+        searchDebounceTimer = new Timer(SEARCH_DEBOUNCE_DELAY, e -> refreshSessionsTable());
+        searchDebounceTimer.setRepeats(false);
     }
 
     private void layoutComponents() {
@@ -170,6 +182,7 @@ public class SessionsDialog extends JDialog {
         // Create sessions panel
         JPanel sessionsPanel = new JPanel(new BorderLayout());
         sessionsPanel.setBorder(BorderFactory.createTitledBorder("Sessions"));
+        sessionsPanel.add(searchBox, BorderLayout.NORTH);
         JScrollPane sessionsScrollPane = new JScrollPane(sessionsTable);
         sessionsPanel.add(sessionsScrollPane, BorderLayout.CENTER);
 
@@ -177,6 +190,8 @@ public class SessionsDialog extends JDialog {
         JPanel activityPanel = new JPanel(new BorderLayout());
         activityPanel.setBorder(BorderFactory.createTitledBorder("Activity"));
         JScrollPane activityScrollPane = new JScrollPane(activityTable);
+        activityScrollPane.setBorder(
+                BorderFactory.createEmptyBorder(5, 5, 10, 5)); // slight bottom pad to align with Output
         var layer = new JLayer<>(activityScrollPane, arrowLayerUI);
         activityScrollPane.getViewport().addChangeListener(e -> layer.repaint());
         activityPanel.add(layer, BorderLayout.CENTER);
@@ -280,6 +295,24 @@ public class SessionsDialog extends JDialog {
             }
         });
 
+        // Search box listener with debounce
+        searchBox.addDocumentListener(new javax.swing.event.DocumentListener() {
+            @Override
+            public void insertUpdate(javax.swing.event.DocumentEvent e) {
+                scheduleSessionsTableRefresh();
+            }
+
+            @Override
+            public void removeUpdate(javax.swing.event.DocumentEvent e) {
+                scheduleSessionsTableRefresh();
+            }
+
+            @Override
+            public void changedUpdate(javax.swing.event.DocumentEvent e) {
+                scheduleSessionsTableRefresh();
+            }
+        });
+
         // Button listeners
         closeButton.addActionListener(e -> dispose());
 
@@ -295,6 +328,10 @@ public class SessionsDialog extends JDialog {
                 dispose();
             }
         });
+    }
+
+    private void scheduleSessionsTableRefresh() {
+        searchDebounceTimer.restart();
     }
 
     private void loadSessionHistory(UUID sessionId) {
@@ -332,7 +369,7 @@ public class SessionsDialog extends JDialog {
             boolean hasAiMessages = ctx.getParsedOutput() != null
                     && ctx.getParsedOutput().messages().stream()
                             .anyMatch(chatMessage -> chatMessage.type() == ChatMessageType.AI);
-            Icon iconEmoji = hasAiMessages ? Icons.AI_ROBOT : null;
+            Icon iconEmoji = hasAiMessages ? Icons.CHAT_BUBBLE : null;
             activityTableModel.addRow(
                     new Object[] {iconEmoji, ctx.getAction(), ctx // Store the actual context object in hidden column
                     });
@@ -361,19 +398,15 @@ public class SessionsDialog extends JDialog {
         if (taskHistory.isEmpty()) {
             // Fall back to parsed output for contexts that are not part of a task history
             if (context.getParsedOutput() != null) {
-                markdownOutputPanel.replaceHistory(List.of()); // explicit history clear
-                markdownOutputPanel.setText(context.getParsedOutput());
+                markdownOutputPanel.setMainThenHistoryAsync(
+                        context.getParsedOutput().messages(), List.of());
             } else {
-                markdownOutputPanel.clear(); // clears main view and history
+                markdownOutputPanel.clear(); // clears main view, history, and cache
             }
         } else {
             var history = taskHistory.subList(0, taskHistory.size() - 1);
             var main = taskHistory.getLast();
-            // render first the last message, then the history
-            markdownOutputPanel.setText(main);
-            SwingUtilities.invokeLater(() -> {
-                markdownOutputPanel.replaceHistory(history);
-            });
+            markdownOutputPanel.setMainThenHistoryAsync(main, history);
         }
     }
 
@@ -389,6 +422,14 @@ public class SessionsDialog extends JDialog {
         sessionsTableModel.setRowCount(0);
         List<SessionInfo> sessions =
                 contextManager.getProject().getSessionManager().listSessions();
+
+        String searchText = searchBox.getText().toLowerCase(Locale.ROOT);
+        if (!searchText.isEmpty()) {
+            sessions = sessions.stream()
+                    .filter(s -> s.name().toLowerCase(Locale.ROOT).contains(searchText))
+                    .collect(Collectors.toList());
+        }
+
         sessions.sort(java.util.Comparator.comparingLong(SessionInfo::modified).reversed()); // Sort newest first
 
         UUID currentSessionId = contextManager.getCurrentSessionId();
@@ -460,7 +501,7 @@ public class SessionsDialog extends JDialog {
         /* ---------- delete (single or multi) ---------- */
         JMenuItem deleteItem = new JMenuItem(selectedSessions.size() == 1 ? "Delete" : "Delete Selected");
         deleteItem.addActionListener(ev -> {
-            int confirm = JOptionPane.showConfirmDialog(
+            int confirm = chrome.showConfirmDialog(
                     SessionsDialog.this,
                     "Are you sure you want to delete the selected session(s)?",
                     "Confirm Delete",
@@ -726,7 +767,7 @@ public class SessionsDialog extends JDialog {
             return;
         }
         var info = maybeInfo.get();
-        int confirm = JOptionPane.showConfirmDialog(
+        int confirm = chrome.showConfirmDialog(
                 parent,
                 "Are you sure you want to delete the current session?",
                 "Confirm Delete",

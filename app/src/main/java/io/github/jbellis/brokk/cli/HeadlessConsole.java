@@ -1,7 +1,5 @@
 package io.github.jbellis.brokk.cli;
 
-import static io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel.isReasoningMessage;
-
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
@@ -9,7 +7,6 @@ import dev.langchain4j.data.message.CustomMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import io.github.jbellis.brokk.IConsoleIO;
-import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.util.Messages;
 import java.util.ArrayList;
 import java.util.List;
@@ -55,7 +52,7 @@ public final class HeadlessConsole implements IConsoleIO {
             case SYSTEM -> SystemMessage.from(text);
             case USER -> UserMessage.from(text);
             case AI -> AiMessage.from(text);
-            case CUSTOM -> new CustomMessage(java.util.Map.of("text", text));
+            case CUSTOM -> Messages.customSystem(text);
             default -> throw new IllegalArgumentException("Unsupported message type for creation: " + type);
         };
     }
@@ -68,17 +65,24 @@ public final class HeadlessConsole implements IConsoleIO {
     }
 
     @Override
-    public void setLlmOutput(ContextFragment.TaskFragment newOutput) {
-        messages.clear();
-        messages.addAll(newOutput.messages());
+    public void showNotification(NotificationRole role, String message) {
+        String prefix =
+                switch (role) {
+                    case ERROR -> "[ERROR] ";
+                    case CONFIRM -> "[CONFIRM] ";
+                    case COST -> "[COST] ";
+                    case INFO -> "[INFO] ";
+                };
+        if (role == IConsoleIO.NotificationRole.ERROR) {
+            System.err.println(prefix + message);
+        } else {
+            System.out.println(prefix + message);
+        }
     }
 
     @Override
-    public List<ChatMessage> getLlmRawMessages(boolean includeReasoning) {
-        if (includeReasoning) {
-            return List.copyOf(messages);
-        }
-        return messages.stream().filter(m -> !isReasoningMessage(m)).toList();
+    public List<ChatMessage> getLlmRawMessages() {
+        return List.copyOf(messages);
     }
 
     @Override

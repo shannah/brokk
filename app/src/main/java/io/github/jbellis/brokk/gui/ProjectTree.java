@@ -3,6 +3,7 @@ package io.github.jbellis.brokk.gui;
 import io.github.jbellis.brokk.AnalyzerWrapper;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.FileSystemEventListener;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -307,25 +308,16 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         boolean allFilesTracked = project.getRepo().getTrackedFiles().containsAll(targetFiles);
 
         String editLabel = bulk ? "Edit All" : "Edit";
-        String readLabel = bulk ? "Read All" : "Read";
         String summarizeLabel = bulk ? "Summarize All" : "Summarize";
 
         JMenuItem editItem = new JMenuItem(editLabel);
         editItem.addActionListener(ev -> {
-            contextManager.submitContextTask("Edit files", () -> {
-                contextManager.editFiles(targetFiles);
+            contextManager.submitContextTask(() -> {
+                contextManager.addFiles(targetFiles);
             });
         });
         editItem.setEnabled(allFilesTracked);
         contextMenu.add(editItem);
-
-        JMenuItem readItem = new JMenuItem(readLabel);
-        readItem.addActionListener(ev -> {
-            contextManager.submitContextTask("Read files", () -> {
-                contextManager.addReadOnlyFiles(targetFiles);
-            });
-        });
-        contextMenu.add(readItem);
 
         boolean canSummarize = anySummarizable(targetFiles);
         if (canSummarize) {
@@ -340,7 +332,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                                     JOptionPane.INFORMATION_MESSAGE);
                     return;
                 }
-                contextManager.submitContextTask("Summarize files", () -> {
+                contextManager.submitContextTask(() -> {
                     contextManager.addSummaries(new HashSet<>(targetFiles), Collections.emptySet());
                 });
             });
@@ -353,7 +345,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         deleteItem.addActionListener(ev -> {
             var filesToDelete = targetFiles;
 
-            contextManager.submitUserTask("Delete files", () -> {
+            contextManager.submitExclusiveAction(() -> {
                 try {
                     var nonText =
                             filesToDelete.stream().filter(pf -> !pf.isText()).toList();
@@ -400,7 +392,9 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                             new HashSet<>(filesToDelete),
                             new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
 
-                    contextManager.addToHistory(taskResult, false);
+                    try (var scope = contextManager.beginTask("", false)) {
+                        scope.append(taskResult);
+                    }
 
                     if (!deletedInfos.isEmpty()) {
                         var contextHistory = contextManager.getContextHistory();
@@ -414,7 +408,8 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                     }
 
                     SwingUtilities.invokeLater(() -> {
-                        chrome.systemOutput("Deleted " + fileList + ". Use Ctrl+Z to undo.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Deleted " + fileList + ". Use Ctrl+Z to undo.");
                     });
                 } catch (Exception ex) {
                     logger.error("Error deleting selected files", ex);
@@ -435,7 +430,7 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
         }
 
         runTestsItem.addActionListener(ev -> {
-            contextManager.submitContextTask("Run selected tests", () -> {
+            contextManager.submitContextTask(() -> {
                 var testProjectFiles =
                         targetFiles.stream().filter(ContextManager::isTestFile).collect(Collectors.toSet());
 

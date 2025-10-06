@@ -5,6 +5,7 @@ import static java.util.Objects.requireNonNull;
 import com.jakewharton.disklrucache.DiskLruCache;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
@@ -14,6 +15,7 @@ import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.TaskResult;
@@ -157,10 +159,11 @@ public final class MergeOneFile {
             if (Thread.interrupted()) throw new InterruptedException();
             io.llmOutput("\n# Merge %s (step %d)".formatted(file, step), ChatMessageType.AI, true, false);
 
-            var result = llm.sendRequest(List.copyOf(currentSessionMessages), toolSpecs, ToolChoice.REQUIRED, true);
-            if (result.error() != null || result.isEmpty()) {
+            var result = llm.sendRequest(
+                    List.copyOf(currentSessionMessages), new ToolContext(toolSpecs, ToolChoice.REQUIRED, this), true);
+            if (result.error() != null) {
                 var msg = result.error() != null ? result.error().getMessage() : "Empty response";
-                io.systemOutput("LLM error in merge loop: " + msg);
+                io.showNotification(IConsoleIO.NotificationRole.INFO, "LLM error in merge loop: " + msg);
                 break;
             }
             if (!result.text().isBlank()) {
@@ -180,7 +183,7 @@ public final class MergeOneFile {
             for (var req : sorted) {
                 if (Thread.interrupted()) throw new InterruptedException();
 
-                var explanation = ToolRegistry.getExplanationForToolRequest(req);
+                var explanation = cm.getToolRegistry().getExplanationForToolRequest(this, req);
                 if (!explanation.isBlank()) {
                     io.llmOutput("\n" + explanation, ChatMessageType.AI);
                 }
@@ -223,7 +226,9 @@ public final class MergeOneFile {
                             io.llmOutput("Conflicts resolved for " + file + " (staged)", ChatMessageType.AI);
                         } catch (GitAPIException e) {
                             logger.warn("Failed to add {} to index after CodeAgent success: {}", file, e.getMessage());
-                            io.systemOutput("Warning: failed to git add " + file + ": " + e.getMessage());
+                            io.showNotification(
+                                    IConsoleIO.NotificationRole.INFO,
+                                    "Warning: failed to git add " + file + ": " + e.getMessage());
                             io.llmOutput("Conflicts resolved for " + file, ChatMessageType.AI);
                         }
                         return new Outcome(Status.RESOLVED, null);
@@ -513,11 +518,11 @@ public final class MergeOneFile {
         logger.debug("callCodeAgent invoked for {} with instructions: {}", file, instructions);
 
         instructions +=
-                "\n\nRemember to use the BRK_CONFLICT_BEGIN[n]..BRK_CONFLICT_END[n] markers to simplify your SEARCH/REPLACE blocks!"
+                "\n\nRemember to use the BRK_CONFLICT_BEGIN_[n]..BRK_CONFLICT_END_[n] markers to simplify your SEARCH/REPLACE blocks!"
                         + "\nYou can also make non-conflict edits if necessary to fix related issues caused by the merge.";
         var agent = new CodeAgent(cm, codeModel, cm.getIo());
         var result = agent.runSingleFileEdit(
-                requireNonNull(file),
+                file,
                 instructions,
                 requireNonNull(currentSessionMessages),
                 EnumSet.of(CodePrompts.InstructionsFlags.MERGE_AGENT_MARKERS));

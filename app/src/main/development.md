@@ -45,33 +45,37 @@ Dependencies:
 - `./gradlew clean` - Clean build artifacts for all modules + frontend
 - `./gradlew classes` - Compile all main sources (fastest for development)
 - `./gradlew shadowJar` - Create fat JAR for distribution (explicit only)
+- `./gradlew generateThemeCss` - Generate theme CSS variables from ThemeColors.java
 
 ### Frontend Build Tasks
 
 #### Gradle Tasks (Recommended)
-- `./gradlew frontendBuild` - Build frontend with Vite (includes npm install)
+- `./gradlew frontendBuild` - Build frontend with Vite (includes pnpm install)
 - `./gradlew frontendClean` - Clean frontend build artifacts and node_modules
 
-#### Direct npm Commands (Development)
+#### Direct pnpm Commands (Development)
 For frontend-only development, you can work directly in the `frontend-mop/` directory:
 
 ```bash
 cd frontend-mop/
 
+# Use Gradle-installed pnpm (recommended)
+alias pnpm='../.gradle/pnpm/pnpm-v9.15.4/bin/pnpm'
+
 # Install dependencies
-npm install
+pnpm install
 
 # Development server with hot reload
-npm run dev
+pnpm run dev
 
 # Production build (outputs to app/src/main/resources/mop-web/)
-npm run build
+pnpm run build
 
 # Preview production build
-npm run preview
+pnpm run preview
 ```
 
-**Note**: The npm `build` script runs both worker and main builds via Vite. Gradle automatically handles npm commands during the main build process.
+**Note**: The project uses **pnpm** (not npm) for faster installs and better disk usage. The `build` script runs both worker and main builds via Vite. Gradle automatically handles pnpm via the `pnpmInstall` task. Configuration is in `frontend-mop/.npmrc` (shamefully-hoist mode for compatibility).
 
 ### Development Workflow - Individual Projects
 - `./gradlew :analyzer-api:compileJava` - Compile API interfaces only
@@ -311,12 +315,54 @@ To explore available Look and Feel icons for UI development:
 
 Use `SwingUtil.uiIcon("IconName")` to safely load icons with automatic fallbacks.
 
+## Theme System
+
+The application uses a unified theme system that synchronizes colors between Java Swing components and the frontend web interface.
+
+### Theme Generation Workflow
+
+1. **Java Theme Definition**: Colors are defined in `ThemeColors.java` with separate maps for dark and light themes
+2. **CSS Generation**: Run `./gradlew generateThemeCss` to generate CSS variables from Java colors
+3. **Frontend Integration**: Generated CSS is written to `frontend-mop/src/styles/theme-colors.generated.scss`
+
+### Key Files
+
+- **`app/src/main/java/io/github/jbellis/brokk/gui/mop/ThemeColors.java`** - Master theme color definitions
+- **`app/src/main/java/io/github/jbellis/brokk/tools/GenerateThemeCss.java`** - CSS generation tool
+- **`frontend-mop/src/styles/theme-colors.generated.scss`** - Auto-generated CSS variables
+
+### Adding New Theme Colors
+
+1. Add color to appropriate theme map in `ThemeColors.java`:
+   ```java
+   DARK_COLORS.put("my_new_color", Color.decode("#123456"));
+   LIGHT_COLORS.put("my_new_color", Color.decode("#654321"));
+   ```
+
+2. Regenerate CSS variables:
+   ```bash
+   ./gradlew generateThemeCss
+   ```
+
+3. Use in frontend SCSS:
+   ```scss
+   .my-component {
+     color: var(--my-new-color);
+   }
+   ```
+
+### Theme Naming Conventions
+
+- Use snake_case in Java: `inline_code_color`
+- Converts to kebab-case in CSS: `--inline-code-color`
+- Colors are automatically sorted alphabetically in generated CSS
+
 ## Environment Variables
 
 ### BRK_NO_LSP
 
 Controls whether the Java Language Server (JDT LSP) is started. When disabled, the app runs in TSA-only mode (TreeSitter
-analyzers only) which improves startup time and reduces memory usage, but advanced Java analysis (call graph, usages, 
+analyzers only) which improves startup time and reduces memory usage, but advanced Java analysis (call graph, usages,
 linting via JDT) will not be available.
 
 - Name: BRK_NO_LSP

@@ -7,6 +7,7 @@ import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
@@ -16,32 +17,30 @@ import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
-import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.context.ContextFragment;
+import io.github.jbellis.brokk.mcp.McpUtils;
 import io.github.jbellis.brokk.prompts.CodePrompts;
+import io.github.jbellis.brokk.prompts.McpPrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
-import io.github.jbellis.brokk.util.LogDescription;
 import io.github.jbellis.brokk.util.Messages;
+import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Arrays;
 import java.util.Comparator;
-import java.util.HashSet;
+import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
-import java.util.Objects;
-import java.util.Optional;
 import java.util.Set;
-import java.util.regex.Pattern;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -54,6 +53,12 @@ import org.jetbrains.annotations.Nullable;
 public class SearchAgent {
     private static final Logger logger = LogManager.getLogger(SearchAgent.class);
 
+    public enum Terminal {
+        TASK_LIST,
+        ANSWER,
+        WORKSPACE
+    }
+
     // Keep thresholds consistent with other agents
     private static final int SUMMARIZE_THRESHOLD = 1_000; // ~120 LOC equivalent
     private static final double WORKSPACE_CRITICAL = 0.80; // 90% of input limit
@@ -63,20 +68,18 @@ public class SearchAgent {
     private final Llm llm;
     private final ToolRegistry toolRegistry;
     private final IConsoleIO io;
-    // private final int ordinal; // TODO use this to disambiguate different search agents spawned by Architect
     private final String goal;
+    private final Set<Terminal> allowedTerminals;
+    private final List<McpPrompts.McpTool> mcpTools;
 
     // Session-local conversation for this agent
     private final List<ChatMessage> sessionMessages = new ArrayList<>();
 
-    // Duplicate detection and linkage discovery
-    private final Set<String> toolCallSignatures = new HashSet<>();
-    private final Set<String> trackedClassNames = new HashSet<>();
-
     // State toggles
     private boolean beastMode;
 
-    public SearchAgent(String goal, ContextManager contextManager, StreamingChatModel model, int ordinal) {
+    public SearchAgent(
+            String goal, ContextManager contextManager, StreamingChatModel model, Set<Terminal> allowedTerminals) {
         this.goal = goal;
         this.cm = contextManager;
         this.model = model;
@@ -84,14 +87,34 @@ public class SearchAgent {
 
         this.io = contextManager.getIo();
         this.llm = contextManager.getLlm(model, "Search: " + goal);
+        this.llm.setOutput(io);
 
         this.beastMode = false;
+        this.allowedTerminals = Set.copyOf(allowedTerminals);
+
+        var mcpConfig = cm.getProject().getMcpConfig();
+        List<McpPrompts.McpTool> tools = new ArrayList<>();
+        for (var server : mcpConfig.servers()) {
+            if (server.tools() != null) {
+                for (var toolName : server.tools()) {
+                    tools.add(new McpPrompts.McpTool(server, toolName));
+                }
+            }
+        }
+        this.mcpTools = List.copyOf(tools);
     }
 
     /** Entry point. Runs until answer/abort or interruption. */
-    public TaskResult execute() throws InterruptedException {
-        io.systemOutput("Search Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(goal)));
+    public TaskResult execute() {
+        try {
+            return executeInternal();
+        } catch (InterruptedException e) {
+            logger.debug("Search interrupted", e);
+            return errorResult(new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
+        }
+    }
 
+    private @NotNull TaskResult executeInternal() throws InterruptedException {
         // Seed Workspace with ContextAgent recommendations (same pattern as ArchitectAgent)
         addInitialContextToWorkspace();
 
@@ -99,7 +122,9 @@ public class SearchAgent {
         while (true) {
             // Beast mode triggers
             if (Thread.interrupted()) {
-                io.systemOutput("Search interrupted; attempting to finalize with available information");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Search interrupted; attempting to finalize with available information");
                 beastMode = true;
             }
             var inputLimit = cm.getService().getMaxInputTokens(model);
@@ -107,7 +132,8 @@ public class SearchAgent {
                     new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()));
             var workspaceTokens = Messages.getApproximateTokens(workspaceMessages);
             if (!beastMode && inputLimit > 0 && workspaceTokens > WORKSPACE_CRITICAL * inputLimit) {
-                io.systemOutput(
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
                         "Workspace is near the context limit; attempting finalization based on current knowledge");
                 beastMode = true;
             }
@@ -116,24 +142,37 @@ public class SearchAgent {
             var messages = buildPrompt(workspaceTokens, inputLimit, workspaceMessages);
             var allowedToolNames = calculateAllowedToolNames();
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
-            toolSpecs.addAll(toolRegistry.getTools(this, List.of("answerSearch", "abortSearch")));
+
+            // Agent-owned terminal tools (instance methods)
+            var agentTerminalTools = new ArrayList<String>();
+            if (allowedTerminals.contains(Terminal.ANSWER)) {
+                agentTerminalTools.add("answer");
+            }
+            if (allowedTerminals.contains(Terminal.WORKSPACE)) {
+                agentTerminalTools.add("workspaceComplete");
+            }
+            // Always allow abort
+            agentTerminalTools.add("abortSearch");
+            toolSpecs.addAll(toolRegistry.getTools(this, agentTerminalTools));
+
+            // Global terminal tool(s) implemented outside SearchAgent (e.g., in SearchTools)
+            if (allowedTerminals.contains(Terminal.TASK_LIST)) {
+                toolSpecs.addAll(toolRegistry.getRegisteredTools(List.of("createTaskList")));
+            }
 
             // Decide next action(s)
             io.llmOutput("\n# Planning", ChatMessageType.AI, true, false);
-            var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
+            var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, this), true);
             if (result.error() != null || result.isEmpty()) {
                 var details =
                         result.error() != null ? requireNonNull(result.error().getMessage()) : "Empty response";
-                io.systemOutput("LLM error planning next step: " + details);
+                io.showNotification(IConsoleIO.NotificationRole.INFO, "LLM error planning next step: " + details);
                 return errorResult(new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, details));
             }
 
             // Record turn
             sessionMessages.add(new UserMessage("What tools do you want to use next?"));
             sessionMessages.add(result.aiMessage());
-            if (!result.text().isBlank()) {
-                io.llmOutput("\n" + result.text(), ChatMessageType.AI);
-            }
 
             // De-duplicate requested tools and handle answer/abort isolation
             var ai = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
@@ -143,44 +182,36 @@ public class SearchAgent {
             }
             var next = parseResponseToRequests(ai);
             if (next.isEmpty()) {
-                // If everything got filtered (e.g., duplicate -> forged -> still duplicate), force beast mode
+                // If everything got filtered (e.g., only terminal tool kept), force beast mode next turn if needed
                 beastMode = true;
                 continue;
             }
 
-            // If the first is an answer/abort, execute it alone and finalize
+            // If the first is an immediate finalizing action (answer/abort), execute it alone and finalize
             var first = next.getFirst();
-            if (first.name().equals("answerSearch") || first.name().equals("abortSearch")) {
+            if (first.name().equals("answer") || first.name().equals("abortSearch")) {
                 // Enforce singularity
                 if (next.size() > 1) {
-                    io.systemOutput("Answer/abort returned with other tools; ignoring others and finalizing.");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Final action returned with other tools; ignoring others and finalizing.");
                 }
                 var exec = toolRegistry.executeTool(this, first);
                 sessionMessages.add(ToolExecutionResultMessage.from(first, exec.resultText()));
-                if (first.name().equals("answerSearch")) {
-                    return createFinalFragment(first, exec);
+                if (first.name().equals("answer")) {
+                    return createResult();
                 } else {
                     var explain = exec.resultText().isBlank() ? "No explanation provided by agent." : exec.resultText();
                     return errorResult(new TaskResult.StopDetails(TaskResult.StopReason.LLM_ABORTED, explain));
                 }
             }
 
-            // Otherwise execute all tool calls in a deterministic order (Workspace ops before exploration helps
-            // pruning)
+            // Execute all tool calls in a deterministic order (Workspace ops before exploration helps pruning)
             var sortedCalls = next.stream()
                     .sorted(Comparator.comparingInt(req -> priority(req.name())))
                     .toList();
+            boolean executedDeferredTerminal = false;
             for (var req : sortedCalls) {
-                // Duplicate guard and class tracking before execution
-                var signatures = createToolCallSignatures(req);
-                toolCallSignatures.addAll(signatures);
-                trackClassNamesFromToolCall(req);
-
-                var explanation = ToolRegistry.getExplanationForToolRequest(req);
-                if (!explanation.isBlank()) {
-                    io.llmOutput("\n" + explanation, ChatMessageType.AI);
-                }
-
                 ToolExecutionResult exec;
                 try {
                     exec = toolRegistry.executeTool(this, req);
@@ -202,14 +233,16 @@ public class SearchAgent {
 
                 // Write to visible transcript and to Context history
                 sessionMessages.add(ToolExecutionResultMessage.from(req, display));
-                if (display.isEmpty()) {
-                    logger.warn("Empty tool call result {} from {}", display, req);
-                } else {
-                    io.llmOutput(display, ChatMessageType.AI);
-                }
 
-                // Light composition: update discovery and flow
-                handleStateAfterTool(exec);
+                // Track if we executed a deferred terminal
+                if (req.name().equals("createTaskList") || req.name().equals("workspaceComplete")) {
+                    executedDeferredTerminal = true;
+                }
+            }
+
+            // If we executed a deferred terminal, finalize
+            if (executedDeferredTerminal) {
+                return createResult();
             }
         }
     }
@@ -229,13 +262,15 @@ public class SearchAgent {
                         You are the Search Agent.
                         Your job:
                           - find and organize code relevant to the user's question or implementation goal,
-                          - aggressively curate the Workspace so a Code Agent can implement next without confusion,
+                          - aggressively curate the Workspace so a Code Agent has all the needed resources to implement next without confusion,
                           - never write code yourself.
 
                         Critical rules:
-                          1) At EVERY TURN, drop irrelevant fragments from the Workspace.
-                             Prefer summaries over full files. Replace long fragments with concise summaries of content related to the goal first,
-                             then drop the originals.
+                          1) PRUNE FIRST at every turn.
+                             - Remove fragments that are not directly useful for the goal.
+                             - Prefer concise, goal-focused summaries over full files.
+                             - When you pull information from a long fragment, first add your extraction, then drop the original.
+                             - Keep the Workspace focused on answering/solving the goal.
                           2) Use search and inspection tools to discover relevant code, including classes/methods/usages/call graphs.
                           3) The symbol-based tools only have visibility into the following file types: %s
                              Use text-based tools if you need to search other file types.
@@ -243,6 +278,7 @@ public class SearchAgent {
                           5) Make multiple tool calls at once when searching for different types of code.
 
                         Output discipline:
+                          - Start each turn by pruning and summarizing before any new exploration.
                           - Think before calling tools.
                           - If you already know what to add, use Workspace tools directly; do not search redundantly.
                         """
@@ -250,6 +286,12 @@ public class SearchAgent {
                                 .map(Language::name)
                                 .collect(Collectors.joining(", "))));
         messages.add(sys);
+
+        // Describe available MCP tools
+        var mcpToolPrompt = McpPrompts.mcpToolPrompt(mcpTools);
+        if (mcpToolPrompt != null) {
+            messages.add(new SystemMessage(mcpToolPrompt));
+        }
 
         // Current Workspace contents
         messages.addAll(precomputedWorkspaceMessages);
@@ -300,6 +342,32 @@ public class SearchAgent {
             }
         }
 
+        var finals = new ArrayList<String>();
+        if (allowedTerminals.contains(Terminal.ANSWER)) {
+            finals.add(
+                    "- Use answer(String) when the request is purely informational and you have enough information to answer.");
+        }
+        if (allowedTerminals.contains(Terminal.TASK_LIST)) {
+            finals.add(
+                    """
+                    - Use createTaskList(List<String>) when the request involves code changes; produce a clear, minimal, incremental, and testable sequence of tasks that an Architect/Code agent can execute, once you understand where all the necessary pieces live.
+                      Guidance:
+                        - Each task should be self-contained and verifiable via code review or automated tests.
+                        - Prefer adding or updating automated tests to demonstrate behavior; if automation is not a good fit, it is acceptable to omit tests rather than prescribe manual steps.
+                        - Keep the project buildable and testable after each step.
+                        - The executing agent may adjust task scope/order based on more up-to-date information discovered during implementation.
+                    """
+                            .stripIndent());
+        }
+        if (allowedTerminals.contains(Terminal.WORKSPACE)) {
+            finals.add(
+                    "- Use workspaceComplete() when the Workspace contains all the information necessary to accomplish the goal.");
+        }
+        finals.add(
+                "- If we cannot find the answer or the request is out of scope for this codebase, use abortSearch with a clear explanation.");
+
+        String finalsStr = finals.stream().collect(Collectors.joining("\n"));
+
         String directive =
                 """
                         <goal>
@@ -307,16 +375,24 @@ public class SearchAgent {
                         </goal>
 
                         Decide the next tool action(s) to make progress toward answering the question and preparing the Workspace
-                        for follow-on code changes. If you already have enough to answer, use answerSearch. If we cannot answer,
-                        use abortSearch with a clear explanation.
+                        for follow-on code changes.
+
+                        Pruning mandate:
+                          - Before any new exploration, prune the Workspace.
+                          - Replace full text with concise, goal-focused summaries and drop the originals.
+                          - Expand the Workspace only after pruning; avoid re-adding irrelevant content.
+
+                        Finalization options:
+                        %s
 
                         You can call multiple tools in a single turn. To do so, provide a list of separate tool calls, each with its own name and arguments (add summaries, drop fragments, etc).
-                        Do NOT invoke multiple answer/abort actions. Do NOT write code.
+                        Do NOT invoke multiple final actions. Do NOT write code.
+
 
                         %s
                         """
                         .stripIndent()
-                        .formatted(goal, warning);
+                        .formatted(goal, finalsStr, warning);
 
         // Beast mode directive
         if (beastMode) {
@@ -325,7 +401,7 @@ public class SearchAgent {
                     <beast-mode>
                     The Workspace is full or execution was interrupted.
                     Finalize now using the best available information.
-                    Prefer answerSearch; otherwise use abortSearch with reasons.
+                    Prefer answer(String) for informational requests; for code-change requests, provide a concise createTaskList(List<String>) if feasible; otherwise use abortSearch with reasons.
                     </beast-mode>
                     """
                             .stripIndent();
@@ -343,19 +419,21 @@ public class SearchAgent {
 
         var names = new ArrayList<String>();
 
-        // Analyzer-backed exploration
-        names.add("searchSymbols");
-        var analyzerWrapper = cm.getAnalyzerWrapper();
+        // Any Analyzer at all provides these
+        if (!cm.getProject().getAnalyzerLanguages().equals(Set.of(Languages.NONE))) {
+            names.add("searchSymbols");
+            names.add("getFiles");
+        }
 
+        // Fine-grained Analyzer capabilities
+        var analyzerWrapper = cm.getAnalyzerWrapper();
         if (analyzerWrapper.providesSummaries()) {
             names.add("getClassSkeletons");
         }
-
         if (analyzerWrapper.providesSourceCode()) {
             names.add("getClassSources");
             names.add("getMethodSources");
         }
-
         if (analyzerWrapper.providesInterproceduralAnalysis()) {
             names.add("getUsages");
             names.add("getRelatedClasses");
@@ -374,14 +452,17 @@ public class SearchAgent {
         names.add("addFilesToWorkspace");
         names.add("addClassesToWorkspace");
         names.add("addClassSummariesToWorkspace");
-        names.add("addMethodSourcesToWorkspace");
+        names.add("addMethodsToWorkspace");
         names.add("addFileSummariesToWorkspace");
         names.add("addSymbolUsagesToWorkspace");
         names.add("addCallGraphInToWorkspace");
         names.add("addCallGraphOutToWorkspace");
-        names.add("addTextToWorkspace");
+        names.add("appendNote");
         names.add("dropWorkspaceFragments");
-        names.add("getFiles");
+
+        if (!mcpTools.isEmpty()) {
+            names.add("callMcpTool");
+        }
 
         logger.debug("Allowed tool names: {}", names);
         return names;
@@ -391,24 +472,28 @@ public class SearchAgent {
         if (!response.hasToolExecutionRequests()) {
             return List.of();
         }
-        // Forge getRelatedClasses for duplicates (like SearchAgent)
-        var raw = response.toolExecutionRequests().stream()
-                .map(this::handleDuplicateRequestIfNeeded)
-                .toList();
 
-        // If an answer/abort is present, isolate it
-        var firstFinal = raw.stream()
-                .filter(r -> r.name().equals("answerSearch") || r.name().equals("abortSearch"))
+        // Isolate terminator tools BEFORE any other handling.
+        var firstFinal = response.toolExecutionRequests().stream()
+                .filter(r -> r.name().equals("answer")
+                        || r.name().equals("createTaskList")
+                        || r.name().equals("workspaceComplete")
+                        || r.name().equals("abortSearch"))
                 .findFirst();
-        return firstFinal.map(List::of).orElse(raw);
+        if (firstFinal.isPresent()) {
+            return List.of(firstFinal.get());
+        }
+
+        // No dedupe/forging: return all non-terminal tool requests in the order provided
+        return response.toolExecutionRequests();
     }
 
     private int priority(String toolName) {
         // Prioritize workspace pruning and adding summaries before deeper exploration.
         return switch (toolName) {
             case "dropWorkspaceFragments" -> 1;
-            case "addTextToWorkspace" -> 2;
-            case "addClassSummariesToWorkspace", "addFileSummariesToWorkspace", "addMethodSourcesToWorkspace" -> 3;
+            case "addTextToWorkspace", "appendNote" -> 2;
+            case "addClassSummariesToWorkspace", "addFileSummariesToWorkspace", "addMethodsToWorkspace" -> 3;
             case "addFilesToWorkspace", "addClassesToWorkspace", "addSymbolUsagesToWorkspace" -> 4;
             case "getRelatedClasses" -> 5;
             case "searchSymbols", "getUsages", "searchSubstrings", "searchFilenames", "searchGitCommitMessages" -> 6;
@@ -423,7 +508,7 @@ public class SearchAgent {
     // =======================
 
     private void addInitialContextToWorkspace() throws InterruptedException {
-        var contextAgent = new ContextAgent(cm, model, goal, true);
+        var contextAgent = new ContextAgent(cm, cm.getService().getScanModel(), goal, true);
         io.llmOutput("\nPerforming initial project scan", ChatMessageType.CUSTOM);
 
         var recommendation = contextAgent.getRecommendations(true);
@@ -439,12 +524,14 @@ public class SearchAgent {
         int finalBudget = cm.getService().getMaxInputTokens(model) / 2;
         if (totalTokens > finalBudget) {
             var summaries = ContextFragment.getSummary(recommendation.fragments());
-            var msgs = new ArrayList<>(List.of(
-                    new UserMessage("Scan for relevant files"),
-                    new AiMessage("Potentially relevant files:\n" + summaries)));
-            cm.addToHistory(
-                    new TaskResult(cm, "Scan for relevant files", msgs, Set.of(), TaskResult.StopReason.SUCCESS),
-                    false);
+            cm.addVirtualFragment(new ContextFragment.StringFragment(
+                    cm,
+                    summaries,
+                    "Summary of Scan Results",
+                    recommendation.fragments().stream()
+                            .findFirst()
+                            .orElseThrow()
+                            .syntaxStyle()));
         } else {
             WorkspaceTools.addToWorkspace(cm, recommendation);
             io.llmOutput("\n\nScan complete; added recommendations to the Workspace.", ChatMessageType.CUSTOM);
@@ -455,79 +542,95 @@ public class SearchAgent {
     // Answer/abort tools
     // =======================
 
-    @Tool(value = "Provide a final answer to the user's question or goal. Use this when you have enough information.")
-    public String answerSearch(
+    @Tool("Provide a final answer to a purely informational request. Use this when no code changes are required.")
+    public String answer(
             @P(
                             "Comprehensive explanation that answers the query. Include relevant code snippets and how they relate, formatted in Markdown.")
-                    String explanation,
-            @P("List of fully qualified class names (FQCNs) relevant to the explanation (exhaustive).")
-                    List<String> classNames) {
-        logger.debug("answerSearch selected with explanation length {}", explanation.length());
+                    String explanation) {
+        io.llmOutput("# Answer\n\n" + explanation, ChatMessageType.AI);
         return explanation;
     }
 
-    @Tool(value = "Abort when you determine the question is not answerable from this codebase or is out of scope.")
+    @Tool(
+            "Signal that the Workspace now contains all the information necessary to accomplish the goal. Call this when you have finished gathering and pruning context.")
+    public String workspaceComplete() {
+        logger.debug("workspaceComplete selected");
+        return "Workspace marked complete for the current goal.";
+    }
+
+    @Tool("Abort when you determine the question is not answerable from this codebase or is out of scope.")
     public String abortSearch(
             @P("Clear explanation of why the question cannot be answered from this codebase.") String explanation) {
         logger.debug("abortSearch selected with explanation length {}", explanation.length());
+        io.llmOutput(explanation, ChatMessageType.AI);
         return explanation;
+    }
+
+    @Tool("Calls a remote tool using the MCP (Model Context Protocol).")
+    public String callMcpTool(
+            @P("The name of the tool to call. This must be one of the configured MCP tools.") String toolName,
+            @P("A map of argument names to values for the tool. Can be null or empty if the tool takes no arguments.")
+                    @Nullable
+                    Map<String, Object> arguments) {
+        Map<String, Object> args = java.util.Objects.requireNonNullElseGet(arguments, HashMap::new);
+        var mcpToolOptional =
+                mcpTools.stream().filter(t -> t.toolName().equals(toolName)).findFirst();
+
+        if (mcpToolOptional.isEmpty()) {
+            var err = "Error: MCP tool '" + toolName + "' not found in configuration.";
+            if (toolName.contains("(") || toolName.contains("{")) {
+                err = err
+                        + " Possible arguments found in the tool name. Hint: The first argument, 'toolName', is the tool name only. Any arguments must be defined as a map in the second argument, named 'arguments'.";
+            }
+            logger.warn(err);
+            return err;
+        }
+
+        var server = mcpToolOptional.get().server();
+        try {
+            var projectRoot = this.cm.getProject().getRoot();
+            var result = McpUtils.callTool(server, toolName, args, projectRoot);
+            var preamble = McpPrompts.mcpToolPreamble();
+            var msg = preamble + "\n\n" + "MCP tool '" + toolName + "' output:\n" + result;
+            logger.info("MCP tool '{}' executed successfully via server '{}'", toolName, server.name());
+            return msg;
+        } catch (IOException | RuntimeException e) {
+            var err = "Error calling MCP tool '" + toolName + "': " + e.getMessage();
+            logger.error(err, e);
+            return err;
+        }
     }
 
     // =======================
     // Finalization and errors
     // =======================
 
-    private TaskResult createFinalFragment(ToolExecutionRequest request, ToolExecutionResult execResult)
-            throws InterruptedException {
-        var explanation = execResult.resultText();
-        if (explanation.isBlank() || explanation.split("\\s+").length < 5) {
-            return errorResult(new TaskResult.StopDetails(
-                    TaskResult.StopReason.SEARCH_INVALID_ANSWER, "Final answer was blank or too short."));
+    private TaskResult createResult() {
+        // Build final messages from already-streamed transcript; fallback to session-local messages if empty
+        List<ChatMessage> finalMessages = new ArrayList<>(io.getLlmRawMessages());
+        if (finalMessages.isEmpty()) {
+            finalMessages = new ArrayList<>(sessionMessages);
         }
 
-        // Pull any classNames provided explicitly, union with classes we tracked from discovery
-        var args = getArgumentsMap(request);
-        @SuppressWarnings("unchecked")
-        List<String> classNames = (List<String>) args.getOrDefault("classNames", List.of());
+        String action = "Search: " + goal;
 
-        var combined = new HashSet<String>(trackedClassNames);
-        combined.addAll(classNames);
+        var stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
+        var fragment = new ContextFragment.TaskFragment(cm, finalMessages, goal);
 
-        Set<CodeUnit> coalesced;
-        var analyzer = cm.getAnalyzer();
-        if (analyzer.isEmpty()) {
-            coalesced = Set.of();
-        } else {
-            var units = combined.stream()
-                    .flatMap(name -> analyzer.getDefinition(name).stream())
-                    .flatMap(cu -> cu.classUnit().stream())
-                    .collect(Collectors.toSet());
-            coalesced = AnalyzerUtil.coalesceInnerClasses(units);
-        }
-
-        io.llmOutput("\n# Answer\n" + explanation, ChatMessageType.AI);
-        var sessionName = "Search: " + goal;
-        var fragment = new ContextFragment.SearchFragment(
-                cm, sessionName, List.copyOf(io.getLlmRawMessages(false)), coalesced);
-        return new TaskResult(
-                sessionName, fragment, Set.of(), new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
+        return new TaskResult(action, fragment, Set.of(), stopDetails);
     }
 
     private TaskResult errorResult(TaskResult.StopDetails details) {
-        String explanation = !details.explanation().isBlank()
-                ? details.explanation()
-                : switch (details.reason()) {
-                    case INTERRUPTED -> "Execution was interrupted.";
-                    case LLM_ERROR -> "An error occurred with the language model.";
-                    case SEARCH_INVALID_ANSWER -> "The final answer provided by the model was invalid.";
-                    case LLM_ABORTED -> "The agent determined the query could not be answered.";
-                    default -> "Stopped: " + details.reason();
-                };
-        return new TaskResult(
-                "Search: " + goal,
-                new ContextFragment.TaskFragment(cm, List.of(new UserMessage(goal), new AiMessage(explanation)), goal),
-                Set.of(),
-                details);
+        // Build final messages from already-streamed transcript; fallback to session-local messages if empty
+        List<ChatMessage> finalMessages = new ArrayList<>(io.getLlmRawMessages());
+        if (finalMessages.isEmpty()) {
+            finalMessages = new ArrayList<>(sessionMessages);
+        }
+
+        String action = "Search: " + goal + " [" + details.reason().name() + "]";
+        var fragment = new ContextFragment.TaskFragment(cm, finalMessages, goal);
+
+        return new TaskResult(action, fragment, Set.of(), details);
     }
 
     // =======================
@@ -548,25 +651,9 @@ public class SearchAgent {
                 .contains(toolName);
     }
 
-    private void handleStateAfterTool(@Nullable ToolExecutionResult exec) throws InterruptedException {
-        if (exec == null || exec.status() != ToolExecutionResult.Status.SUCCESS) {
-            return;
-        }
-        switch (exec.toolName()) {
-            case "searchSymbols" -> {
-                if (!exec.resultText().startsWith("No definitions found")) {
-                    trackClassNamesFromResult(exec.resultText());
-                }
-            }
-            case "getUsages", "getRelatedClasses", "getClassSkeletons", "getClassSources", "getMethodSources" ->
-                trackClassNamesFromResult(exec.resultText());
-            default -> {}
-        }
-    }
-
     private String summarizeResult(
             String query, ToolExecutionRequest request, String rawResult, @Nullable String reasoning)
-            throws RuntimeException {
+            throws InterruptedException {
         var sys = new SystemMessage(
                 """
                         You are a code expert extracting ALL information relevant to the given goal
@@ -592,186 +679,11 @@ public class SearchAgent {
                         """
                         .stripIndent()
                         .formatted(query, reasoning == null ? "" : reasoning, request.name(), rawResult));
-        Llm.StreamingResult sr;
-        try {
-            sr = llm.sendRequest(List.of(sys, user));
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            throw new RuntimeException(e);
-        }
-        if (sr.error() != null || sr.isEmpty()) {
+        Llm.StreamingResult sr = llm.sendRequest(List.of(sys, user));
+        if (sr.error() != null) {
             return rawResult; // fallback to raw
         }
         return sr.text();
-    }
-
-    // =======================
-    // Duplicate forging & tracking
-    // =======================
-
-    private ToolExecutionRequest handleDuplicateRequestIfNeeded(ToolExecutionRequest request) {
-        if (!cm.getAnalyzerWrapper().providesInterproceduralAnalysis()) {
-            return request;
-        }
-        var requestSignatures = createToolCallSignatures(request);
-        if (toolCallSignatures.stream().anyMatch(requestSignatures::contains)) {
-            logger.debug("Duplicate call detected for {}; forging getRelatedClasses", request.name());
-            request = createRelatedClassesRequest();
-            if (toolCallSignatures.containsAll(createToolCallSignatures(request))) {
-                logger.debug("Forged getRelatedClasses would also be duplicate; switching to beast mode");
-                beastMode = true;
-            }
-        }
-        return request;
-    }
-
-    private ToolExecutionRequest createRelatedClassesRequest() {
-        var classList = new ArrayList<>(trackedClassNames);
-        String args = toJsonArrayArg("classNames", classList);
-        return ToolExecutionRequest.builder()
-                .name("getRelatedClasses")
-                .arguments(args)
-                .build();
-    }
-
-    private String toJsonArrayArg(String param, List<String> values) {
-        var mapper = new ObjectMapper();
-        try {
-            return """
-                    { "%s": %s }
-                    """
-                    .stripIndent()
-                    .formatted(param, mapper.writeValueAsString(values));
-        } catch (JsonProcessingException e) {
-            logger.error("Error serializing array for {}", param, e);
-            return """
-                    { "%s": [] }
-                    """
-                    .stripIndent()
-                    .formatted(param);
-        }
-    }
-
-    private List<String> createToolCallSignatures(ToolExecutionRequest request) {
-        String toolName = request.name();
-        try {
-            var args = getArgumentsMap(request);
-            return switch (toolName) {
-                case "searchSymbols", "searchSubstrings", "searchFilenames" ->
-                    listParamSignatures(toolName, args, "patterns");
-                case "getFileContents" -> listParamSignatures(toolName, args, "filenames");
-                case "getFileSummaries" -> listParamSignatures(toolName, args, "filePaths");
-                case "getUsages" -> listParamSignatures(toolName, args, "symbols");
-                case "getRelatedClasses", "getClassSkeletons", "getClassSources" ->
-                    listParamSignatures(toolName, args, "classNames");
-                case "getMethodSources" -> listParamSignatures(toolName, args, "methodNames");
-                case "searchGitCommitMessages" -> List.of(toolName + ":pattern=" + args.getOrDefault("pattern", ""));
-                case "answerSearch", "abortSearch" -> List.of(toolName + ":finalizing");
-                default -> List.of(toolName + ":unknown");
-            };
-        } catch (Exception e) {
-            logger.error("Error creating signature for {}: {}", toolName, e.getMessage());
-            return List.of(toolName + ":error");
-        }
-    }
-
-    private List<String> listParamSignatures(String toolName, Map<String, Object> args, String listParam) {
-        @SuppressWarnings("unchecked")
-        List<String> items = (List<String>) args.get(listParam);
-        if (items != null && !items.isEmpty()) {
-            return items.stream().map(i -> toolName + ":" + listParam + "=" + i).toList();
-        }
-        return List.of(toolName + ":" + listParam + "=empty");
-    }
-
-    private void trackClassNamesFromToolCall(ToolExecutionRequest request) {
-        try {
-            var args = getArgumentsMap(request);
-            switch (request.name()) {
-                case "getClassSkeletons", "getClassSources", "getRelatedClasses" -> {
-                    @SuppressWarnings("unchecked")
-                    List<String> cs = (List<String>) args.get("classNames");
-                    if (cs != null) trackedClassNames.addAll(cs);
-                }
-                case "getMethodSources" -> {
-                    @SuppressWarnings("unchecked")
-                    List<String> ms = (List<String>) args.get("methodNames");
-                    if (ms != null) {
-                        ms.stream()
-                                .map(this::extractClassNameFromMethod)
-                                .filter(Objects::nonNull)
-                                .forEach(trackedClassNames::add);
-                    }
-                }
-                case "getUsages" -> {
-                    @SuppressWarnings("unchecked")
-                    var symbols = (List<String>) args.get("symbols");
-                    if (symbols != null) {
-                        for (var sym : symbols) {
-                            var cn = extractClassNameFromSymbol(sym);
-                            cn.ifPresent(trackedClassNames::add);
-                        }
-                    }
-                }
-                default -> {}
-            }
-        } catch (Exception e) {
-            logger.error("Error tracking class names from tool call", e);
-        }
-    }
-
-    private void trackClassNamesFromResult(String resultText) throws InterruptedException {
-        if (resultText.isBlank() || resultText.startsWith("No ") || resultText.startsWith("Error:")) return;
-
-        // Handle compressed "[Common package prefix: 'x.y'] a, b"
-        String effective = resultText;
-        String prefix = "";
-        if (resultText.startsWith("[") && resultText.contains("] ")) {
-            int end = resultText.indexOf("] ");
-            int startQuote = resultText.indexOf("'");
-            int endQuote = resultText.lastIndexOf("'", end);
-            if (end > 0 && startQuote >= 0 && endQuote > startQuote) {
-                prefix = resultText.substring(startQuote + 1, endQuote);
-            }
-            effective = resultText.substring(end + 2).trim();
-        }
-
-        String fPrefix = prefix;
-        Set<String> potential = new HashSet<>(Arrays.stream(effective.split("[,\\s]+"))
-                .map(String::trim)
-                .filter(s -> !s.isEmpty())
-                .map(s -> fPrefix.isEmpty() ? s : fPrefix + "." + s)
-                .filter(s -> s.contains(".") && Character.isJavaIdentifierStart(s.charAt(0)))
-                .toList());
-
-        var classMatcher =
-                Pattern.compile("(?:Source code of |class )([\\w.$]+)").matcher(resultText);
-        while (classMatcher.find()) potential.add(classMatcher.group(1));
-
-        var usageMatcher = Pattern.compile("Usage in ([\\w.$]+)\\.").matcher(resultText);
-        while (usageMatcher.find()) potential.add(usageMatcher.group(1));
-
-        if (!potential.isEmpty()) {
-            Set<String> valid = new HashSet<>();
-            for (String p : potential) {
-                var className = extractClassNameFromSymbol(p);
-                className.ifPresent(valid::add);
-            }
-            if (!valid.isEmpty()) {
-                trackedClassNames.addAll(valid);
-            }
-        }
-    }
-
-    private @Nullable String extractClassNameFromMethod(String methodName) {
-        int lastDot = methodName.lastIndexOf('.');
-        if (lastDot > 0) return methodName.substring(0, lastDot);
-        return null;
-    }
-
-    private Optional<String> extractClassNameFromSymbol(String symbol) throws InterruptedException {
-        return cm.getAnalyzer().getDefinition(symbol).flatMap(cu -> cu.classUnit()
-                .map(CodeUnit::fqName));
     }
 
     private static Map<String, Object> getArgumentsMap(ToolExecutionRequest request) {

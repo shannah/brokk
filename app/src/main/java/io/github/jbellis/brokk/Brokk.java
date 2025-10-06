@@ -13,6 +13,7 @@ import io.github.jbellis.brokk.exception.OomShutdownHandler;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.CheckThreadViolationRepaintManager;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.MenuBar;
 import io.github.jbellis.brokk.gui.SwingUtil;
 import io.github.jbellis.brokk.gui.dialogs.AboutDialog;
 import io.github.jbellis.brokk.gui.dialogs.BrokkKeyDialog;
@@ -191,6 +192,24 @@ public class Brokk {
                 }
             }
         }
+
+        // Initialize JavaFX platform to prevent deadlocks during MOPWebViewHost creation
+        // See: https://docs.oracle.com/javase/8/javafx/interoperability-tutorial/swing-fx-interoperability.htm
+        try {
+            javafx.application.Platform.startup(() -> {});
+            // Prevent JavaFX thread from dying when JFXPanels are removed/hidden
+            javafx.application.Platform.setImplicitExit(false);
+            logger.debug("JavaFX platform initialized at startup");
+        } catch (IllegalStateException e) {
+            var message = e.getMessage();
+            if (message != null && message.contains("Toolkit already initialized")) {
+                logger.debug("JavaFX platform already initialized");
+                // Still set implicit exit to false even if already initialized
+                javafx.application.Platform.setImplicitExit(false);
+            } else {
+                logger.warn("Failed to initialize JavaFX platform: {}", message);
+            }
+        }
     }
 
     private static void initializeLookAndFeelAndSplashScreen(boolean isDark) {
@@ -292,7 +311,16 @@ public class Brokk {
             // If a project was selected during key validation, prioritize it
             projectsToAttemptOpen.add(dialogProjectPathFromKey);
         } else if (!parsedArgs.noProjectFlag) {
-            projectsToAttemptOpen.addAll(MainProject.getOpenProjects());
+            if (MainProject.getStartupOpenMode() == MainProject.StartupOpenMode.ALL) {
+                projectsToAttemptOpen.addAll(MainProject.getOpenProjects());
+            } else {
+                var recent = MainProject.loadRecentProjects();
+                if (!recent.isEmpty()) {
+                    var mostRecent = recent.entrySet().stream()
+                            .max(Comparator.comparingLong(e -> e.getValue().lastOpened()));
+                    mostRecent.ifPresent(e -> projectsToAttemptOpen.add(e.getKey()));
+                }
+            }
         }
         return projectsToAttemptOpen;
     }
@@ -387,7 +415,7 @@ public class Brokk {
         boolean isDark = MainProject.getTheme().equals("dark");
         initializeLookAndFeelAndSplashScreen(isDark);
 
-        // Register native macOS “About” handler (only if running on macOS)
+        // Register native macOS handlers (only if running on macOS)
         if (Environment.isMacOs()) {
             SwingUtilities.invokeLater(() -> {
                 try {
@@ -396,6 +424,9 @@ public class Brokk {
                     // AboutHandler not supported on this platform/JVM – safe to ignore
                 }
             });
+
+            // Set up global preferences handler for all Chrome windows
+            MenuBar.setupGlobalMacOSPreferencesHandler();
         }
 
         // run this after we show the splash screen, it's expensive
@@ -504,7 +535,8 @@ public class Brokk {
 
         // Log the current data retention policy.
         // This is called after any necessary dialog has been shown and policy confirmed.
-        io.systemOutput(
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
                 "Data Retention Policy set to: " + contextManager.getProject().getDataRetentionPolicy());
 
         openProjectWindows.put(projectPath, io);
@@ -768,6 +800,16 @@ public class Brokk {
         Chrome ourChromeInstance = openProjectWindows.get(projectPath);
         IProject projectBeingClosed = null;
         if (ourChromeInstance != null) {
+            if (ourChromeInstance.getContextManager().isLlmTaskInProgress()) {
+                int choice = ourChromeInstance.showConfirmDialog(
+                        "An AI task is in progress. Are you sure you want to close this project?",
+                        "Task in Progress",
+                        JOptionPane.YES_NO_OPTION,
+                        JOptionPane.WARNING_MESSAGE);
+                if (choice == JOptionPane.NO_OPTION) {
+                    return;
+                }
+            }
             projectBeingClosed = ourChromeInstance.getContextManager().getProject();
         }
 
@@ -1003,6 +1045,54 @@ public class Brokk {
 
     public static ConcurrentHashMap<Path, Chrome> getOpenProjectWindows() {
         return openProjectWindows;
+    }
+
+    /**
+     * Finds the focused or active Chrome window among open project windows. First tries to find a focused window, then
+     * falls back to an active (non-minimized) window, and finally returns any displayable and showing Chrome instance.
+     *
+     * @return the focused or active Chrome window, or null if no suitable window is found
+     */
+    @Nullable
+    public static Chrome getActiveWindow() {
+        var openChromeInstances = getOpenProjectWindows().values();
+        if (openChromeInstances.isEmpty()) {
+            return null;
+        }
+
+        // First try to find the focused window that is displayable and showing
+        var focusedWindow = openChromeInstances.stream()
+                .filter(chrome -> {
+                    var frame = chrome.getFrame();
+                    return frame.isFocused() && frame.isDisplayable() && frame.isShowing();
+                })
+                .findFirst();
+        if (focusedWindow.isPresent()) {
+            return focusedWindow.get();
+        }
+
+        // Fallback: try to find the active window (not minimized) that is displayable and showing
+        var activeWindow = openChromeInstances.stream()
+                .filter(chrome -> {
+                    var frame = chrome.getFrame();
+                    return frame.isActive()
+                            && (frame.getExtendedState() & Frame.ICONIFIED) == 0
+                            && frame.isDisplayable()
+                            && frame.isShowing();
+                })
+                .findFirst();
+        if (activeWindow.isPresent()) {
+            return activeWindow.get();
+        }
+
+        // Last resort: return any displayable and showing Chrome instance
+        return openChromeInstances.stream()
+                .filter(chrome -> {
+                    var frame = chrome.getFrame();
+                    return frame.isDisplayable() && frame.isShowing();
+                })
+                .findFirst()
+                .orElse(null);
     }
 
     public static List<Chrome> getWorktreeChromes(IProject mainProject) {

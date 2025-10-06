@@ -56,7 +56,7 @@ public class ValidationAgent {
             throws InterruptedException {
         var filesText = allTestFiles.stream().map(ProjectFile::toString).collect(Collectors.joining("\n"));
 
-        var workspaceSummary = CodePrompts.formatWorkspaceDescriptions(contextManager);
+        var workspaceSummary = CodePrompts.formatWorkspaceToc(contextManager);
 
         var systemMessage =
                 """
@@ -91,8 +91,8 @@ public class ValidationAgent {
         logger.trace("Invoking quickModel via Coder for initial test file filtering. Prompt:\n{}", userMessage);
         var result = llm.sendRequest(messages);
 
-        if (result.error() != null || result.isEmpty()) {
-            logger.warn("Error or empty response during initial test file filtering call: {}", result);
+        if (result.error() != null) {
+            logger.warn("Error during initial test file filtering call: {}", result);
             return List.of();
         }
 

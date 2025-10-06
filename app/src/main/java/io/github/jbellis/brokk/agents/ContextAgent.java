@@ -1,10 +1,10 @@
 package io.github.jbellis.brokk.agents;
 
 import static java.lang.Math.min;
-import static java.util.Objects.requireNonNull;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
 import dev.langchain4j.agent.tool.ToolSpecifications;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
@@ -343,7 +343,6 @@ public class ContextAgent {
             rawSummaries = tempSummaries;
         } else {
             // Scan all the files
-            requireNonNull(analyzer);
             rawSummaries = filesToConsider.stream()
                     .parallel()
                     .flatMap(f -> analyzer.as(SkeletonProvider.class)
@@ -545,8 +544,8 @@ public class ContextAgent {
                 .toList();
         int promptTokens = Messages.getApproximateTokens(messages);
         debug("Invoking LLM to prune filenames (prompt size ~{} tokens)", promptTokens);
-        var result = llm.sendRequest(messages);
-        if (result.error() != null || result.isEmpty()) {
+        var result = llm.sendRequest(messages, deepScan);
+        if (result.error() != null) {
             var error = result.error();
             // litellm does an inconsistent job translating into ContextWindowExceededError.
             // https://github.com/BrokkAi/brokk/issues/540
@@ -755,23 +754,19 @@ public class ContextAgent {
         debug("Invoking LLM to recommend context via tool call (prompt size ~{} tokens)", promptTokens);
 
         // *** Execute LLM call with required tool ***
-        var result = llm.sendRequest(messages, toolSpecs, ToolChoice.REQUIRED, false);
+        var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, contextTool), deepScan);
         var tokenUsage = result.tokenUsage();
-        if (result.error() != null || result.isEmpty()) {
+        if (result.error() != null) {
             var error = result.error();
 
             // litellm does an inconsistent job translating into ContextWindowExceededError.
             // https://github.com/BrokkAi/brokk/issues/540
-            if (error != null
-                    && error.getMessage() != null
-                    && error.getMessage().contains("context")) {
+            if (error.getMessage() != null && error.getMessage().contains("context")) {
                 throw new ContextTooLargeException();
             }
 
             // not a context problem
-            logger.warn(
-                    "Error or empty response from LLM during context recommendation: {}. Returning empty",
-                    error != null ? error.getMessage() : "Empty response");
+            logger.warn("Error from LLM during context recommendation: {}. Returning empty", error.getMessage());
             return LlmRecommendation.EMPTY;
         }
         var toolRequests = result.toolRequests();
@@ -847,6 +842,23 @@ public class ContextAgent {
         List<ProjectFile> recommendedFiles = List.of();
         List<CodeUnit> recommendedClasses = List.of();
         List<String> responseLines;
+
+        // Short-circuit: if there are fewer than QUICK_TOPK items to choose from, don't call out to the LLM.
+        if (!summaries.isEmpty() && summaries.size() < QUICK_TOPK) {
+            recommendedClasses = new ArrayList<>(summaries.keySet());
+            debug("Fewer than QUICK_TOPK summaries ({}); skipping LLM.", summaries.size());
+            return new LlmRecommendation(recommendedFiles, recommendedClasses, "Fewer than QUICK_TOPK; selected all");
+        }
+        if (!contentsMap.isEmpty() && contentsMap.size() < QUICK_TOPK) {
+            recommendedFiles = new ArrayList<>(contentsMap.keySet());
+            debug("Fewer than QUICK_TOPK files with content ({}); skipping LLM.", contentsMap.size());
+            return new LlmRecommendation(recommendedFiles, recommendedClasses, "Fewer than QUICK_TOPK; selected all");
+        }
+        if (!filenames.isEmpty() && filenames.size() < QUICK_TOPK) {
+            recommendedFiles = new ArrayList<>(toProjectFiles(filenames));
+            debug("Fewer than QUICK_TOPK filenames ({}); skipping LLM.", filenames.size());
+            return new LlmRecommendation(recommendedFiles, recommendedClasses, "Fewer than QUICK_TOPK; selected all");
+        }
 
         if (!summaries.isEmpty()) {
             var summariesText = summaries.entrySet().stream()
@@ -970,9 +982,9 @@ public class ContextAgent {
                 "Invoking LLM (Quick) to select relevant {} (prompt size ~{} tokens)",
                 inputType.itemTypePlural,
                 promptTokens);
-        var result = llm.sendRequest(messages); // No tools
+        var result = llm.sendRequest(messages, deepScan);
 
-        if (result.error() != null || result.isEmpty()) {
+        if (result.error() != null) {
             logger.warn(
                     "Error ({}) from LLM during quick %s selection: {}. Returning empty",
                     result.error() != null ? result.error().getMessage() : "empty response", inputType.itemTypePlural);
@@ -997,7 +1009,7 @@ public class ContextAgent {
             boolean allowSkipPruning)
             throws InterruptedException, ContextTooLargeException {
         // If the workspace isn't empty and we have no analyzer, don't suggest adding whole files.
-        if (analyzer.isEmpty() && !cm.getEditableFiles().isEmpty()) {
+        if (analyzer.isEmpty() && !cm.getFilesInContext().isEmpty()) {
             debug("Non-empty context and no analyzer present, skipping file content suggestions");
             return new RecommendationResult(
                     true, List.of(), "Skipping file content suggestions for non-empty context without analyzer.");

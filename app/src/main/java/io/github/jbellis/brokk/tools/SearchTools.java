@@ -2,12 +2,16 @@ package io.github.jbellis.brokk.tools;
 
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.AnalyzerUtil;
 import io.github.jbellis.brokk.Completions;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.analyzer.*;
+import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.CommitInfo;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.gui.Chrome;
 import java.nio.file.Path;
 import java.util.*;
 import java.util.function.Predicate;
@@ -31,7 +35,7 @@ public class SearchTools {
     private final IContextManager contextManager; // Needed for file operations
 
     public SearchTools(IContextManager contextManager) {
-        this.contextManager = Objects.requireNonNull(contextManager, "contextManager cannot be null");
+        this.contextManager = contextManager;
     }
 
     // --- Sanitization Helper Methods
@@ -63,7 +67,6 @@ public class SearchTools {
      */
     public static CompressedSymbols compressSymbolsWithPackagePrefix(List<String> symbols) {
         List<String[]> packageParts = symbols.stream()
-                .filter(Objects::nonNull) // Filter nulls just in case
                 .map(s -> s.split("\\."))
                 .filter(arr -> arr.length > 0) // Ensure split resulted in something
                 .toList();
@@ -165,20 +168,8 @@ public class SearchTools {
         return predicates;
     }
 
-    /**
-     * Advanced capabilities are typically associated with {@link CallGraphProvider} and {@link UsagesProvider}
-     * analyzers. If this analyzer may provide such capabilities, this checks if they are ready.
-     */
-    private static void assertAdvancedCapabilities(IAnalyzer analyzer, String failureMessagePrefix) {
-        final var suffix = ": Code Intelligence is not available.";
-        assert !(analyzer instanceof HasDelayedCapabilities advancedAnalyzer)
-                        || advancedAnalyzer.isAdvancedAnalysisReady().getNow(false)
-                : failureMessagePrefix + suffix;
-    }
-
     @Tool(
-            value =
-                    """
+            """
                             Retrieves summaries (fields and method signatures) for all classes defined within specified project files.
                             Supports glob patterns: '*' matches files in a single directory, '**' matches files recursively.
                             This is a fast and efficient way to read multiple related files at once.
@@ -188,7 +179,8 @@ public class SearchTools {
             @P(
                             "List of file paths relative to the project root. Supports glob patterns (* for single directory, ** for recursive). E.g., ['src/main/java/com/example/util/*.java', 'tests/foo/**.py']")
                     List<String> filePaths) {
-        assert getAnalyzer() instanceof SkeletonProvider : "Cannot get summaries: Code Intelligence is not available.";
+        assert getAnalyzer().as(SkeletonProvider.class).isPresent()
+                : "Cannot get summaries: Code Intelligence is not available.";
         if (filePaths.isEmpty()) {
             return "Cannot get summaries: file paths list is empty";
         }
@@ -234,18 +226,16 @@ public class SearchTools {
     // --- Tool Methods requiring analyzer
 
     @Tool(
-            value =
-                    """
-                            Search for symbols (class/method/field definitions) using Joern.
+            """
+                            Search for symbols (class/method/field definitions) using static analysis.
                             This should usually be the first step in a search.
                             """)
     public String searchSymbols(
             @P(
-                            "Case-insensitive Joern regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
+                            "Case-insensitive regex patterns to search for code symbols. Since ^ and $ are implicitly included, YOU MUST use explicit wildcarding (e.g., .*Foo.*, Abstract.*, [a-z]*DAO) unless you really want exact matches.")
                     List<String> patterns,
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
                     String reasoning) {
-        assertAdvancedCapabilities(getAnalyzer(), "Cannot search definitions");
         // Sanitize patterns: LLM might add `()` to symbols, Joern regex usually doesn't want that unless intentional.
         patterns = stripParams(patterns);
         if (patterns.isEmpty()) {
@@ -278,8 +268,7 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns the source code of blocks where symbols are used. Use this to discover how classes, methods, or fields are actually used throughout the codebase.
                             """)
     public String getUsages(
@@ -287,7 +276,8 @@ public class SearchTools {
                     List<String> symbols,
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
                     String reasoning) {
-        assertAdvancedCapabilities(getAnalyzer(), "Cannot search usages");
+        assert getAnalyzer().as(UsagesProvider.class).isPresent()
+                : "Cannot search usages: Current Code Intelligence does not have necessary capabilities.";
         // Sanitize symbols: remove potential `(params)` suffix from LLM.
         symbols = stripParams(symbols);
         if (symbols.isEmpty()) {
@@ -310,13 +300,13 @@ public class SearchTools {
             return "No usages found for: " + String.join(", ", symbols);
         }
 
-        var processedUsages = AnalyzerUtil.processUsages(getAnalyzer(), allUses).code();
+        var cwsList = AnalyzerUtil.processUsages(getAnalyzer(), allUses);
+        var processedUsages = AnalyzerUtil.CodeWithSource.text(cwsList);
         return "Usages of " + String.join(", ", symbols) + ":\n\n" + processedUsages;
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns a list of related class names, ordered by relevance (using PageRank).
                             Use this for exploring and also when you're almost done and want to double-check that you haven't missed anything.
                             """)
@@ -366,15 +356,14 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns an overview of classes' contents, including fields and method signatures.
                             Use this to understand class structures and APIs much faster than fetching full source code.
                             """)
     public String getClassSkeletons(
             @P("Fully qualified class names to get the skeleton structures for") List<String> classNames) {
 
-        assert (getAnalyzer() instanceof SkeletonProvider)
+        assert getAnalyzer().as(SkeletonProvider.class).isPresent()
                 : "Cannot get skeletons: Current Code Intelligence does not have necessary capabilities.";
         // Sanitize classNames: remove potential `(params)` suffix from LLM.
         classNames = stripParams(classNames);
@@ -397,8 +386,7 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns the full source code of classes.
                             This is expensive, so prefer requesting skeletons or method sources when possible.
                             Use this when you need the complete implementation details, or if you think multiple methods in the classes may be relevant.
@@ -407,7 +395,7 @@ public class SearchTools {
             @P("Fully qualified class names to retrieve the full source code for") List<String> classNames,
             @P("Explanation of what you're looking for in this request so the summarizer can accurately capture it.")
                     String reasoning) {
-        assert (getAnalyzer() instanceof SourceCodeProvider)
+        assert getAnalyzer().as(SourceCodeProvider.class).isPresent()
                 : "Cannot get class sources: Current Code Intelligence does not have necessary capabilities.";
         // Sanitize classNames: remove potential `(params)` suffix from LLM.
         classNames = stripParams(classNames);
@@ -419,31 +407,26 @@ public class SearchTools {
         }
 
         StringBuilder result = new StringBuilder();
-        Set<String> processedSources = new HashSet<>(); // Avoid duplicates if multiple names map to same source
+        Set<String> added = new HashSet<>();
 
-        for (String className : classNames) {
-            if (!className.isBlank()) {
-                getAnalyzer()
-                        .as(SourceCodeProvider.class)
-                        .flatMap(scp -> scp.getClassSource(className, true))
-                        .filter(source -> !source.isEmpty())
-                        .filter(processedSources::add)
-                        .ifPresent(classSource -> {
-                            if (!result.isEmpty()) {
-                                result.append("\n\n");
-                            }
-                            // Include filename from analyzer if possible
-                            String filename = getAnalyzer()
-                                    .getFileFor(className)
-                                    .map(ProjectFile::toString)
-                                    .orElse("unknown file");
-                            result.append("Source code of ")
-                                    .append(className)
-                                    .append(" (from ")
-                                    .append(filename)
-                                    .append("):\n\n")
-                                    .append(classSource);
-                        });
+        var analyzer = getAnalyzer();
+        for (String className : classNames.stream().distinct().toList()) {
+            if (className.isBlank()) {
+                continue;
+            }
+            var cuOpt = analyzer.getDefinition(className);
+            if (cuOpt.isPresent() && cuOpt.get().isClass()) {
+                var cu = cuOpt.get();
+                if (added.add(cu.fqName())) {
+                    var fragment = new ContextFragment.CodeFragment(contextManager, cu);
+                    var text = fragment.text();
+                    if (!text.isEmpty()) {
+                        if (!result.isEmpty()) {
+                            result.append("\n\n");
+                        }
+                        result.append(text);
+                    }
+                }
             }
         }
 
@@ -455,14 +438,13 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns the full source code of specific methods. Use this to examine the implementation of particular methods without retrieving the entire classes.
                             """)
     public String getMethodSources(
             @P("Fully qualified method names (package name, class name, method name) to retrieve sources for")
                     List<String> methodNames) {
-        assert (getAnalyzer() instanceof SourceCodeProvider)
+        assert getAnalyzer().as(SourceCodeProvider.class).isPresent()
                 : "Cannot get method sources: Current Code Intelligence does not have necessary capabilities.";
         // Sanitize methodNames: remove potential `(params)` suffix from LLM.
         methodNames = stripParams(methodNames);
@@ -471,20 +453,24 @@ public class SearchTools {
         }
 
         StringBuilder result = new StringBuilder();
-        Set<String> processedMethodSources = new HashSet<>();
+        Set<String> added = new HashSet<>();
 
-        for (String methodName : methodNames) {
-            if (!methodName.isBlank()) {
-                var methodSourceOpt = ((SourceCodeProvider) getAnalyzer()).getMethodSource(methodName, true);
-                if (methodSourceOpt.isPresent()) {
-                    String methodSource = methodSourceOpt.get();
-                    if (!processedMethodSources.contains(methodSource)) {
-                        processedMethodSources.add(methodSource);
+        var analyzer = getAnalyzer();
+        for (String methodName : methodNames.stream().distinct().toList()) {
+            if (methodName.isBlank()) {
+                continue;
+            }
+            var cuOpt = analyzer.getDefinition(methodName);
+            if (cuOpt.isPresent() && cuOpt.get().isFunction()) {
+                var cu = cuOpt.get();
+                if (added.add(cu.fqName())) {
+                    var fragment = new ContextFragment.CodeFragment(contextManager, cu);
+                    var text = fragment.text();
+                    if (!text.isEmpty()) {
                         if (!result.isEmpty()) {
                             result.append("\n\n");
                         }
-                        result.append("// Source for ").append(methodName).append("\n");
-                        result.append(methodSource);
+                        result.append(text);
                     }
                 }
             }
@@ -498,62 +484,63 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
-                            Returns the call graph to a depth of 5 showing which methods call the given method and one line of source code for each invocation.
+            """
+                            Returns the call graph to a depth of 3 showing which methods call the given method and one line of source code for each invocation.
                             Use this to understand method dependencies and how code flows into a method.
                             """)
     public String getCallGraphTo(
             @P("Fully qualified method name (package name, class name, method name) to find callers for")
                     String methodName) {
         final var analyzer = getAnalyzer();
-        assertAdvancedCapabilities(analyzer, "Cannot get call graph");
-        assert (analyzer instanceof CallGraphProvider)
+        assert analyzer.as(CallGraphProvider.class).isPresent()
                 : "Cannot get call graph: Current Code Intelligence does not have necessary capabilities.";
         // Sanitize methodName: remove potential `(params)` suffix from LLM.
-        methodName = stripParams(methodName);
-        if (methodName.isBlank()) {
+        final var cleanMethodName = stripParams(methodName);
+        if (cleanMethodName.isBlank()) {
             throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
 
-        Map<String, List<CallSite>> graph = ((CallGraphProvider) analyzer).getCallgraphTo(methodName, 5);
-        String result = AnalyzerUtil.formatCallGraph(graph, methodName, true);
+        var graph = analyzer.as(CallGraphProvider.class)
+                .map(cgp -> cgp.getCallgraphTo(cleanMethodName, 3))
+                .orElse(Collections.emptyMap());
+        String result = AnalyzerUtil.formatCallGraph(graph, cleanMethodName, true);
         if (result.isEmpty()) {
-            return "No callers found of method: " + methodName;
+            return "No callers found of method: " + cleanMethodName;
         }
         return result;
     }
 
     @Tool(
-            value =
-                    """
-                            Returns the call graph to a depth of 5 showing which methods are called by the given method and one line of source code for each invocation.
+            """
+                            Returns the call graph to a depth of 3 showing which methods are called by the given method and one line of source code for each invocation.
                             Use this to understand how a method's logic flows to other parts of the codebase.
                             """)
     public String getCallGraphFrom(
             @P("Fully qualified method name (package name, class name, method name) to find callees for")
                     String methodName) {
         final var analyzer = getAnalyzer();
-        assertAdvancedCapabilities(analyzer, "Cannot get call graph");
+        assert analyzer.as(CallGraphProvider.class).isPresent()
+                : "Cannot get call graph: Current Code Intelligence does not have necessary capabilities.";
         assert (analyzer instanceof CallGraphProvider)
                 : "Cannot get call graph: Current Code Intelligence does not have necessary capabilities.";
         // Sanitize methodName: remove potential `(params)` suffix from LLM.
-        methodName = stripParams(methodName);
-        if (methodName.isBlank()) {
+        final var cleanMethodName = stripParams(methodName);
+        if (cleanMethodName.isBlank()) {
             throw new IllegalArgumentException("Cannot get call graph: method name is empty");
         }
 
-        var graph = ((CallGraphProvider) analyzer).getCallgraphFrom(methodName, 5); // Use correct analyzer method
-        String result = AnalyzerUtil.formatCallGraph(graph, methodName, false);
+        var graph = analyzer.as(CallGraphProvider.class)
+                .map(cgp -> cgp.getCallgraphFrom(cleanMethodName, 3))
+                .orElse(Collections.emptyMap());
+        String result = AnalyzerUtil.formatCallGraph(graph, cleanMethodName, false);
         if (result.isEmpty()) {
-            return "No calls out made by method: " + methodName;
+            return "No calls out made by method: " + cleanMethodName;
         }
         return result;
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Search git commit messages using a Java regular expression.
                             Returns matching commits with their message and list of changed files.
                             """)
@@ -626,8 +613,7 @@ public class SearchTools {
     // --- Text search tools
 
     @Tool(
-            value =
-                    """
+            """
                             Returns file names whose text contents match Java regular expression patterns.
                             This is slower than searchSymbols but can find references to external dependencies and comment strings.
                             """)
@@ -683,8 +669,7 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns filenames (relative to the project root) that match the given Java regular expression patterns.
                             Use this to find configuration files, test data, or source files when you know part of their name.
                             """)
@@ -729,8 +714,7 @@ public class SearchTools {
     }
 
     @Tool(
-            value =
-                    """
+            """
                             Returns the full contents of the specified files. Use this after searchFilenames or searchSubstrings, or when you need the content of a non-code file.
                             This can be expensive for large files.
                             """)
@@ -785,8 +769,7 @@ public class SearchTools {
 
     // Only includes project files. Is this what we want?
     @Tool(
-            value =
-                    """
+            """
                             Lists files within a specified directory relative to the project root.
                             Use '.' for the root directory.
                             """)
@@ -813,5 +796,91 @@ public class SearchTools {
         }
 
         return "Files in " + directoryPath + ": " + files;
+    }
+
+    @Tool(value = "Produce a numbered, incremental task list for implementing the requested code changes.")
+    public String createTaskList(
+            @P(
+                            """
+            Produce an ordered list of coding tasks that are each 'right-sized': small enough to complete in one sitting, yet large enough to be meaningful.
+
+            Requirements (apply to EACH task):
+            - Scope: one coherent goal; avoid multi-goal items joined by 'and/then'.
+            - Size target: ~2 hours for an experienced contributor across < 10 files.
+            - Tests: prefer adding or updating automated tests (unit/integration) to prove the behavior; if automation is not a good fit, you may omit tests rather than prescribe manual steps.
+            - Independence: runnable/reviewable on its own; at most one explicit dependency on a previous task.
+            - Output: starts with a strong verb and names concrete artifact(s) (class/method/file, config, test).
+            - Flexibility: the executing agent may adjust scope and ordering based on more up-to-date context discovered during implementation.
+
+            Rubric for slicing:
+            - TOO LARGE if it spans multiple subsystems, sweeping refactors, or ambiguous outcomes - split by subsystem or by 'behavior change' vs 'refactor'.
+            - TOO SMALL if it lacks a distinct, reviewable outcome (or test) - merge into its nearest parent goal.
+            - JUST RIGHT if the diff + test could be reviewed and landed as a single commit without coordination.
+
+            Aim for 8 tasks or fewer. Do not include "external" tasks like PRDs or manual testing.
+            """)
+                    List<String> tasks) {
+        logger.debug("createTaskList selected with {} tasks", tasks.size());
+        if (tasks.isEmpty()) {
+            return "No tasks provided.";
+        }
+
+        var io = contextManager.getIo();
+        // Append tasks to Task List Panel (if running in Chrome UI)
+        try {
+            ((Chrome) io).appendTasksToTaskList(tasks);
+        } catch (ClassCastException ignored) {
+            // Not running in Chrome UI; skip appending
+        }
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                "Added " + tasks.size() + " task" + (tasks.size() == 1 ? "" : "s") + " to Task List");
+
+        var lines = java.util.stream.IntStream.range(0, tasks.size())
+                .mapToObj(i -> (i + 1) + ". " + tasks.get(i))
+                .collect(java.util.stream.Collectors.joining("\n"));
+        var formattedTaskList = "# Task List\n" + lines + "\n";
+        io.llmOutput("I've created the following tasks:\n" + formattedTaskList, ChatMessageType.AI, true, false);
+        return formattedTaskList;
+    }
+
+    @Tool(
+            "Append a Markdown-formatted note to Task Notes in the Workspace. Use this to record findings, hypotheses, checklists, links, and decisions in Markdown.")
+    public String appendNote(@P("Markdown content to append to Task Notes") String markdown) {
+        if (markdown.isBlank()) {
+            throw new IllegalArgumentException("Note content cannot be empty");
+        }
+
+        final var description = ContextFragment.SEARCH_NOTES.description();
+        final var syntax = ContextFragment.SEARCH_NOTES.syntaxStyle();
+        final var appendedFlag = new java.util.concurrent.atomic.AtomicBoolean(false);
+
+        contextManager.pushContext(ctx -> {
+            var existing = ctx.virtualFragments()
+                    .filter(vf -> vf.getType() == ContextFragment.FragmentType.STRING)
+                    .filter(vf -> description.equals(vf.description()))
+                    .findFirst();
+
+            if (existing.isPresent()) {
+                appendedFlag.set(true);
+                var prev = existing.get();
+                String prevText = prev.text();
+                String combined = prevText.isBlank() ? markdown : prevText + "\n\n" + markdown;
+
+                var next = ctx.removeFragmentsByIds(java.util.List.of(prev.id()));
+                var newFrag = new ContextFragment.StringFragment(contextManager, combined, description, syntax);
+                logger.debug(
+                        "appendNote: replaced existing Task Notes fragment {} with updated content ({} chars).",
+                        prev.id(),
+                        combined.length());
+                return next.addVirtualFragment(newFrag);
+            } else {
+                var newFrag = new ContextFragment.StringFragment(contextManager, markdown, description, syntax);
+                logger.debug("appendNote: created new Task Notes fragment ({} chars).", markdown.length());
+                return ctx.addVirtualFragment(newFrag);
+            }
+        });
+
+        return appendedFlag.get() ? "Appended note to Task Notes." : "Created Task Notes and added the note.";
     }
 }

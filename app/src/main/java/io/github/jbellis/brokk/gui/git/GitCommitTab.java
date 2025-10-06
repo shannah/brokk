@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.git;
 
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment;
@@ -14,6 +15,7 @@ import io.github.jbellis.brokk.gui.CommitDialog;
 import io.github.jbellis.brokk.gui.Constants;
 import io.github.jbellis.brokk.gui.DiffWindowManager;
 import io.github.jbellis.brokk.gui.SwingUtil;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.components.ResponsiveButtonPanel;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.widgets.FileStatusTable;
@@ -45,8 +47,8 @@ public class GitCommitTab extends JPanel {
     // Commit tab UI
     private JTable uncommittedFilesTable; // Initialized via fileStatusPane
     private FileStatusTable fileStatusPane;
-    private JButton commitButton;
-    private JButton stashButton;
+    private MaterialButton commitButton;
+    private MaterialButton stashButton;
     private JPanel buttonPanel;
 
     @Nullable
@@ -159,7 +161,7 @@ public class GitCommitTab extends JPanel {
 
         editFileItem.addActionListener(e -> {
             var selectedProjectFiles = getSelectedFilesFromTable();
-            contextManager.editFiles(selectedProjectFiles);
+            contextManager.addFiles(selectedProjectFiles);
             rightClickedFile = null; // Clear after use
         });
 
@@ -202,7 +204,7 @@ public class GitCommitTab extends JPanel {
         buttonPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, Integer.MAX_VALUE));
 
         // Commit Button
-        commitButton = new JButton("Commit All..."); // Default label with ellipsis
+        commitButton = new MaterialButton("Commit All..."); // Default label with ellipsis
         SwingUtil.applyPrimaryButtonStyle(commitButton);
         commitButton.setToolTipText("Commit files...");
         commitButton.setEnabled(false);
@@ -226,9 +228,11 @@ public class GitCommitTab extends JPanel {
                     workflowService,
                     filesToCommit,
                     commitResult -> { // This is the onCommitSuccessCallback
-                        chrome.systemOutput("Committed "
-                                + getRepo().shortHash(commitResult.commitId())
-                                + ": " + commitResult.firstLine());
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Committed "
+                                        + getRepo().shortHash(commitResult.commitId())
+                                        + ": " + commitResult.firstLine());
                         updateCommitPanel(); // Refresh file list
                         chrome.updateLogTab();
                         chrome.selectCurrentBranchInLogTab();
@@ -238,7 +242,7 @@ public class GitCommitTab extends JPanel {
         buttonPanel.add(commitButton);
 
         // Stash Button
-        stashButton = new JButton("Stash All"); // Default label
+        stashButton = new MaterialButton("Stash All"); // Default label
         stashButton.setToolTipText("Save your changes to the stash");
         stashButton.setEnabled(false);
         stashButton.addActionListener(e -> {
@@ -250,7 +254,7 @@ public class GitCommitTab extends JPanel {
 
             // Stash without asking for a message, using a default one.
             String stashMessage = "Stash created by Brokk";
-            contextManager.submitUserTask("Stashing changes", () -> {
+            contextManager.submitExclusiveAction(() -> {
                 try {
                     performStash(filesToStash, stashMessage);
                 } catch (GitAPIException ex) {
@@ -528,7 +532,7 @@ public class GitCommitTab extends JPanel {
             }
         }
 
-        contextManager.submitUserTask("show-uncomitted-files", () -> {
+        contextManager.submitExclusiveAction(() -> {
             try {
                 var builder = new BrokkDiffPanel.Builder(chrome.getTheme(), contextManager);
 
@@ -601,7 +605,7 @@ public class GitCommitTab extends JPanel {
             return;
         }
 
-        contextManager.submitUserTask("Rolling back files", () -> {
+        contextManager.submitExclusiveAction(() -> {
             try {
                 // 1. Identify which files are not in the workspace.
                 var filesNotInWorkspace = selectedFiles.stream()
@@ -612,7 +616,7 @@ public class GitCommitTab extends JPanel {
                         .collect(Collectors.toSet());
 
                 // 2. Add all selected files to the workspace to snapshot their current state.
-                contextManager.editFiles(selectedFiles);
+                contextManager.addFiles(selectedFiles);
 
                 // 3. Separate files into "new" and "other".
                 var newFiles = selectedFiles.stream()
@@ -626,7 +630,7 @@ public class GitCommitTab extends JPanel {
                 // These fragments were just created by `editFiles`.
                 var fragmentsForNewFiles = contextManager
                         .liveContext()
-                        .editableFiles()
+                        .fileFragments()
                         .filter(f ->
                                 f instanceof ContextFragment.ProjectPathFragment ppf && newFiles.contains(ppf.file()))
                         .toList();
@@ -667,8 +671,9 @@ public class GitCommitTab extends JPanel {
                         new HashSet<>(selectedFiles),
                         new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
 
-                // 8. Add the result to history. The snapshot will not contain the fragments for `newFiles`.
-                contextManager.addToHistory(taskResult, false);
+                try (var scope = contextManager.beginTask("", false)) {
+                    scope.append(taskResult);
+                }
 
                 // 9. Now that the context is pushed, add the EntryInfo for the deleted files.
                 if (!deletedFilesInfo.isEmpty()) {
@@ -689,7 +694,7 @@ public class GitCommitTab extends JPanel {
                 if (!otherFilesToDrop.isEmpty()) {
                     var fragmentsToDrop = contextManager
                             .liveContext()
-                            .editableFiles()
+                            .fileFragments()
                             .filter(f -> f instanceof ContextFragment.ProjectPathFragment ppf
                                     && otherFilesToDrop.contains(ppf.file()))
                             .toList();
@@ -701,7 +706,7 @@ public class GitCommitTab extends JPanel {
                 // 11. Update UI on EDT.
                 SwingUtilities.invokeLater(() -> {
                     String successMessage = "Rolled back " + fileList + " to HEAD state. Use Ctrl+Z to undo.";
-                    chrome.systemOutput(successMessage);
+                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, successMessage);
                     updateCommitPanel();
                     chrome.updateLogTab();
                 });
@@ -735,10 +740,12 @@ public class GitCommitTab extends JPanel {
 
         SwingUtilities.invokeLater(() -> {
             if (selectedFiles.isEmpty()) {
-                chrome.systemOutput("All changes stashed successfully: " + stashDescription);
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "All changes stashed successfully: " + stashDescription);
             } else {
                 String fileList = GitUiUtil.formatFileList(selectedFiles);
-                chrome.systemOutput("Stashed " + fileList + ": " + stashDescription);
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Stashed " + fileList + ": " + stashDescription);
             }
             updateCommitPanel(); // Refresh file list
             chrome.updateLogTab(); // Refresh log

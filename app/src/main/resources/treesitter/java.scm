@@ -35,19 +35,26 @@
 
 ; Field declarations
 (field_declaration
-    declarator: (variable_declarator name: (identifier) @field.name
-    )
+  (variable_declarator
+    name: (identifier) @field.name)
 ) @field.definition
 
 ; Enum declarations
 (enum_declaration
-  name: (identifier) @enum.name
-  body: (enum_body
-    (enum_constant
-      name: (identifier) @enum.constant
-    )
+  name: (identifier) @enum.name) @enum.definition
+
+; Enum constants
+(enum_constant
+  name: (identifier) @field.name) @field.definition
+
+; Record components (implicit fields created by record components)
+; Primary: Java grammar where record components are formal_parameters on the 'parameters' field
+(record_declaration
+  parameters: (formal_parameters
+    (formal_parameter
+      name: (identifier) @field.name) @field.definition
   )
-) @enum.definition
+)
 
 ; Annotations to strip
 (annotation) @annotation

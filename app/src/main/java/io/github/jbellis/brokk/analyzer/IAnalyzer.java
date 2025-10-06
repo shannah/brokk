@@ -24,6 +24,24 @@ public interface IAnalyzer {
         return capability.isInstance(this) ? Optional.of(capability.cast(this)) : Optional.empty();
     }
 
+    /**
+     * Update the Analyzer for create/modify/delete activity against `changedFiles`. This is O(M) in the number of
+     * changed files.
+     */
+    default IAnalyzer update(Set<ProjectFile> changedFiles) {
+        // should always be supported; UOE here is for convenience in mocking
+        throw new UnsupportedOperationException();
+    }
+
+    /**
+     * Scan for changes across all files in the Analyzer. This involves hashing each file so it is O(N) in the total
+     * number of files and relatively heavyweight.
+     */
+    default IAnalyzer update() {
+        // should always be supported; UOE here is for convenience in mocking
+        throw new UnsupportedOperationException();
+    }
+
     // Summarization
 
     default List<CodeUnit> getMembersInClass(String fqClass) {
@@ -227,23 +245,6 @@ public interface IAnalyzer {
         }
         return symbols;
     }
-
-    /**
-     * Locates the source file and line range for the given fully-qualified method name. The {@code paramNames} list
-     * contains the *parameter variable names* (not types). If there is only a single match, or exactly one match with
-     * matching param names, return it. Otherwise throw {@code SymbolNotFoundException} or
-     * {@code SymbolAmbiguousException}.
-     *
-     * <p>
-     *
-     * <p>TODO this should return an Optional
-     */
-    default FunctionLocation getFunctionLocation(String fqMethodName, List<String> paramNames) {
-        throw new UnsupportedOperationException();
-    }
-
-    /** Container for a function's location and current source text. */
-    record FunctionLocation(ProjectFile file, int startLine, int endLine, String code) {}
 
     /**
      * Extracts the class/module/type name from a method/member reference like "MyClass.myMethod". This is a heuristic

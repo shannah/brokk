@@ -36,6 +36,7 @@ import org.eclipse.jgit.storage.file.FileRepositoryBuilder;
 import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
+import org.eclipse.jgit.transport.UsernamePasswordCredentialsProvider;
 import org.eclipse.jgit.treewalk.AbstractTreeIterator;
 import org.eclipse.jgit.treewalk.CanonicalTreeParser;
 import org.eclipse.jgit.treewalk.EmptyTreeIterator;
@@ -60,6 +61,7 @@ public class GitRepo implements Closeable, IGitRepo {
     private final Repository repository;
     private final Git git;
     private final char @Nullable [] gpgPassPhrase; // if the user has enabled GPG signing by default
+    private final java.util.function.Supplier<String> tokenSupplier; // Supplier for GitHub token
     private @Nullable Set<ProjectFile> trackedFilesCache = null;
 
     /**
@@ -128,7 +130,12 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     public GitRepo(Path projectRoot) {
+        this(projectRoot, () -> io.github.jbellis.brokk.MainProject.getGitHubToken());
+    }
+
+    GitRepo(Path projectRoot, java.util.function.Supplier<String> tokenSupplier) {
         this.projectRoot = projectRoot;
+        this.tokenSupplier = tokenSupplier;
 
         try {
             var builder = new FileRepositoryBuilder()
@@ -354,7 +361,8 @@ public class GitRepo implements Closeable, IGitRepo {
     @Override
     public synchronized void add(Path path) throws GitAPIException {
         var addCommand = git.add();
-        addCommand.addFilepattern(path.toString());
+        var repoRelativePath = gitTopLevel.relativize(path.toAbsolutePath()).toString();
+        addCommand.addFilepattern(repoRelativePath);
         addCommand.call();
     }
 
@@ -641,10 +649,9 @@ public class GitRepo implements Closeable, IGitRepo {
         logger.debug("Pushing branch {} to origin", branchName);
         var refSpec = new RefSpec(String.format("refs/heads/%s:refs/heads/%s", branchName, branchName));
 
-        Iterable<PushResult> results = git.push()
-                .setRemote("origin") // Default to "origin"
-                .setRefSpecs(refSpec)
-                .call();
+        var pushCommand = git.push().setRemote("origin").setRefSpecs(refSpec);
+        applyGitHubAuthentication(pushCommand, getRemoteUrl("origin"));
+        Iterable<PushResult> results = pushCommand.call();
         List<String> rejectionMessages = new ArrayList<>();
 
         for (var result : results) {
@@ -697,8 +704,10 @@ public class GitRepo implements Closeable, IGitRepo {
         var refSpec = new RefSpec(String.format("refs/heads/%s:refs/heads/%s", localBranchName, remoteBranchName));
 
         // 1. Push the branch
-        Iterable<PushResult> results =
-                git.push().setRemote(remoteName).setRefSpecs(refSpec).call();
+        var pushCommand = git.push().setRemote(remoteName).setRefSpecs(refSpec);
+        var remoteUrl = getRemoteUrl(remoteName);
+
+        Iterable<PushResult> results = performPushWithAuthentication(pushCommand, remoteUrl);
 
         List<String> rejectionMessages = new ArrayList<>();
         for (var result : results) {
@@ -750,6 +759,42 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
+     * Applies GitHub token authentication to a git transport command if the remote URL is a GitHub HTTPS URL. For all
+     * other URLs (SSH, non-GitHub HTTPS, file, etc.), does nothing and lets JGit use its default handling.
+     *
+     * @param command The git transport command (push, pull, fetch, clone)
+     * @param remoteUrl The remote URL to check
+     * @throws GitHubAuthenticationException if GitHub HTTPS URL is detected but no token is configured
+     */
+    public <T, C extends org.eclipse.jgit.api.TransportCommand<C, T>> void applyGitHubAuthentication(
+            C command, @Nullable String remoteUrl) throws GitHubAuthenticationException {
+        // Only handle GitHub HTTPS URLs - everything else uses JGit defaults
+        if (remoteUrl == null || !remoteUrl.startsWith("https://") || !remoteUrl.contains("github.com")) {
+            return;
+        }
+
+        // GitHub HTTPS requires token
+        logger.debug("Using GitHub token authentication for: {}", remoteUrl);
+        var githubToken = tokenSupplier.get();
+        if (!githubToken.trim().isEmpty()) {
+            command.setCredentialsProvider(new UsernamePasswordCredentialsProvider("token", githubToken));
+        } else {
+            throw new GitHubAuthenticationException("GitHub token required for HTTPS authentication. "
+                    + "Configure in Settings -> Global -> GitHub, or use SSH URL instead.");
+        }
+    }
+
+    /**
+     * Performs push with authentication for HTTPS URLs using GitHub token. SSH URLs use JGit's default SSH
+     * authentication.
+     */
+    private Iterable<PushResult> performPushWithAuthentication(PushCommand pushCommand, @Nullable String remoteUrl)
+            throws GitAPIException {
+        applyGitHubAuthentication(pushCommand, remoteUrl);
+        return pushCommand.call();
+    }
+
+    /**
      * Fetches all remotes with pruning, reporting progress to the given monitor.
      *
      * @param pm The progress monitor to report to.
@@ -757,33 +802,49 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public void fetchAll(ProgressMonitor pm) throws GitAPIException {
         for (String remote : repository.getRemoteNames()) {
-            git.fetch()
+            var fetchCommand = git.fetch()
                     .setRemote(remote)
                     .setRemoveDeletedRefs(true) // --prune
-                    .setProgressMonitor(pm)
-                    .call();
+                    .setProgressMonitor(pm);
+            applyGitHubAuthentication(fetchCommand, getRemoteUrl(remote));
+            fetchCommand.call();
         }
         invalidateCaches(); // Invalidate caches & ref-db
     }
 
     /** Pull changes from the remote repository for the current branch */
     public void pull() throws GitAPIException {
-        git.pull().call();
+        var pullCommand = git.pull();
+        applyGitHubAuthentication(pullCommand, getRemoteUrl("origin"));
+        pullCommand.call();
     }
 
-    /** Get a set of commit IDs that exist in the local branch but not in its remote tracking branch */
+    /** Get a set of commit IDs that exist in the local branch but not in its target remote branch */
     public Set<String> getUnpushedCommitIds(String branchName) throws GitAPIException {
         var unpushedCommits = new HashSet<String>();
-        var trackingBranch = getTrackingBranch(branchName);
-        if (trackingBranch == null) {
+
+        // Get the target remote name (with built-in fallback logic)
+        var targetRemoteBranchName = getTargetRemoteBranchName(branchName);
+        if (targetRemoteBranchName == null) {
+            return unpushedCommits;
+        }
+
+        // Check if the resolved remote branch actually exists
+        try {
+            var remoteRef = "refs/remotes/" + targetRemoteBranchName;
+            if (repository.findRef(remoteRef) == null) {
+                return unpushedCommits; // No remote branch to compare against
+            }
+        } catch (Exception e) {
+            logger.debug("Error checking remote branch existence for {}: {}", targetRemoteBranchName, e.getMessage());
             return unpushedCommits;
         }
 
         var branchRef = "refs/heads/" + branchName;
-        var trackingRef = "refs/remotes/" + trackingBranch;
+        var remoteRef = "refs/remotes/" + targetRemoteBranchName;
 
         var localObjectId = resolve(branchRef);
-        var remoteObjectId = resolve(trackingRef);
+        var remoteObjectId = resolve(remoteRef);
 
         try (var revWalk = new RevWalk(repository)) {
             try {
@@ -819,6 +880,101 @@ public class GitRepo implements Closeable, IGitRepo {
             return null;
         } catch (Exception e) {
             // Return null if there's any unexpected config or parse issue
+            return null;
+        }
+    }
+
+    /**
+     * Get the target remote name and branch following Git's standard remote resolution order, with fallback to the next
+     * option if a remote branch doesn't exist. Returns remote/branch format (e.g., "origin/main").
+     *
+     * <p>Resolution order:
+     *
+     * <ol>
+     *   <li>Configured upstream branch if it exists
+     *   <li>remote.pushDefault with branch name if it exists
+     *   <li>Single remote with branch name if it exists
+     *   <li>origin with branch name if it exists
+     *   <li>Configured upstream even if it doesn't exist (for push targets)
+     *   <li>pushDefault even if it doesn't exist
+     *   <li>origin even if it doesn't exist
+     * </ol>
+     */
+    private @Nullable String getTargetRemoteBranchName(String branchName) {
+        try {
+            var config = repository.getConfig();
+            var remoteNames = repository.getRemoteNames();
+
+            // 1. Check for configured upstream first
+            var configuredRemote = config.getString("branch", branchName, "remote");
+            var configuredMerge = config.getString("branch", branchName, "merge");
+
+            if (configuredRemote != null && configuredMerge != null && remoteNames.contains(configuredRemote)) {
+                var remoteBranch = configuredMerge;
+                if (remoteBranch.startsWith("refs/heads/")) {
+                    remoteBranch = remoteBranch.substring("refs/heads/".length());
+                }
+                var upstreamTarget = configuredRemote + "/" + remoteBranch;
+
+                // Check if upstream branch exists, if so use it
+                if (repository.findRef("refs/remotes/" + upstreamTarget) != null) {
+                    return upstreamTarget;
+                }
+                // If upstream is configured but branch doesn't exist, fall through to other options
+            }
+
+            // 2. Check for remote.pushDefault
+            var pushDefault = config.getString("remote", null, "pushDefault");
+            if (pushDefault != null && remoteNames.contains(pushDefault)) {
+                var pushDefaultTarget = pushDefault + "/" + branchName;
+                if (repository.findRef("refs/remotes/" + pushDefaultTarget) != null) {
+                    return pushDefaultTarget;
+                }
+            }
+
+            // 3. If exactly one remote exists, use that
+            if (remoteNames.size() == 1) {
+                var remoteName = remoteNames.iterator().next();
+                var singleRemoteTarget = remoteName + "/" + branchName;
+                if (repository.findRef("refs/remotes/" + singleRemoteTarget) != null) {
+                    return singleRemoteTarget;
+                }
+            }
+
+            // 4. Fall back to origin if it exists
+            if (remoteNames.contains("origin")) {
+                var originTarget = "origin/" + branchName;
+                if (repository.findRef("refs/remotes/" + originTarget) != null) {
+                    return originTarget;
+                }
+            }
+
+            // 5. No suitable remote branch found - return the first preference even if it doesn't exist
+            // This preserves the resolution order for cases where no remote branch exists yet
+            if (configuredRemote != null && configuredMerge != null && remoteNames.contains(configuredRemote)) {
+                var remoteBranch = configuredMerge;
+                if (remoteBranch.startsWith("refs/heads/")) {
+                    remoteBranch = remoteBranch.substring("refs/heads/".length());
+                }
+                return configuredRemote + "/" + remoteBranch;
+            }
+
+            if (pushDefault != null && remoteNames.contains(pushDefault)) {
+                return pushDefault + "/" + branchName;
+            }
+
+            if (remoteNames.size() == 1) {
+                var remoteName = remoteNames.iterator().next();
+                return remoteName + "/" + branchName;
+            }
+
+            if (remoteNames.contains("origin")) {
+                return "origin/" + branchName;
+            }
+
+            return null;
+        } catch (Exception e) {
+            logger.debug("Error resolving target remote branch name for {}: {}", branchName, e.getMessage());
             return null;
         }
     }
@@ -1169,7 +1325,7 @@ public class GitRepo implements Closeable, IGitRepo {
                         .collect(Collectors.joining(", "));
                 logger.error("Squash merge conflicts: {}", errorDetails);
                 invalidateCaches();
-                throw new GitAPIException("Squash merge failed due to conflicts in: " + errorDetails) {};
+                throw new GitOperationException("Squash merge failed due to conflicts in: " + errorDetails);
             }
 
             invalidateCaches();
@@ -1223,8 +1379,8 @@ public class GitRepo implements Closeable, IGitRepo {
                 } catch (GitAPIException abortEx) {
                     logger.error("Failed to abort rebase for {}", tempRebaseBranchName, abortEx);
                 }
-                throw new GitAPIException("Rebase of '" + branchName + "' onto '" + targetBranch + "' failed: "
-                        + rebaseResult.getStatus()) {};
+                throw new GitOperationException("Rebase of '" + branchName + "' onto '" + targetBranch + "' failed: "
+                        + rebaseResult.getStatus());
             }
 
             // Switch back to target branch and fast-forward merge
@@ -1232,8 +1388,8 @@ public class GitRepo implements Closeable, IGitRepo {
             MergeResult ffMergeResult = mergeIntoHead(tempRebaseBranchName);
 
             if (!ffMergeResult.getMergeStatus().isSuccessful()) {
-                throw new GitAPIException("Fast-forward merge of rebased '" + tempRebaseBranchName + "' into '"
-                        + targetBranch + "' failed: " + ffMergeResult.getMergeStatus()) {};
+                throw new GitOperationException("Fast-forward merge of rebased '" + tempRebaseBranchName + "' into '"
+                        + targetBranch + "' failed: " + ffMergeResult.getMergeStatus());
             }
 
             invalidateCaches();
@@ -1362,7 +1518,13 @@ public class GitRepo implements Closeable, IGitRepo {
                     throw new GitWrappedIOException(ex);
                 }
                 if (head != null) {
-                    return head.getName(); // Return the commit SHA in detached HEAD state
+                    try (var reader = repository.newObjectReader()) {
+                        var abbrev = reader.abbreviate(head);
+                        return abbrev.name();
+                    } catch (IOException ioEx) {
+                        // Fallback to full SHA on error
+                        return head.getName();
+                    }
                 }
                 throw new GitRepoException("Repository has no HEAD", new NullPointerException());
             }
@@ -1419,8 +1581,8 @@ public class GitRepo implements Closeable, IGitRepo {
             } else if (name.startsWith("refs/tags/")) {
                 tags.add(name.substring("refs/tags/".length()));
             } else if (name.equals("HEAD")) {
-                @Nullable var target = ref.getTarget();
-                if (target != null && target.isSymbolic() && target.getName().startsWith("refs/heads/")) {
+                var target = ref.getTarget();
+                if (target.isSymbolic() && target.getName().startsWith("refs/heads/")) {
                     defaultBranch = target.getName().substring("refs/heads/".length());
                 }
             }
@@ -2050,6 +2212,92 @@ public class GitRepo implements Closeable, IGitRepo {
         return results;
     }
 
+    /**
+     * Get the target remote name following Git's standard remote resolution order: Uses current branch for upstream
+     * resolution, falls back to general resolution
+     */
+    private @Nullable String getTargetRemoteName() {
+        try {
+            var currentBranch = getCurrentBranch();
+            return getTargetRemoteNameWithUpstream(currentBranch);
+        } catch (GitAPIException e) {
+            logger.debug("Error getting current branch, falling back to upstream-less resolution: {}", e.getMessage());
+
+            // Fallback to upstream-less resolution if no current branch
+            try {
+                var config = repository.getConfig();
+                var remoteNames = repository.getRemoteNames();
+
+                // 1. Check for remote.pushDefault
+                var pushDefault = config.getString("remote", null, "pushDefault");
+                if (pushDefault != null && remoteNames.contains(pushDefault)) {
+                    return pushDefault;
+                }
+
+                // 2. If exactly one remote exists, use that
+                if (remoteNames.size() == 1) {
+                    return remoteNames.iterator().next();
+                }
+
+                // 3. Fall back to origin if it exists
+                if (remoteNames.contains("origin")) {
+                    return "origin";
+                }
+
+                return null;
+            } catch (Exception ex) {
+                logger.debug("Error resolving target remote name: {}", ex.getMessage());
+                return null;
+            }
+        }
+    }
+
+    /**
+     * Get the target remote name following Git's standard remote resolution order including upstream:
+     *
+     * <ol>
+     *   <li>If upstream exists for branch (branch.&lt;name&gt;.remote), use that
+     *   <li>Else if remote.pushDefault is configured, use that
+     *   <li>Else if exactly one remote exists, use that
+     *   <li>Else if "origin" exists, use "origin"
+     *   <li>Else return null
+     * </ol>
+     */
+    private @Nullable String getTargetRemoteNameWithUpstream(String branchName) {
+        try {
+            var config = repository.getConfig();
+            var remoteNames = repository.getRemoteNames();
+
+            // 1. Check for configured upstream first
+            var configuredRemote = config.getString("branch", branchName, "remote");
+            if (configuredRemote != null && remoteNames.contains(configuredRemote)) {
+                return configuredRemote;
+            }
+
+            // 2. Check for remote.pushDefault
+            var pushDefault = config.getString("remote", null, "pushDefault");
+            if (pushDefault != null && remoteNames.contains(pushDefault)) {
+                return pushDefault;
+            }
+
+            // 3. If exactly one remote exists, use that
+            if (remoteNames.size() == 1) {
+                return remoteNames.iterator().next();
+            }
+
+            // 4. Fall back to origin if it exists
+            if (remoteNames.contains("origin")) {
+                return "origin";
+            }
+
+            // 5. No suitable remote found
+            return null;
+        } catch (Exception e) {
+            logger.debug("Error resolving target remote name with upstream for {}: {}", branchName, e.getMessage());
+            return null;
+        }
+    }
+
     /** Get the URL of the specified remote (defaults to "origin") */
     public @Nullable String getRemoteUrl(String remoteName) {
         try {
@@ -2061,10 +2309,13 @@ public class GitRepo implements Closeable, IGitRepo {
         }
     }
 
-    /** Get the URL of the origin remote */
+    /**
+     * Get the URL of the target remote using Git's standard remote resolution including upstream from current branch
+     */
     @Override
     public @Nullable String getRemoteUrl() {
-        return getRemoteUrl("origin");
+        var targetRemote = getTargetRemoteName();
+        return targetRemote != null ? getRemoteUrl(targetRemote) : null;
     }
 
     /**
@@ -2163,9 +2414,11 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public static void initRepo(Path root) throws GitAPIException, IOException {
         logger.info("Initializing new Git repository at {}", root);
-        Git.init().setDirectory(root.toFile()).call();
-        logger.info("Git repository initialized at {}.", root);
-        ensureBrokkIgnored(root);
+        try (var git = Git.init().setDirectory(root.toFile()).call()) {
+            logger.info("Git repository initialized at {}.", root);
+            ensureBrokkIgnored(root);
+            git.commit().setAllowEmpty(true).setMessage("Initial commit").call();
+        }
     }
 
     private static void ensureBrokkIgnored(Path root) throws IOException {
@@ -2202,12 +2455,15 @@ public class GitRepo implements Closeable, IGitRepo {
      * automatically append “.git”.
      */
     public static GitRepo cloneRepo(String remoteUrl, Path directory, int depth) throws GitAPIException {
-        requireNonNull(remoteUrl, "remoteUrl");
-        requireNonNull(directory, "directory");
+        return cloneRepo(() -> io.github.jbellis.brokk.MainProject.getGitHubToken(), remoteUrl, directory, depth);
+    }
 
+    static GitRepo cloneRepo(
+            java.util.function.Supplier<String> tokenSupplier, String remoteUrl, Path directory, int depth)
+            throws GitAPIException {
         String effectiveUrl = normalizeRemoteUrl(remoteUrl);
 
-        // Ensure the target directory is empty (or doesn’t yet exist)
+        // Ensure the target directory is empty (or doesn't yet exist)
         if (Files.exists(directory)
                 && directory.toFile().list() != null
                 && directory.toFile().list().length > 0) {
@@ -2219,6 +2475,18 @@ public class GitRepo implements Closeable, IGitRepo {
                     .setURI(effectiveUrl)
                     .setDirectory(directory.toFile())
                     .setCloneAllBranches(depth <= 0);
+
+            // Apply GitHub authentication if needed
+            if (effectiveUrl.startsWith("https://") && effectiveUrl.contains("github.com")) {
+                var token = tokenSupplier.get();
+                if (!token.trim().isEmpty()) {
+                    cloneCmd.setCredentialsProvider(new UsernamePasswordCredentialsProvider("token", token));
+                } else {
+                    throw new GitHubAuthenticationException("GitHub token required for HTTPS authentication. "
+                            + "Configure in Settings -> Global -> GitHub, or use SSH URL instead.");
+                }
+            }
+
             if (depth > 0) {
                 cloneCmd.setDepth(depth);
                 cloneCmd.setNoTags();
@@ -2227,7 +2495,7 @@ public class GitRepo implements Closeable, IGitRepo {
             try (var ignored = cloneCmd.call()) {
                 // nothing – resources closed via try-with-resources
             }
-            return new GitRepo(directory);
+            return new GitRepo(directory, tokenSupplier);
         } catch (GitAPIException e) {
             logger.error("Failed to clone {} into {}: {}", effectiveUrl, directory, e.getMessage(), e);
             throw e;
@@ -2246,9 +2514,17 @@ public class GitRepo implements Closeable, IGitRepo {
      */
     public static GitRepo cloneRepo(String remoteUrl, Path directory, int depth, @Nullable String branchOrTag)
             throws GitAPIException {
-        requireNonNull(remoteUrl, "remoteUrl");
-        requireNonNull(directory, "directory");
+        return cloneRepo(
+                () -> io.github.jbellis.brokk.MainProject.getGitHubToken(), remoteUrl, directory, depth, branchOrTag);
+    }
 
+    static GitRepo cloneRepo(
+            java.util.function.Supplier<String> tokenSupplier,
+            String remoteUrl,
+            Path directory,
+            int depth,
+            @Nullable String branchOrTag)
+            throws GitAPIException {
         String effectiveUrl = normalizeRemoteUrl(remoteUrl);
 
         // Ensure the target directory is empty (or doesn't yet exist)
@@ -2264,6 +2540,17 @@ public class GitRepo implements Closeable, IGitRepo {
                     .setDirectory(directory.toFile())
                     .setCloneAllBranches(depth <= 0);
 
+            // Apply GitHub authentication if needed
+            if (effectiveUrl.startsWith("https://") && effectiveUrl.contains("github.com")) {
+                var token = tokenSupplier.get();
+                if (!token.trim().isEmpty()) {
+                    cloneCmd.setCredentialsProvider(new UsernamePasswordCredentialsProvider("token", token));
+                } else {
+                    throw new GitHubAuthenticationException("GitHub token required for HTTPS authentication. "
+                            + "Configure in Settings -> Global -> GitHub, or use SSH URL instead.");
+                }
+            }
+
             if (branchOrTag != null && !branchOrTag.trim().isEmpty()) {
                 cloneCmd.setBranch(branchOrTag);
             }
@@ -2276,7 +2563,7 @@ public class GitRepo implements Closeable, IGitRepo {
             try (var ignored = cloneCmd.call()) {
                 // nothing – resources closed via try-with-resources
             }
-            return new GitRepo(directory);
+            return new GitRepo(directory, tokenSupplier);
         } catch (GitAPIException e) {
             logger.error(
                     "Failed to clone {} (branch/tag: {}) into {}: {}",
@@ -2578,7 +2865,8 @@ public class GitRepo implements Closeable, IGitRepo {
             SessionRegistry.release(path);
         } catch (Environment.SubprocessException e) {
             String output = e.getOutput();
-            // If 'force' was false and the command failed because force is needed, throw WorktreeNeedsForceException
+            // If 'force' was false and the command failed because force is needed,
+            // throw WorktreeNeedsForceException
             if (!force
                     && (output.contains("use --force")
                             || output.contains("not empty")
@@ -2745,15 +3033,33 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
-     * True when the local branch has no upstream or is ahead of its upstream. Returns false if the provided branch name
-     * is not a local branch.
+     * True when no target remote branch exists or the local branch is ahead of its target remote. Returns false if the
+     * provided branch name is not a local branch.
      */
     public boolean branchNeedsPush(String branch) throws GitAPIException {
         if (!listLocalBranches().contains(branch)) {
             return false; // Not a local branch, so it cannot need pushing
         }
-        return !hasUpstreamBranch(branch) // never pushed → no upstream
-                || !getUnpushedCommitIds(branch).isEmpty(); // ahead of remote
+
+        // Get the target remote name (with built-in fallback logic)
+        var targetRemoteBranchName = getTargetRemoteBranchName(branch);
+        if (targetRemoteBranchName == null) {
+            return true; // No target remote found, so needs push
+        }
+
+        // Check if the resolved remote branch exists
+        try {
+            var remoteRef = "refs/remotes/" + targetRemoteBranchName;
+            if (repository.findRef(remoteRef) == null) {
+                return true; // Remote branch doesn't exist, so needs push
+            }
+        } catch (Exception e) {
+            logger.debug("Error checking remote branch existence for {}: {}", targetRemoteBranchName, e.getMessage());
+            return true; // Assume needs push on error
+        }
+
+        // Remote branch exists, check if local has unpushed commits
+        return !getUnpushedCommitIds(branch).isEmpty();
     }
 
     /**
@@ -2823,7 +3129,8 @@ public class GitRepo implements Closeable, IGitRepo {
                     // Skip /dev/null paths, which can appear for add/delete of binary files or certain modes
                     // Handled by only using relevant paths (getOldPath for DELETE, getNewPath for
                     // ADD/COPY/MODIFY/RENAME's new side)
-                    // and relying on toProjectFile which would inherently handle or error on /dev/null if it were a
+                    // and relying on toProjectFile which would inherently handle or error on
+                    // /dev/null if it were a
                     // real project path.
                     // The main concern is ensuring we use the correct path (old vs new) based on ChangeType.
 

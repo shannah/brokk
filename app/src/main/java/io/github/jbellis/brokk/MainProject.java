@@ -3,7 +3,6 @@ package io.github.jbellis.brokk;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.jakewharton.disklrucache.DiskLruCache;
 import io.github.jbellis.brokk.Service.ModelConfig;
-import io.github.jbellis.brokk.agents.ArchitectAgent;
 import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.Languages;
@@ -14,6 +13,7 @@ import io.github.jbellis.brokk.issues.IssueProviderType;
 import io.github.jbellis.brokk.mcp.McpConfig;
 import io.github.jbellis.brokk.util.AtomicWrites;
 import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.util.GlobalUiSettings;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -63,17 +63,22 @@ public final class MainProject extends AbstractProject {
     private static final String CODE_INTELLIGENCE_LANGUAGES_KEY = "code_intelligence_languages";
     private static final String GITHUB_TOKEN_KEY = "githubToken";
 
+    // Keys for GitHub clone preferences (global user settings)
+    private static final String GITHUB_CLONE_PROTOCOL_KEY = "githubCloneProtocol";
+    private static final String GITHUB_SHALLOW_CLONE_ENABLED_KEY = "githubShallowCloneEnabled";
+    private static final String GITHUB_SHALLOW_CLONE_DEPTH_KEY = "githubShallowCloneDepth";
+
     // New key for the IssueProvider record as JSON
     private static final String ISSUES_PROVIDER_JSON_KEY = "issuesProviderJson";
 
     // Keys for Architect Options persistence
-    private static final String ARCHITECT_OPTIONS_JSON_KEY = "architectOptionsJson";
     private static final String ARCHITECT_RUN_IN_WORKTREE_KEY = "architectRunInWorktree";
     private static final String MCP_CONFIG_JSON_KEY = "mcpConfigJson";
 
     // Keys for Plan First and Search First workspace preferences
     private static final String PLAN_FIRST_KEY = "planFirst";
     private static final String SEARCH_FIRST_KEY = "searchFirst";
+    private static final String PROP_INSTRUCTIONS_ASK = "instructions.ask";
 
     private static final String LAST_MERGE_MODE_KEY = "lastMergeMode";
     private static final String MIGRATIONS_TO_SESSIONS_V3_COMPLETE_KEY = "migrationsToSessionsV3Complete";
@@ -123,6 +128,11 @@ public final class MainProject extends AbstractProject {
         STAGING
     }
 
+    public enum StartupOpenMode {
+        LAST,
+        ALL
+    }
+
     private static final String LLM_PROXY_SETTING_KEY = "llmProxySetting";
     public static final String BROKK_PROXY_URL = "https://proxy.brokk.ai";
     public static final String LOCALHOST_PROXY_URL = "http://localhost:4000";
@@ -136,10 +146,15 @@ public final class MainProject extends AbstractProject {
     public static final String DEFAULT_REVIEW_GUIDE =
             """
             When reviewing the pull request, please address the following points:
-            - explain your understanding of what this PR is intended to do
-            - does it accomplish its goals
-            - does it conform to the style guidelines
-            - what parts are the trickiest and how could they be simplified
+            - Explain your understanding of what this PR is intended to do.
+            - Does it accomplish its goals in the simplest way possible?
+            - Does it conform to the project coding standards?
+            - What parts are the trickiest and how could they be simplified?
+            - What additional tests, if any, would add the most value?
+
+            Conclude with a summary of:
+            - Blockers (serious functional or design issues)
+            - Additional areas for improvement, ordered by priority
             """
                     .stripIndent();
 
@@ -176,26 +191,6 @@ public final class MainProject extends AbstractProject {
         // Migrate Architect options from projectProps to workspace properties (centralized in AbstractProject)
         boolean needsProjectSave = false;
         boolean migratedArchitectSettings = false;
-        if (projectProps.containsKey(ARCHITECT_OPTIONS_JSON_KEY)) {
-            if (!workspaceProps.containsKey(ARCHITECT_OPTIONS_JSON_KEY)
-                    || !workspaceProps
-                            .getProperty(ARCHITECT_OPTIONS_JSON_KEY)
-                            .equals(projectProps.getProperty(ARCHITECT_OPTIONS_JSON_KEY))) {
-                workspaceProps.setProperty(
-                        ARCHITECT_OPTIONS_JSON_KEY, projectProps.getProperty(ARCHITECT_OPTIONS_JSON_KEY));
-                migratedArchitectSettings = true;
-            }
-            projectProps.remove(ARCHITECT_OPTIONS_JSON_KEY);
-            needsProjectSave = true;
-            // Ensure projectProps is saved if a key is removed, even if not transferred (e.g. already in workspace)
-            // migratedArchitectSettings specifically tracks if data was written to workspaceProps.
-            if (!migratedArchitectSettings && workspaceProps.containsKey(ARCHITECT_OPTIONS_JSON_KEY)) {
-                // Key was in projectProps, removed, but already existed (maybe identically) in workspaceProps.
-                // We still need to save projectProps due to removal.
-            }
-        }
-        // boolean projectPropsChangedByMigration = projectProps.containsKey(ARCHITECT_OPTIONS_JSON_KEY); // This
-        // variable is not used
 
         if (projectProps.containsKey(ARCHITECT_RUN_IN_WORKTREE_KEY)) {
             if (!workspaceProps.containsKey(ARCHITECT_RUN_IN_WORKTREE_KEY)
@@ -208,8 +203,6 @@ public final class MainProject extends AbstractProject {
             }
             projectProps.remove(ARCHITECT_RUN_IN_WORKTREE_KEY);
             needsProjectSave = true;
-            // projectPropsChangedByMigration = projectPropsChangedByMigration ||
-            // projectProps.containsKey(ARCHITECT_RUN_IN_WORKTREE_KEY); // This variable is not used
         }
 
         // Migrate Live Dependencies from projectProps to workspace properties
@@ -788,23 +781,6 @@ public final class MainProject extends AbstractProject {
     }
 
     @Override
-    public AnalyzerRefresh getAnalyzerRefresh() {
-        String value = projectProps.getProperty("code_intelligence_refresh");
-        if (value == null) return AnalyzerRefresh.UNSET;
-        try {
-            return AnalyzerRefresh.valueOf(value.toUpperCase(Locale.ROOT));
-        } catch (IllegalArgumentException e) {
-            return AnalyzerRefresh.UNSET;
-        }
-    }
-
-    @Override
-    public void setAnalyzerRefresh(AnalyzerRefresh analyzerRefresh) {
-        projectProps.setProperty("code_intelligence_refresh", analyzerRefresh.name());
-        saveProjectProperties();
-    }
-
-    @Override
     public String getStyleGuide() {
         try {
             if (Files.exists(styleGuidePath)) {
@@ -880,6 +856,22 @@ public final class MainProject extends AbstractProject {
         };
     }
 
+    public static MainProject.StartupOpenMode getStartupOpenMode() {
+        var props = loadGlobalProperties();
+        String val = props.getProperty(STARTUP_OPEN_MODE_KEY, StartupOpenMode.LAST.name());
+        try {
+            return StartupOpenMode.valueOf(val);
+        } catch (IllegalArgumentException e) {
+            return StartupOpenMode.LAST;
+        }
+    }
+
+    public static void setStartupOpenMode(MainProject.StartupOpenMode mode) {
+        var props = loadGlobalProperties();
+        props.setProperty(STARTUP_OPEN_MODE_KEY, mode.name());
+        saveGlobalProperties(props);
+    }
+
     public static void setGitHubToken(String token) {
         var props = loadGlobalProperties();
         if (token.isBlank()) {
@@ -912,57 +904,63 @@ public final class MainProject extends AbstractProject {
     }
 
     @Override
-    public ArchitectAgent.ArchitectOptions getArchitectOptions() {
-        String json = workspaceProps.getProperty(ARCHITECT_OPTIONS_JSON_KEY);
-        if (json != null && !json.isBlank()) {
-            try {
-                return objectMapper.readValue(json, ArchitectAgent.ArchitectOptions.class);
-            } catch (JsonProcessingException e) {
-                logger.error(
-                        "Failed to deserialize ArchitectOptions from workspace JSON: {}. Returning defaults.", json, e);
-            }
-        }
-        return ArchitectAgent.ArchitectOptions.DEFAULTS;
-    }
-
-    @Override
     public boolean getArchitectRunInWorktree() {
         return Boolean.parseBoolean(workspaceProps.getProperty(ARCHITECT_RUN_IN_WORKTREE_KEY, "false"));
     }
 
     @Override
-    public void setArchitectOptions(ArchitectAgent.ArchitectOptions options, boolean runInWorktree) {
-        try {
-            String json = objectMapper.writeValueAsString(options);
-            workspaceProps.setProperty(ARCHITECT_OPTIONS_JSON_KEY, json);
-            workspaceProps.setProperty(ARCHITECT_RUN_IN_WORKTREE_KEY, String.valueOf(runInWorktree));
-            saveWorkspaceProperties();
-            logger.debug("Saved Architect options and worktree preference to workspace properties.");
-        } catch (JsonProcessingException e) {
-            logger.error(
-                    "Failed to serialize ArchitectOptions to JSON for workspace: {}. Settings not saved.", options, e);
-            // Not re-throwing as this is a preference, not critical state.
-        }
-    }
-
-    /** Workspace preference: whether to "Plan First" (Architect) when coding. Defaults to true on first run. */
     public boolean getPlanFirst() {
-        return Boolean.parseBoolean(workspaceProps.getProperty(PLAN_FIRST_KEY, "true"));
+        return getLayoutBoolean(PLAN_FIRST_KEY);
     }
 
+    @Override
     public void setPlanFirst(boolean v) {
-        workspaceProps.setProperty(PLAN_FIRST_KEY, String.valueOf(v));
-        saveWorkspaceProperties();
+        setLayoutBoolean(PLAN_FIRST_KEY, v);
     }
 
-    /** Workspace preference: whether to "Search First" when in Ask/Answer mode. Defaults to true on first run. */
-    public boolean getSearchFirst() {
-        return Boolean.parseBoolean(workspaceProps.getProperty(SEARCH_FIRST_KEY, "true"));
+    @Override
+    public boolean getSearch() {
+        return getLayoutBoolean(SEARCH_FIRST_KEY);
     }
 
-    public void setSearchFirst(boolean v) {
-        workspaceProps.setProperty(SEARCH_FIRST_KEY, String.valueOf(v));
-        saveWorkspaceProperties();
+    @Override
+    public void setSearch(boolean v) {
+        setLayoutBoolean(SEARCH_FIRST_KEY, v);
+    }
+
+    @Override
+    public boolean getInstructionsAskMode() {
+        return getLayoutBoolean(PROP_INSTRUCTIONS_ASK);
+    }
+
+    @Override
+    public void setInstructionsAskMode(boolean ask) {
+        setLayoutBoolean(PROP_INSTRUCTIONS_ASK, ask);
+    }
+
+    private boolean getLayoutBoolean(String key) {
+        // Per-project first if enabled; else global. If per-project is enabled but unset, fallback to global.
+        if (GlobalUiSettings.isPersistPerProjectBounds()) {
+            String v = workspaceProps.getProperty(key);
+            if (v != null) {
+                return Boolean.parseBoolean(v);
+            }
+        }
+        var props = loadGlobalProperties();
+        return Boolean.parseBoolean(props.getProperty(key, "true"));
+    }
+
+    private void setLayoutBoolean(String key, boolean v) {
+        // Always persist globally so the preference carries across projects.
+        var props = loadGlobalProperties();
+        props.setProperty(key, String.valueOf(v));
+        saveGlobalProperties(props);
+
+        // Persist per-project only when per-project layout persistence is enabled.
+        if (GlobalUiSettings.isPersistPerProjectBounds()) {
+            workspaceProps.setProperty(key, String.valueOf(v));
+            saveWorkspaceProperties();
+        }
     }
 
     @Override
@@ -1079,6 +1077,39 @@ public final class MainProject extends AbstractProject {
         return props.getProperty(GITHUB_TOKEN_KEY, "");
     }
 
+    public static String getGitHubCloneProtocol() {
+        var props = loadGlobalProperties();
+        return props.getProperty(GITHUB_CLONE_PROTOCOL_KEY, "https");
+    }
+
+    public static void setGitHubCloneProtocol(String protocol) {
+        var props = loadGlobalProperties();
+        props.setProperty(GITHUB_CLONE_PROTOCOL_KEY, protocol);
+        saveGlobalProperties(props);
+    }
+
+    public static boolean getGitHubShallowCloneEnabled() {
+        var props = loadGlobalProperties();
+        return Boolean.parseBoolean(props.getProperty(GITHUB_SHALLOW_CLONE_ENABLED_KEY, "false"));
+    }
+
+    public static void setGitHubShallowCloneEnabled(boolean enabled) {
+        var props = loadGlobalProperties();
+        props.setProperty(GITHUB_SHALLOW_CLONE_ENABLED_KEY, String.valueOf(enabled));
+        saveGlobalProperties(props);
+    }
+
+    public static int getGitHubShallowCloneDepth() {
+        var props = loadGlobalProperties();
+        return Integer.parseInt(props.getProperty(GITHUB_SHALLOW_CLONE_DEPTH_KEY, "1"));
+    }
+
+    public static void setGitHubShallowCloneDepth(int depth) {
+        var props = loadGlobalProperties();
+        props.setProperty(GITHUB_SHALLOW_CLONE_DEPTH_KEY, String.valueOf(depth));
+        saveGlobalProperties(props);
+    }
+
     public static String getTheme() {
         var props = loadGlobalProperties();
         return props.getProperty("theme", "dark");
@@ -1106,7 +1137,11 @@ public final class MainProject extends AbstractProject {
     //  - "auto" (default): detect from environment (kscreen-doctor/gsettings on Linux)
     //  - numeric value (e.g., "1.25"), applied to sun.java2d.uiScale at startup, capped elsewhere to sane bounds
     private static final String UI_SCALE_KEY = "uiScale";
+    private static final String MOP_ZOOM_KEY = "mopZoom";
     private static final String TERMINAL_FONT_SIZE_KEY = "terminalFontSize";
+    private static final String STARTUP_OPEN_MODE_KEY = "startupOpenMode";
+    private static final String FORCE_TOOL_EMULATION_KEY = "forceToolEmulation";
+    private static final String HISTORY_AUTO_COMPRESS_KEY = "historyAutoCompress";
 
     public static String getUiScalePref() {
         var props = loadGlobalProperties();
@@ -1122,6 +1157,27 @@ public final class MainProject extends AbstractProject {
     public static void setUiScalePrefCustom(double scale) {
         var props = loadGlobalProperties();
         props.setProperty(UI_SCALE_KEY, Double.toString(scale));
+        saveGlobalProperties(props);
+    }
+
+    public static double getMopZoom() {
+        var props = loadGlobalProperties();
+        String s = props.getProperty(MOP_ZOOM_KEY, "1.0");
+        double z;
+        try {
+            z = Double.parseDouble(s);
+        } catch (NumberFormatException e) {
+            z = 1.0;
+        }
+        if (z < 0.5) z = 0.5;
+        if (z > 2.0) z = 2.0;
+        return z;
+    }
+
+    public static void setMopZoom(double zoom) {
+        double clamped = Math.max(0.5, Math.min(2.0, zoom));
+        var props = loadGlobalProperties();
+        props.setProperty(MOP_ZOOM_KEY, Double.toString(clamped));
         saveGlobalProperties(props);
     }
 
@@ -1145,6 +1201,32 @@ public final class MainProject extends AbstractProject {
         } else {
             props.setProperty(TERMINAL_FONT_SIZE_KEY, Float.toString(size));
         }
+        saveGlobalProperties(props);
+    }
+
+    public static boolean getForceToolEmulation() {
+        var props = loadGlobalProperties();
+        return Boolean.parseBoolean(props.getProperty(FORCE_TOOL_EMULATION_KEY, "false"));
+    }
+
+    public static void setForceToolEmulation(boolean force) {
+        var props = loadGlobalProperties();
+        if (force) {
+            props.setProperty(FORCE_TOOL_EMULATION_KEY, "true");
+        } else {
+            props.remove(FORCE_TOOL_EMULATION_KEY);
+        }
+        saveGlobalProperties(props);
+    }
+
+    public static boolean getHistoryAutoCompress() {
+        var props = loadGlobalProperties();
+        return Boolean.parseBoolean(props.getProperty(HISTORY_AUTO_COMPRESS_KEY, "true"));
+    }
+
+    public static void setHistoryAutoCompress(boolean autoCompress) {
+        var props = loadGlobalProperties();
+        props.setProperty(HISTORY_AUTO_COMPRESS_KEY, Boolean.toString(autoCompress));
         saveGlobalProperties(props);
     }
 

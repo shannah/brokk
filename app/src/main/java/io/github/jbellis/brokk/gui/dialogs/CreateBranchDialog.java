@@ -1,8 +1,10 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.gui.components.MaterialButton;
 import java.awt.*;
 import java.util.List;
 import java.util.Locale;
@@ -24,7 +26,7 @@ public class CreateBranchDialog extends JDialog {
     private JTextField branchNameField;
     private JCheckBox checkoutCheckBox;
     private JLabel feedbackLabel;
-    private JButton okButton;
+    private MaterialButton okButton;
 
     public CreateBranchDialog(
             Frame owner, ContextManager contextManager, Chrome chrome, String commitId, String shortCommitId) {
@@ -44,10 +46,10 @@ public class CreateBranchDialog extends JDialog {
         branchNameField = new JTextField(25);
         checkoutCheckBox = new JCheckBox("Checkout after creation", true);
         feedbackLabel = new JLabel(" "); // Placeholder for feedback
-        okButton = new JButton("OK");
+        okButton = new MaterialButton("OK");
         okButton.setEnabled(false); // Initially disabled
 
-        JButton cancelButton = new JButton("Cancel");
+        MaterialButton cancelButton = new MaterialButton("Cancel");
 
         branchNameField.getDocument().addDocumentListener(new DocumentListener() {
             @Override
@@ -101,7 +103,7 @@ public class CreateBranchDialog extends JDialog {
 
         JPanel buttonPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT));
         buttonPanel.add(okButton);
-        buttonPanel.add(new JButton("Cancel") {
+        buttonPanel.add(new MaterialButton("Cancel") {
             {
                 addActionListener(e -> dispose());
             }
@@ -159,17 +161,19 @@ public class CreateBranchDialog extends JDialog {
         boolean checkoutAfter = checkoutCheckBox.isSelected();
         dispose();
 
-        contextManager.submitUserTask("Creating branch", () -> {
+        contextManager.submitExclusiveAction(() -> {
             try {
                 String finalBranchName =
                         getRepo().sanitizeBranchName(userInputBranchName); // Ensures uniqueness and validity
                 getRepo().createBranchFromCommit(finalBranchName, commitId);
-                chrome.systemOutput(
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
                         "Successfully created branch '" + finalBranchName + "' from commit " + shortCommitId);
 
                 if (checkoutAfter) {
                     getRepo().checkout(finalBranchName);
-                    chrome.systemOutput("Checked out branch '" + finalBranchName + "'.");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "Checked out branch '" + finalBranchName + "'.");
                 }
                 // UI will refresh on the next user action; no direct call required here
             } catch (GitAPIException gitEx) {

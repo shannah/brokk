@@ -14,6 +14,7 @@ import org.jetbrains.annotations.Nullable;
 public interface Language {
     Logger logger = LogManager.getLogger(Language.class);
 
+    // TODO make this a Set
     List<String> getExtensions();
 
     String name(); // Human-friendly
@@ -147,14 +148,13 @@ public interface Language {
      * languages and combines the results.
      *
      * <p>Only the operations that make sense for a multi‑language view are implemented. Methods tied to a
-     * single‐language identity ‑ such as {@link #internalName()} or {@link #getStoragePath(IProject)} ‑ throw
+     * single‐language identity ‑ such as {@link #internalName()} or {@link #getStoragePath(IProject)} ‑ throw
      * {@link UnsupportedOperationException}.
      */
     class MultiLanguage implements Language {
         private final Set<Language> languages;
 
         public MultiLanguage(Set<Language> languages) {
-            Objects.requireNonNull(languages, "languages set is null");
             if (languages.isEmpty()) throw new IllegalArgumentException("languages set must not be empty");
             if (languages.stream().anyMatch(l -> l instanceof MultiLanguage))
                 throw new IllegalArgumentException("cannot nest MultiLanguage inside itself");
@@ -190,8 +190,12 @@ public interface Language {
         public IAnalyzer createAnalyzer(IProject project) {
             var delegates = new HashMap<Language, IAnalyzer>();
             for (var lang : languages) {
-                var analyzer = lang.createAnalyzer(project);
-                if (!analyzer.isEmpty()) delegates.put(lang, analyzer);
+                try {
+                    var analyzer = lang.createAnalyzer(project);
+                    if (!analyzer.isEmpty()) delegates.put(lang, analyzer);
+                } catch (Throwable t) {
+                    logger.error("Error creating analyzer for {}", lang.name(), t);
+                }
             }
             return delegates.size() == 1 ? delegates.values().iterator().next() : new MultiAnalyzer(delegates);
         }
@@ -200,9 +204,12 @@ public interface Language {
         public IAnalyzer loadAnalyzer(IProject project) {
             var delegates = new HashMap<Language, IAnalyzer>();
             for (var lang : languages) {
-                // TODO handle partial failure without needing to rebuild everything?
-                var analyzer = lang.loadAnalyzer(project);
-                if (!analyzer.isEmpty()) delegates.put(lang, analyzer);
+                try {
+                    var analyzer = lang.loadAnalyzer(project);
+                    if (!analyzer.isEmpty()) delegates.put(lang, analyzer);
+                } catch (Throwable t) {
+                    logger.error("Error loading analyzer for {}", lang.name(), t);
+                }
             }
             return delegates.size() == 1 ? delegates.values().iterator().next() : new MultiAnalyzer(delegates);
         }

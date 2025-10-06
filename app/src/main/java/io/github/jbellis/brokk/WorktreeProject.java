@@ -128,16 +128,6 @@ public final class WorktreeProject extends AbstractProject {
     }
 
     @Override
-    public AnalyzerRefresh getAnalyzerRefresh() {
-        return parent.getAnalyzerRefresh();
-    }
-
-    @Override
-    public void setAnalyzerRefresh(AnalyzerRefresh analyzerRefresh) {
-        parent.setAnalyzerRefresh(analyzerRefresh);
-    }
-
-    @Override
     public boolean isDataShareAllowed() {
         return parent.isDataShareAllowed();
     }
@@ -183,19 +173,8 @@ public final class WorktreeProject extends AbstractProject {
     }
 
     @Override
-    public io.github.jbellis.brokk.agents.ArchitectAgent.ArchitectOptions getArchitectOptions() {
-        return parent.getArchitectOptions();
-    }
-
-    @Override
     public boolean getArchitectRunInWorktree() {
         return parent.getArchitectRunInWorktree();
-    }
-
-    @Override
-    public void setArchitectOptions(
-            io.github.jbellis.brokk.agents.ArchitectAgent.ArchitectOptions options, boolean runInWorktree) {
-        parent.setArchitectOptions(options, runInWorktree);
     }
 
     @Override
@@ -231,5 +210,35 @@ public final class WorktreeProject extends AbstractProject {
     @Override
     public void sessionsListChanged() {
         parent.sessionsListChanged();
+    }
+
+    @Override
+    public boolean getPlanFirst() {
+        return parent.getPlanFirst();
+    }
+
+    @Override
+    public void setPlanFirst(boolean v) {
+        parent.setPlanFirst(v);
+    }
+
+    @Override
+    public boolean getSearch() {
+        return parent.getSearch();
+    }
+
+    @Override
+    public void setSearch(boolean v) {
+        parent.setSearch(v);
+    }
+
+    @Override
+    public boolean getInstructionsAskMode() {
+        return parent.getInstructionsAskMode();
+    }
+
+    @Override
+    public void setInstructionsAskMode(boolean ask) {
+        parent.setInstructionsAskMode(ask);
     }
 }
