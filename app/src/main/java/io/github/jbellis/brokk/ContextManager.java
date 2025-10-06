@@ -1936,7 +1936,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                             .findFirst();
                     if (firstUserOpt.isPresent() && lastAiOpt.isPresent()) {
                         var selected = List.of(firstUserOpt.get(), lastAiOpt.get());
-                        actionDescription = selected.stream().map(Messages::getText).collect(Collectors.joining("\n\n"));
+                        actionDescription =
+                                selected.stream().map(Messages::getText).collect(Collectors.joining("\n\n"));
                     } else {
                         actionDescription = results.getFirst().actionDescription();
                     }
