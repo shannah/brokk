@@ -5,7 +5,6 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.context.ContextFragment;
-
 import java.util.ArrayList;
 import java.util.List;
 

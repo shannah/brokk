@@ -289,7 +289,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         frame.setTitle("Brokk: " + getProject().getRoot());
 
         // Show initial system message
-        showNotification(NotificationRole.INFO, "Opening project at " + getProject().getRoot());
+        showNotification(
+                NotificationRole.INFO, "Opening project at " + getProject().getRoot());
 
         // Create workspace panel and project files panel
         workspacePanel = new WorkspacePanel(this, contextManager);
@@ -667,7 +668,9 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                 // The GitRepo instance is for the current project (which could be a worktree),
                 // but 'add' operations apply to the whole repository.
                 gitRepo.add(filesToAdd);
-                showNotification(NotificationRole.INFO, "Added shared .brokk project files (style.md, review.md, project.properties) to git");
+                showNotification(
+                        NotificationRole.INFO,
+                        "Added shared .brokk project files (style.md, review.md, project.properties) to git");
 
                 // Refresh the commit panel to show the new files
                 updateCommitPanel();

@@ -166,11 +166,14 @@ public class CreateBranchDialog extends JDialog {
                 String finalBranchName =
                         getRepo().sanitizeBranchName(userInputBranchName); // Ensures uniqueness and validity
                 getRepo().createBranchFromCommit(finalBranchName, commitId);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Successfully created branch '" + finalBranchName + "' from commit " + shortCommitId);
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Successfully created branch '" + finalBranchName + "' from commit " + shortCommitId);
 
                 if (checkoutAfter) {
                     getRepo().checkout(finalBranchName);
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Checked out branch '" + finalBranchName + "'.");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "Checked out branch '" + finalBranchName + "'.");
                 }
                 // UI will refresh on the next user action; no direct call required here
             } catch (GitAPIException gitEx) {

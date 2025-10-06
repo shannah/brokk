@@ -509,7 +509,8 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
             return;
         }
         if (modified.isEmpty()) {
-            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No changes to commit for task: " + taskDescription);
+            chrome.showNotification(
+                    IConsoleIO.NotificationRole.INFO, "No changes to commit for task: " + taskDescription);
             return;
         }
 
@@ -534,8 +535,10 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
 
                 SwingUtilities.invokeLater(() -> {
                     var gitRepo = (GitRepo) repo;
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Committed " + gitRepo.shortHash(commitResult.commitId()) + ": "
-                                        + commitResult.firstLine());
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Committed " + gitRepo.shortHash(commitResult.commitId()) + ": "
+                                    + commitResult.firstLine());
                     chrome.updateCommitPanel();
                     chrome.updateLogTab();
                     chrome.selectCurrentBranchInLogTab();
@@ -1001,7 +1004,9 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
 
         // IMMEDIATE FEEDBACK: inform user tasks were submitted without waiting for LLM work
         int totalToRun = currentRunOrder != null ? currentRunOrder.size() : 1;
-        SwingUtilities.invokeLater(() -> chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Submitted " + totalToRun + " task(s) for execution. Running task 1 of " + totalToRun + "..."));
+        SwingUtilities.invokeLater(() -> chrome.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                "Submitted " + totalToRun + " task(s) for execution. Running task 1 of " + totalToRun + "..."));
 
         var cm = chrome.getContextManager();
 

@@ -122,7 +122,9 @@ public class SearchAgent {
         while (true) {
             // Beast mode triggers
             if (Thread.interrupted()) {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Search interrupted; attempting to finalize with available information");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Search interrupted; attempting to finalize with available information");
                 beastMode = true;
             }
             var inputLimit = cm.getService().getMaxInputTokens(model);
@@ -130,7 +132,9 @@ public class SearchAgent {
                     new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()));
             var workspaceTokens = Messages.getApproximateTokens(workspaceMessages);
             if (!beastMode && inputLimit > 0 && workspaceTokens > WORKSPACE_CRITICAL * inputLimit) {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Workspace is near the context limit; attempting finalization based on current knowledge");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Workspace is near the context limit; attempting finalization based on current knowledge");
                 beastMode = true;
             }
 
@@ -188,7 +192,9 @@ public class SearchAgent {
             if (first.name().equals("answer") || first.name().equals("abortSearch")) {
                 // Enforce singularity
                 if (next.size() > 1) {
-                    io.showNotification(IConsoleIO.NotificationRole.INFO, "Final action returned with other tools; ignoring others and finalizing.");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Final action returned with other tools; ignoring others and finalizing.");
                 }
                 var exec = toolRegistry.executeTool(this, first);
                 sessionMessages.add(ToolExecutionResultMessage.from(first, exec.resultText()));

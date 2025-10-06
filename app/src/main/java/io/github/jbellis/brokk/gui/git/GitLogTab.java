@@ -717,7 +717,8 @@ public class GitLogTab extends JPanel {
                         localTrackingName = branchName.substring(branchName.indexOf('/') + 1);
                     }
                     getRepo().checkoutRemoteBranch(branchName);
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Created local tracking branch for " + branchName);
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "Created local tracking branch for " + branchName);
                     createdTracking = true;
                 } else {
                     getRepo().checkout(branchName);
@@ -778,9 +779,11 @@ public class GitLogTab extends JPanel {
                                 case REBASE_MERGE -> "rebase-merged";
                             };
 
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
-                                        "Branch '%s' successfully %s into '%s'.",
-                                        result.sourceBranch(), modeDescription, result.targetBranch()));
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            String.format(
+                                    "Branch '%s' successfully %s into '%s'.",
+                                    result.sourceBranch(), modeDescription, result.targetBranch()));
 
                     // Delete source branch if requested
                     if (result.deleteBranch()) {
@@ -800,7 +803,9 @@ public class GitLogTab extends JPanel {
                     try {
                         logger.info("Restoring original branch: {}", originalBranch);
                         repo.checkout(originalBranch);
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Switched back to original branch: " + originalBranch);
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Switched back to original branch: " + originalBranch);
                     } catch (GitAPIException e) {
                         String restoreError = String.format(
                                 "Warning: Failed to switch back to original branch '%s': %s",
@@ -841,10 +846,14 @@ public class GitLogTab extends JPanel {
                 // Check if branch is merged before deletion
                 if (repo.isBranchMerged(branchName)) {
                     repo.deleteBranch(branchName);
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format("Branch '%s' deleted after merge.", branchName));
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            String.format("Branch '%s' deleted after merge.", branchName));
                 } else {
                     logger.warn("Branch '{}' appears unmerged, skipping deletion after merge", branchName);
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, String.format("Warning: Branch '%s' appears unmerged, skipping deletion.", branchName));
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            String.format("Warning: Branch '%s' appears unmerged, skipping deletion.", branchName));
                 }
             }
         } catch (GitAPIException e) {
@@ -886,7 +895,9 @@ public class GitLogTab extends JPanel {
                 try {
                     getRepo().createAndCheckoutBranch(newName, sourceBranch);
                     refreshAllGitUi(newName);
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Created and checked out new branch '" + newName + "' from '" + sourceBranch + "'");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Created and checked out new branch '" + newName + "' from '" + sourceBranch + "'");
                 } catch (GitAPIException e) {
                     logger.error("Error creating new branch from {}: {}", sourceBranch, e);
                     chrome.toolError("Error creating new branch: " + e.getMessage(), "Branch Error");
@@ -964,7 +975,9 @@ public class GitLogTab extends JPanel {
                 }
 
                 SwingUtilities.invokeLater(this::update);
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO,
+                        "Branch '" + branchName + "' " + (force ? "force " : "") + "deleted successfully.");
             } catch (GitAPIException e) {
                 chrome.toolError("Error deleting branch '" + branchName + "': " + e.getMessage());
             }
@@ -1213,7 +1226,9 @@ public class GitLogTab extends JPanel {
                 try {
                     getRepo().renameBranch(oldName, newName);
                     SwingUtilities.invokeLater(() -> {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Branch '" + oldName + "' renamed to '" + newName + "' successfully.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Branch '" + oldName + "' renamed to '" + newName + "' successfully.");
                         // On success, a full update ensures UI consistency (e.g., current branch checkmark moves).
                         update();
                     });

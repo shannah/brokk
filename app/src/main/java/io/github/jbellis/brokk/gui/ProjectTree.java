@@ -408,7 +408,8 @@ public class ProjectTree extends JTree implements FileSystemEventListener {
                     }
 
                     SwingUtilities.invokeLater(() -> {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Deleted " + fileList + ". Use Ctrl+Z to undo.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Deleted " + fileList + ". Use Ctrl+Z to undo.");
                     });
                 } catch (Exception ex) {
                     logger.error("Error deleting selected files", ex);

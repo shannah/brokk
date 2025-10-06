@@ -226,7 +226,9 @@ public final class MergeOneFile {
                             io.llmOutput("Conflicts resolved for " + file + " (staged)", ChatMessageType.AI);
                         } catch (GitAPIException e) {
                             logger.warn("Failed to add {} to index after CodeAgent success: {}", file, e.getMessage());
-                            io.showNotification(IConsoleIO.NotificationRole.INFO, "Warning: failed to git add " + file + ": " + e.getMessage());
+                            io.showNotification(
+                                    IConsoleIO.NotificationRole.INFO,
+                                    "Warning: failed to git add " + file + ": " + e.getMessage());
                             io.llmOutput("Conflicts resolved for " + file, ChatMessageType.AI);
                         }
                         return new Outcome(Status.RESOLVED, null);

@@ -168,7 +168,8 @@ public class MenuBar {
         var refreshItem = new JMenuItem("Refresh Code Intelligence");
         refreshItem.addActionListener(e -> runWithRefocus(chrome, () -> {
             chrome.contextManager.requestRebuild();
-            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Code intelligence will refresh in the background");
+            chrome.showNotification(
+                    IConsoleIO.NotificationRole.INFO, "Code intelligence will refresh in the background");
         }));
         refreshItem.setEnabled(true);
         contextMenu.add(refreshItem);
@@ -259,7 +260,8 @@ public class MenuBar {
                             fragments.add(pathFrag);
                         }
                         cm.addPathFragments(fragments);
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Attached " + fragments.size() + " files.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "Attached " + fragments.size() + " files.");
                     });
                 } else {
                     chrome.showNotification(IConsoleIO.NotificationRole.INFO, "File attachment cancelled.");

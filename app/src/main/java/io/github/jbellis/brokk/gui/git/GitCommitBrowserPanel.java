@@ -640,7 +640,8 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
 
             var ci = (ICommitInfo) commitsTableModel.getValueAt(row, COL_COMMIT_OBJ);
             if (ci == null || ci.stashIndex().isPresent()) {
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Capture is only available for standard commits.");
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Capture is only available for standard commits.");
                 return;
             }
             final String commitId = ci.id();
@@ -649,7 +650,8 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             // Gather selected project files from the workspace
             var selectedFiles = chrome.getContextPanel().getSelectedProjectFiles();
             if (selectedFiles.isEmpty()) {
-                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No project files selected in the workspace to capture.");
+                chrome.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "No project files selected in the workspace to capture.");
                 return;
             }
 
@@ -667,7 +669,8 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 }
                 final int captured = success;
                 SwingUtil.runOnEdt(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Captured " + captured + " file(s) at " + shortId + ".");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "Captured " + captured + " file(s) at " + shortId + ".");
                     chrome.updateWorkspace();
                 });
             });
@@ -755,7 +758,9 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
 
                 int finalApplied = applied;
                 SwingUtil.runOnEdt(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Cherry-picked " + finalApplied + " commit(s) into '" + branchLabel + "'.");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Cherry-picked " + finalApplied + " commit(s) into '" + branchLabel + "'.");
                     refreshCurrentViewAfterGitOp();
                     chrome.updateCommitPanel();
                 });
@@ -1031,8 +1036,10 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             try {
                 getRepo().softReset(commitId);
                 SwingUtil.runOnEdt(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Soft reset from " + getShortId(oldHeadId) + " to " + getShortId(commitId)
-                                        + ": " + commitMessage);
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Soft reset from " + getShortId(oldHeadId) + " to " + getShortId(commitId) + ": "
+                                    + commitMessage);
                     refreshCurrentViewAfterGitOp(); // Assumes this method exists or is adapted
                 });
             } catch (GitAPIException e) {
@@ -1047,7 +1054,8 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             try {
                 getRepo().revertCommit(commitId);
                 SwingUtil.runOnEdt(() -> {
-                    chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Commit " + getShortId(commitId) + " reverted.");
+                    chrome.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "Commit " + getShortId(commitId) + " reverted.");
                     refreshCurrentViewAfterGitOp();
                 });
             } catch (GitAPIException e) {
@@ -1170,8 +1178,12 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 setCommits(searchResults, Collections.emptySet(), false, false, "Search: " + query);
                 SwingUtil.runOnEdt(() -> {
                     if (searchResults.isEmpty())
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No commits found matching: " + query);
-                    else chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Found " + searchResults.size() + " commits matching: " + query);
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO, "No commits found matching: " + query);
+                    else
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Found " + searchResults.size() + " commits matching: " + query);
                 });
             } catch (Exception e) {
                 logger.error("Error searching commits for panel: {}", query, e);
@@ -1554,7 +1566,9 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                     return;
                 }
             }
-            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Commit " + getShortId(commitId) + " not found in current commit browser view.");
+            chrome.showNotification(
+                    IConsoleIO.NotificationRole.INFO,
+                    "Commit " + getShortId(commitId) + " not found in current commit browser view.");
         });
     }
 

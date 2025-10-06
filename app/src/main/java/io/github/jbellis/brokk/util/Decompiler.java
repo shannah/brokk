@@ -81,7 +81,9 @@ public class Decompiler {
                 Optional<Path> sourcesJarPathOpt = Optional.empty();
                 if (coordsOpt.isPresent()) {
                     var coords = coordsOpt.get();
-                    io.showNotification(IConsoleIO.NotificationRole.INFO, "Detected Maven coordinates: " + coords + ". Attempting to download sources...");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Detected Maven coordinates: " + coords + ". Attempting to download sources...");
                     var fetcher = new MavenArtifactFetcher();
                     sourcesJarPathOpt = fetcher.fetch(coords, "sources");
                 }
@@ -107,9 +109,13 @@ public class Decompiler {
 
                 if (sourcesJarPathOpt.isPresent()) {
                     Path sourcesJarPath = sourcesJarPathOpt.get();
-                    io.showNotification(IConsoleIO.NotificationRole.INFO, "Found sources JAR. Unpacking " + sourcesJarPath.getFileName() + "...");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Found sources JAR. Unpacking " + sourcesJarPath.getFileName() + "...");
                     extractJarToTemp(sourcesJarPath, outputDir);
-                    io.showNotification(IConsoleIO.NotificationRole.INFO, "Sources unpacked. Reopen project to incorporate the new source files.");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "Sources unpacked. Reopen project to incorporate the new source files.");
                 } else {
                     if (coordsOpt.isPresent()) {
                         logger.info("Could not find sources for {}. Falling back to decompilation.", coordsOpt.get());
@@ -205,7 +211,9 @@ public class Decompiler {
             decompiler.addSource(tempDir.toFile());
             decompiler.decompileContext();
 
-            io.showNotification(IConsoleIO.NotificationRole.INFO, "Decompilation completed. Reopen project to incorporate the new source files.");
+            io.showNotification(
+                    IConsoleIO.NotificationRole.INFO,
+                    "Decompilation completed. Reopen project to incorporate the new source files.");
         } finally {
             if (tempDir != null) {
                 try {

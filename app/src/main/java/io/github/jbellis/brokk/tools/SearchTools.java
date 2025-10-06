@@ -832,7 +832,9 @@ public class SearchTools {
         } catch (ClassCastException ignored) {
             // Not running in Chrome UI; skip appending
         }
-        io.showNotification(IConsoleIO.NotificationRole.INFO, "Added " + tasks.size() + " task" + (tasks.size() == 1 ? "" : "s") + " to Task List");
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                "Added " + tasks.size() + " task" + (tasks.size() == 1 ? "" : "s") + " to Task List");
 
         var lines = java.util.stream.IntStream.range(0, tasks.size())
                 .mapToObj(i -> (i + 1) + ". " + tasks.get(i))

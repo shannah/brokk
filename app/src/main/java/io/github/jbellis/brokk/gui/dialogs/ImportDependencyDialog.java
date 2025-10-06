@@ -382,7 +382,9 @@ public class ImportDependencyDialog {
 
                     SwingUtilities.invokeLater(() -> {
                         populateGitRefComboBox(info);
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Repository validated successfully. Select a branch or tag to import.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Repository validated successfully. Select a branch or tag to import.");
                         updateImportButtonState();
                     });
                 } catch (Exception ex) {
@@ -476,7 +478,9 @@ public class ImportDependencyDialog {
                             .toList();
                     copyDirectoryRecursively(sourcePath, targetPath, allowedExtensions);
                     SwingUtilities.invokeLater(() -> {
-                        chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Directory copied to " + targetPath + ". Reopen project to incorporate the new files.");
+                        chrome.showNotification(
+                                IConsoleIO.NotificationRole.INFO,
+                                "Directory copied to " + targetPath + ". Reopen project to incorporate the new files.");
                         if (listener != null) listener.dependencyImportFinished(depName);
                     });
                 } catch (IOException ex) {
@@ -559,7 +563,9 @@ public class ImportDependencyDialog {
                         CloneOperationTracker.unregisterCloneOperation(targetPath);
 
                         SwingUtilities.invokeLater(() -> {
-                            chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Repository " + repoName + " imported successfully.");
+                            chrome.showNotification(
+                                    IConsoleIO.NotificationRole.INFO,
+                                    "Repository " + repoName + " imported successfully.");
                             if (listener != null) listener.dependencyImportFinished(repoName);
                         });
                     } catch (Exception postCloneException) {

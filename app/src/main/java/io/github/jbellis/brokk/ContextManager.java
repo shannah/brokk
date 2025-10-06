@@ -636,17 +636,21 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         model = service.getModel(new Service.ModelConfig(Service.GPT_5_MINI, Service.ReasoningLevel.HIGH));
         if (model != null) {
-            io.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
-                        "Configured model '%s' for %s tasks is unavailable. Using fallback '%s'.",
-                        config.name(), modelTypeName, Service.GPT_5_MINI));
+            io.showNotification(
+                    IConsoleIO.NotificationRole.INFO,
+                    String.format(
+                            "Configured model '%s' for %s tasks is unavailable. Using fallback '%s'.",
+                            config.name(), modelTypeName, Service.GPT_5_MINI));
             return model;
         }
 
         var quickModel = service.get().quickModel();
         String quickModelName = service.get().nameOf(quickModel);
-        io.showNotification(IConsoleIO.NotificationRole.INFO, String.format(
-                "Configured model '%s' for %s tasks is unavailable. Preferred fallbacks also failed. Using system model '%s'.",
-                config.name(), modelTypeName, quickModelName));
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                String.format(
+                        "Configured model '%s' for %s tasks is unavailable. Preferred fallbacks also failed. Using system model '%s'.",
+                        config.name(), modelTypeName, quickModelName));
         return quickModel;
     }
 
@@ -848,7 +852,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 contextHistory.addResetEdge(targetFrozenContext, fr.frozenContext());
                 SwingUtilities.invokeLater(() -> notifyContextListeners(fr.frozenContext()));
                 project.getSessionManager().saveHistory(contextHistory, currentSessionId);
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Reset workspace and history to historical state");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Reset workspace and history to historical state");
             } catch (CancellationException cex) {
                 io.showNotification(IConsoleIO.NotificationRole.INFO, "Reset workspace and history canceled.");
             }
@@ -945,7 +950,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
                 io.showNotification(IConsoleIO.NotificationRole.INFO, actionMessage);
             } catch (CancellationException cex) {
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Copying context items from historical state canceled.");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Copying context items from historical state canceled.");
             }
         });
     }
@@ -1147,23 +1153,29 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     public void addCallersForMethod(String methodName, int depth, Map<String, List<CallSite>> callgraph) {
         if (callgraph.isEmpty()) {
-            io.showNotification(IConsoleIO.NotificationRole.INFO, "No callers found for " + methodName + " (pre-check).");
+            io.showNotification(
+                    IConsoleIO.NotificationRole.INFO, "No callers found for " + methodName + " (pre-check).");
             return;
         }
         var fragment = new ContextFragment.CallGraphFragment(this, methodName, depth, false);
         pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(fragment));
-        io.showNotification(IConsoleIO.NotificationRole.INFO, "Add call graph for callers of " + methodName + " with depth " + depth);
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                "Add call graph for callers of " + methodName + " with depth " + depth);
     }
 
     /** callees for method */
     public void calleesForMethod(String methodName, int depth, Map<String, List<CallSite>> callgraph) {
         if (callgraph.isEmpty()) {
-            io.showNotification(IConsoleIO.NotificationRole.INFO, "No callees found for " + methodName + " (pre-check).");
+            io.showNotification(
+                    IConsoleIO.NotificationRole.INFO, "No callees found for " + methodName + " (pre-check).");
             return;
         }
         var fragment = new ContextFragment.CallGraphFragment(this, methodName, depth, true);
         pushContext(currentLiveCtx -> currentLiveCtx.addVirtualFragment(fragment));
-        io.showNotification(IConsoleIO.NotificationRole.INFO, "Add call graph for methods called by " + methodName + " with depth " + depth);
+        io.showNotification(
+                IConsoleIO.NotificationRole.INFO,
+                "Add call graph for methods called by " + methodName + " with depth " + depth);
     }
 
     /** parse stacktrace */
@@ -1685,7 +1697,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
                         .toList();
 
                 if (topClasses.isEmpty()) {
-                    io.showNotification(IConsoleIO.NotificationRole.INFO, "No classes found via PageRank for style guide generation.");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            "No classes found via PageRank for style guide generation.");
                     project.saveStyleGuide(
                             "# Style Guide\n\n(Could not be generated automatically - no relevant classes found)\n");
                     return null;
@@ -1727,7 +1741,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 }
 
                 if (codeForLLM.isEmpty()) {
-                    io.showNotification(IConsoleIO.NotificationRole.INFO, "No relevant code found for style guide generation");
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "No relevant code found for style guide generation");
                     return null;
                 }
 
@@ -1747,7 +1762,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
                 var result = getLlm(getSearchModel(), "Generate style guide").sendRequest(messages);
                 if (result.error() != null) {
-                    String message = "Failed to generate style guide: " + result.error().getMessage();
+                    String message =
+                            "Failed to generate style guide: " + result.error().getMessage();
                     io.showNotification(IConsoleIO.NotificationRole.INFO, message);
                     project.saveStyleGuide("# Style Guide\n\n(Generation failed)\n");
                     return null;
@@ -1759,7 +1775,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     return null;
                 }
                 project.saveStyleGuide(styleGuide);
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "Style guide generated and saved to .brokk/style.md");
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "Style guide generated and saved to .brokk/style.md");
             } catch (Exception e) {
                 logger.error("Error generating style guide", e);
             }
