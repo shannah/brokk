@@ -160,11 +160,11 @@ public class ContextHistory {
     }
 
     /**
-     * Applies the given function to the top (frozen) context and pushes the result to the history.
-     * This operates on the frozen context rather than the live context, making it suitable for
-     * silent updates that shouldn't trigger file reloading or history compression.
+     * Applies the given function to the top (frozen) context and pushes the result to the history. This operates on the
+     * frozen context rather than the live context, making it suitable for silent updates that shouldn't trigger file
+     * reloading or history compression.
      *
-     * Unlike with push(), the `contextGenerator` must not generate dynamic ContextFragments.
+     * <p>Unlike with push(), the `contextGenerator` must not generate dynamic ContextFragments.
      */
     public synchronized Context pushQuietly(Function<Context, Context> contextGenerator) {
         var updatedTopContext = contextGenerator.apply(topContext());

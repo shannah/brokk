@@ -134,7 +134,8 @@ class ContextManagerTest {
         cm.addFiles(Set.of(testFile));
 
         // Get the original content from the PathFragment
-        var originalFragment = cm.topContext().fileFragments()
+        var originalFragment = cm.topContext()
+                .fileFragments()
                 .filter(f -> f.getType() == ContextFragment.FragmentType.PROJECT_PATH)
                 .findFirst()
                 .orElseThrow();
@@ -149,7 +150,8 @@ class ContextManagerTest {
         cm.pushContextQuietly(ctx -> ctx.addVirtualFragment(stringFragment));
 
         // 4. Verify the PathFragment text is unchanged (not reloaded)
-        var fragmentAfterQuietPush = cm.topContext().fileFragments()
+        var fragmentAfterQuietPush = cm.topContext()
+                .fileFragments()
                 .filter(f -> f.getType() == ContextFragment.FragmentType.PROJECT_PATH)
                 .findFirst()
                 .orElseThrow();

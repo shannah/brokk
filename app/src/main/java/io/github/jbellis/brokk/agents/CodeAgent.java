@@ -797,8 +797,7 @@ public class CodeAgent {
                             nextPendingBlocks,
                             updatedConsecutiveApplyFailures,
                             newBlocksAppliedWithoutBuild,
-                            editResult.originalContents()
-                    );
+                            editResult.originalContents());
                     report("Failed to apply %s block(s), asking LLM to retry".formatted(failedBlocks.size()));
                     return new Step.Retry(csForStep, esForStep);
                 }
@@ -811,8 +810,7 @@ public class CodeAgent {
                         nextPendingBlocks,
                         updatedConsecutiveApplyFailures,
                         newBlocksAppliedWithoutBuild,
-                        editResult.originalContents()
-                );
+                        editResult.originalContents());
                 return new Step.Continue(csForStep, esForStep);
             }
         } catch (EditStopException e) {

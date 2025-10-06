@@ -1441,9 +1441,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     }
 
     /**
-     * Pushes context changes silently using a generator function. The generator is applied to the current `topContext()`
-     * (frozen context) instead of `liveContext()`. This creates a new context state without triggering history compression
-     * or other side effects.
+     * Pushes context changes silently using a generator function. The generator is applied to the current
+     * `topContext()` (frozen context) instead of `liveContext()`. This creates a new context state without triggering
+     * history compression or other side effects.
      *
      * @param contextGenerator A function that takes the current top context and returns an updated context.
      * @return The new top context, or the existing top context if no changes were made by the generator.
@@ -1889,10 +1889,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
         public void append(TaskResult result) {
             assert !closed : "TaskScope already closed";
-            // keep today's behavior: make changed files editable immediately
-            if (!result.changedFiles().isEmpty()) {
-                addFiles(result.changedFiles());
-            }
             results.add(result);
         }
 
@@ -1906,37 +1902,37 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 }
 
                 if (results.size() == 1) {
+                    var only = results.getFirst();
+                    if (!only.changedFiles().isEmpty()) {
+                        addFiles(only.changedFiles());
+                    }
                     // Use the exact unchanged TaskResult if only one was appended
-                    pushFinalHistory(results.get(0), compressAtCommit);
+                    pushFinalHistory(only, compressAtCommit);
                     return;
                 }
 
-                // Aggregate if there are multiple TaskResults
+                // Don't aggregate stop details (presumably all success except possibly the last)
+                var lastStop = results.getLast().stopDetails();
+                // Aggregate changed files
                 var aggregatedFiles =
                         results.stream().flatMap(r -> r.changedFiles().stream()).collect(Collectors.toSet());
-
-                var lastStop = results.getLast().stopDetails();
-
                 // Aggregate all messages across results (input are expected to be the first message)
                 var aggregatedMessages = results.stream()
                         .flatMap(r -> r.output().messages().stream())
                         .toList();
-
                 // Build action description from first UserMessage and the last AiMessage
                 var firstTwoUsers = aggregatedMessages.stream()
                         .filter(m -> m instanceof UserMessage)
                         .limit(1)
                         .toList();
-
                 var lastAiOpt = IntStream.iterate(aggregatedMessages.size() - 1, i -> i - 1)
                         .limit(aggregatedMessages.size())
                         .mapToObj(aggregatedMessages::get)
                         .filter(m -> m instanceof AiMessage)
                         .findFirst();
-
                 var selected = new ArrayList<>(firstTwoUsers);
                 lastAiOpt.ifPresent(selected::add);
-
+                // Action string
                 var decoratedAction = selected.isEmpty()
                         ? "Aggregated task"
                         : selected.stream().map(Messages::getText).collect(Collectors.joining("\n\n"));
