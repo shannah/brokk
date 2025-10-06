@@ -1920,25 +1920,30 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 var aggregatedMessages = results.stream()
                         .flatMap(r -> r.output().messages().stream())
                         .toList();
-                // Build action description from first UserMessage and the last AiMessage
-                var firstTwoUsers = aggregatedMessages.stream()
-                        .filter(m -> m instanceof UserMessage)
-                        .limit(1)
-                        .toList();
-                var lastAiOpt = IntStream.iterate(aggregatedMessages.size() - 1, i -> i - 1)
-                        .limit(aggregatedMessages.size())
-                        .mapToObj(aggregatedMessages::get)
-                        .filter(m -> m instanceof AiMessage)
-                        .findFirst();
-                var selected = new ArrayList<>(firstTwoUsers);
-                lastAiOpt.ifPresent(selected::add);
-                // Action string
-                var decoratedAction = selected.isEmpty()
-                        ? "Aggregated task"
-                        : selected.stream().map(Messages::getText).collect(Collectors.joining("\n\n"));
+                // Action description
+                String actionDescription;
+                if (results.size() == 1) {
+                    actionDescription = results.getFirst().actionDescription();
+                } else {
+                    // Construct synthetic description from first UserMessage and the last AiMessage
+                    var firstUserOpt = aggregatedMessages.stream()
+                            .filter(m -> m instanceof UserMessage)
+                            .findFirst();
+                    var lastAiOpt = IntStream.iterate(aggregatedMessages.size() - 1, i -> i - 1)
+                            .limit(aggregatedMessages.size())
+                            .mapToObj(aggregatedMessages::get)
+                            .filter(m -> m instanceof AiMessage)
+                            .findFirst();
+                    if (firstUserOpt.isPresent() && lastAiOpt.isPresent()) {
+                        var selected = List.of(firstUserOpt.get(), lastAiOpt.get());
+                        actionDescription = selected.stream().map(Messages::getText).collect(Collectors.joining("\n\n"));
+                    } else {
+                        actionDescription = results.getFirst().actionDescription();
+                    }
+                }
 
                 var finalResult = new TaskResult(
-                        ContextManager.this, decoratedAction, aggregatedMessages, aggregatedFiles, lastStop);
+                        ContextManager.this, actionDescription, aggregatedMessages, aggregatedFiles, lastStop);
                 pushFinalHistory(finalResult, compressAtCommit);
             } finally {
                 io.blockLlmOutput(false);
@@ -1981,9 +1986,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
             if (!result.changedFiles().isEmpty()) {
                 // Capture current editable files once to keep the lambda valid
                 var existingEditableFiles = updated.fileFragments()
-                        .filter(ContextFragment.ProjectPathFragment.class::isInstance)
-                        .map(ContextFragment.ProjectPathFragment.class::cast)
-                        .map(ContextFragment.ProjectPathFragment::file)
+                        .filter(cf -> cf.getType().isEditable())
+                        .flatMap(cf -> cf.files().stream())
                         .collect(Collectors.toSet());
 
                 var fragmentsToAdd = result.changedFiles().stream()
