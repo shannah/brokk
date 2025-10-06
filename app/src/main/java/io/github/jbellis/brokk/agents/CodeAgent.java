@@ -109,8 +109,6 @@ public class CodeAgent {
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>(); // This will be part of WorkspaceState
         Map<ProjectFile, String> originalFileContents = new HashMap<>();
 
-        var msg = "Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput));
-        io.showNotification(IConsoleIO.NotificationRole.INFO, msg);
         TaskResult.StopDetails stopDetails;
 
         var parser = EditBlockParser.instance;
