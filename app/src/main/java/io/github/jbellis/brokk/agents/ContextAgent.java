@@ -43,6 +43,7 @@ public class ContextAgent {
 
     private final ContextManager cm;
     private final Llm llm;
+    private final Llm filesLlm;
     private final String goal;
     private final IAnalyzer analyzer;
     private final boolean deepScan;
@@ -54,12 +55,13 @@ public class ContextAgent {
     private int budgetPruning;
 
     // Rule 1: Use all available summaries if they fit the smallest budget and meet the limit (if not deepScan)
-    private final int QUICK_TOPK = 10;
+    private static final int QUICK_TOPK = 10;
 
     public ContextAgent(ContextManager contextManager, StreamingChatModel model, String goal, boolean deepScan)
             throws InterruptedException {
         this.cm = contextManager;
         this.llm = contextManager.getLlm(model, "ContextAgent (%s): %s".formatted(deepScan ? "Deep" : "Quick", goal));
+        this.filesLlm = contextManager.getLlm(contextManager.getService().quickestModel(), "ContextAgent Files (%s): %s".formatted(deepScan ? "Deep" : "Quick", goal));
         this.goal = goal;
         this.analyzer = contextManager.getAnalyzer();
         this.deepScan = deepScan;
@@ -88,12 +90,6 @@ public class ContextAgent {
             List<ContextFragment> fragments,
             String reasoning,
             @Nullable Llm.RichTokenUsage tokenUsage) {
-        static final RecommendationResult FAILED_SINGLE_PASS = new RecommendationResult(
-                false, List.of(), "Project too large to quickly determine context; try Deep Scan", null);
-
-        public RecommendationResult(boolean success, List<ContextFragment> fragments, String reasoning) {
-            this(success, fragments, reasoning, null);
-        }
     }
 
     /** Result record for the LLM tool call, holding recommended files, class names, and the LLM's reasoning. */
@@ -377,7 +373,7 @@ public class ContextAgent {
         }
 
         var reasoning = llmRecommendation.reasoning();
-        var recommendedSummaries = getSummaries(recommendedClasses, false);
+        var recommendedSummaries = getSummaries(recommendedClasses);
 
         int recommendedSummaryTokens = Messages.getApproximateTokens(String.join("\n", recommendedSummaries.values()));
         var recommendedContentsMap = readFileContents(filteredFiles);
@@ -411,15 +407,11 @@ public class ContextAgent {
                 .toList();
     }
 
-    private Map<CodeUnit, String> getSummaries(Collection<CodeUnit> classes, boolean parallel) {
+    private Map<CodeUnit, String> getSummaries(Collection<CodeUnit> classes) {
         var coalescedClasses = AnalyzerUtil.coalesceInnerClasses(Set.copyOf(classes));
         debug("Found {} classes", coalescedClasses.size());
 
-        var stream = coalescedClasses.stream();
-        if (parallel) {
-            stream = stream.parallel();
-        }
-        return stream.map(cu -> {
+        return coalescedClasses.parallelStream().map(cu -> {
                     final String skeleton = analyzer.as(SkeletonProvider.class)
                             .flatMap(skp -> skp.getSkeleton(cu.fqName()))
                             .orElse("");
@@ -487,7 +479,7 @@ public class ContextAgent {
                 .toList();
         int promptTokens = Messages.getApproximateMessageTokens(messages);
         debug("Invoking LLM to prune filenames (prompt size ~{} tokens)", promptTokens);
-        var result = llm.sendRequest(messages, deepScan);
+        var result = filesLlm.sendRequest(messages, deepScan);
         if (result.error() != null) {
             var error = result.error();
             boolean contextError = error != null
