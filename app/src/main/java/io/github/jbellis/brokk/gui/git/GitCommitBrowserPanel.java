@@ -1035,6 +1035,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             var allChangedFiles = commits.stream()
                     .flatMap(GitCommitBrowserPanel::safeChangedFiles)
                     .collect(Collectors.toSet());
+            final int changedCount = allChangedFiles.size();
             var newRootNode = new DefaultMutableTreeNode("Changes");
             var filesByDir = new HashMap<Path, List<String>>();
             for (var file : allChangedFiles) {
@@ -1058,7 +1059,9 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 changesRootNode = newRootNode;
                 changesTreeModel = new DefaultTreeModel(changesRootNode);
                 changesTree.setModel(changesTreeModel);
-                expandAllNodes(changesTree, 0, changesTree.getRowCount());
+                if (changedCount < 20) {
+                    expandAllNodes(changesTree, 0, changesTree.getRowCount());
+                }
             });
         });
     }
@@ -1544,12 +1547,10 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
             TableUtils.fitColumnWidth(commitsTable, 1); // Author
             TableUtils.fitColumnWidth(commitsTable, 2); // Date
 
-            if (commitsTableModel.getRowCount() > 0) {
-                commitsTable.setRowSelectionInterval(0, 0);
-            } else { // Should be covered by commitRows.isEmpty() check, but defensive
-                revisionTextLabel.setText("Revision:");
-                revisionIdTextArea.setText("N/A");
-            }
+            // Do not auto-select any commit; leave selection empty until the user chooses.
+            revisionTextLabel.setText("Revision:");
+            revisionIdTextArea.setText("N/A");
+            viewDiffButton.setEnabled(false);
         } finally {
             selectionModel.setValueIsAdjusting(false);
         }
