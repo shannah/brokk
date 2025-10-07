@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.agents;
 
+import static java.lang.Math.max;
 import static java.lang.Math.min;
 
 import dev.langchain4j.agent.tool.P;
@@ -17,7 +18,6 @@ import io.github.jbellis.brokk.IContextManager;
 import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.analyzer.CodeUnit;
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
-import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.analyzer.SkeletonProvider;
 import io.github.jbellis.brokk.context.ContextFragment;
@@ -59,7 +59,7 @@ public class ContextAgent {
     public ContextAgent(ContextManager contextManager, StreamingChatModel model, String goal, boolean deepScan)
             throws InterruptedException {
         this.cm = contextManager;
-        this.llm = contextManager.getLlm(model, "ContextAgent: " + goal); // Coder for LLM interactions
+        this.llm = contextManager.getLlm(model, "ContextAgent (%s): %s".formatted(deepScan ? "Deep" : "Quick", goal));
         this.goal = goal;
         this.analyzer = contextManager.getAnalyzer();
         this.deepScan = deepScan;
@@ -177,7 +177,7 @@ public class ContextAgent {
                 ? CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext())
                 : CodePrompts.instance.getWorkspaceSummaryMessages(cm.liveContext());
 
-        budgetPruning -= Messages.getApproximateTokens(workspaceRepresentation);
+        budgetPruning -= Messages.getApproximateMessageTokens(workspaceRepresentation);
         debug("Budget for pruning is {} after workspace contents", budgetPruning);
         if (budgetPruning < 1000) {
             // can't do anything useful here
@@ -324,8 +324,8 @@ public class ContextAgent {
 
         var contentsMap = readFileContents(nonAnalyzableFiles);
 
-        int summaryTokens = Messages.getApproximateTokens(String.join("\n", summaries.values()));
-        int contentTokens = Messages.getApproximateTokens(String.join("\n", contentsMap.values()));
+        int summaryTokens = Messages.getApproximateTokens(summaries.values());
+        int contentTokens = Messages.getApproximateTokens(contentsMap.values());
         int combinedTokens = summaryTokens + contentTokens;
 
         debug(
@@ -434,10 +434,9 @@ public class ContextAgent {
 
     private LlmRecommendation askLlmDeepPruneFilenamesWithChunking(
             List<String> filenames, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
-        var filenameString = String.join("\n", filenames);
-        int filenameTokens = Messages.getApproximateTokens(filenameString);
+        int filenameTokens = Messages.getApproximateTokens(filenames);
         if (filenameTokens > budgetPruning) {
-            return deepPruneFilenamesInChunks(filenames, workspaceRepresentation);
+            return deepPruneFilenamesInChunks(filenames, filenameTokens, workspaceRepresentation);
         }
         return askLlmDeepPruneFilenames(filenames, workspaceRepresentation);
     }
@@ -486,7 +485,7 @@ public class ContextAgent {
                         Stream.of(finalSystemMessage),
                         Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userPrompt))))
                 .toList();
-        int promptTokens = Messages.getApproximateTokens(messages);
+        int promptTokens = Messages.getApproximateMessageTokens(messages);
         debug("Invoking LLM to prune filenames (prompt size ~{} tokens)", promptTokens);
         var result = llm.sendRequest(messages, deepScan);
         if (result.error() != null) {
@@ -529,28 +528,23 @@ public class ContextAgent {
     }
 
     private LlmRecommendation deepPruneFilenamesInChunks(
-            List<String> filenames, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
+            List<String> filenames, int filenameTokens, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
         debug("Chunking {} filenames for parallel pruning", filenames.size());
 
-        List<List<String>> chunks = new ArrayList<>();
-        List<String> current = new ArrayList<>();
-        int currentTokens = 0;
+        // Assume each filename has roughly equal token cost and split into N+1 chunks,
+        // where N = floor(filenameTokens / budgetPruning)
+        int chunksCount = max(2, (filenameTokens / budgetPruning) + 1);
 
-        for (var fn : filenames) {
-            int t = Messages.getApproximateTokens(fn);
-            if (!current.isEmpty() && currentTokens + t > budgetPruning) {
-                chunks.add(current);
-                current = new ArrayList<>();
-                currentTokens = 0;
-            }
-            current.add(fn);
-            currentTokens += t;
-        }
-        if (!current.isEmpty()) {
-            chunks.add(current);
+        // Integer ceil division to distribute filenames as evenly as possible
+        int perChunk = 1 + filenames.size() / chunksCount;
+
+        List<List<String>> chunks = new ArrayList<>(chunksCount);
+        for (int i = 0; i < filenames.size(); i += perChunk) {
+            int end = Math.min(i + perChunk, filenames.size());
+            chunks.add(filenames.subList(i, end));
         }
 
-        debug("Created {} chunks for pruning", chunks.size());
+        debug("Created {} chunks for pruning (target per chunk ~{} items)", chunks.size(), perChunk);
         if (chunks.size() > 100) {
             debug("Too many chunks: " + chunks.size());
             return new LlmRecommendation(List.of(), List.of(), "Unable to prune filenames");
@@ -673,7 +667,7 @@ public class ContextAgent {
                                 Stream.of(new UserMessage(userMessageText.toString()))))
                 .toList();
 
-        int promptTokens = Messages.getApproximateTokens(messages);
+        int promptTokens = Messages.getApproximateMessageTokens(messages);
         debug("Invoking LLM to recommend context via tool call (prompt size ~{} tokens)", promptTokens);
 
         var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, contextTool), deepScan);
@@ -826,7 +820,7 @@ public class ContextAgent {
                         Stream.of(finalSystemMessage),
                         Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userPrompt))))
                 .toList();
-        int promptTokens = Messages.getApproximateTokens(messages);
+        int promptTokens = Messages.getApproximateMessageTokens(messages);
         debug(
                 "Invoking LLM (Quick) to select relevant {} (prompt size ~{} tokens)",
                 inputType.itemTypePlural,
