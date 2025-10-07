@@ -48,6 +48,11 @@ public class MultiAnalyzer
     }
 
     @Override
+    public Set<Language> languages() {
+        return delegates.keySet();
+    }
+
+    @Override
     public List<CodeUnit> getUses(String fqName) {
         return delegates.values().stream()
                 .flatMap(

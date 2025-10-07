@@ -11,7 +11,7 @@ public interface IAnalyzer {
         @Override
         public int compareTo(FileRelevance other) {
             int scoreComparison = Double.compare(other.score, this.score);
-            return scoreComparison != 0 ? scoreComparison : this.file.compareTo(other.file);
+            return scoreComparison != 0 ? scoreComparison : this.file.absPath().compareTo(other.file.absPath());
         }
     }
 
@@ -22,6 +22,11 @@ public interface IAnalyzer {
 
     default <T extends CapabilityProvider> Optional<T> as(Class<T> capability) {
         return capability.isInstance(this) ? Optional.of(capability.cast(this)) : Optional.empty();
+    }
+
+    /** Returns the set of languages this analyzer understands. */
+    default Set<Language> languages() {
+        return Set.of();
     }
 
     /**
