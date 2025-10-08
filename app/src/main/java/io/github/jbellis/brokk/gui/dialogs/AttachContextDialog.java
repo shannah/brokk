@@ -45,16 +45,13 @@ import org.fife.ui.autocomplete.ShorthandCompletion;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * AttachContextDialog (ACD)
- * - Segmented control: Files | Folders | Classes | Methods | Usages
- * - Single text input with autocomplete and a light-grey "Search" overlay hint
- * - Checkbox "Include subfolders" (Folders tab only) above "Summarize"
- * - Checkbox "Summarize" placed below
- * - Returns a Result(fragments, summarize) where fragments is Set<ProjectFile>
- * - Enter confirms current input; Escape cancels. No OK/Cancel buttons.
- * - If analyzer is not ready: disable Classes/Methods/Usages; Files/Folders remain enabled.
- * - Segments gated by analyzer capabilities when ready: SkeletonProvider / SourceCodeProvider / UsagesProvider.
- * - Registers an AnalyzerCallback to update gating as analyzer state changes.
+ * AttachContextDialog (ACD) - Segmented control: Files | Folders | Classes | Methods | Usages - Single text input with
+ * autocomplete and a light-grey "Search" overlay hint - Checkbox "Include subfolders" (Folders tab only) above
+ * "Summarize" - Checkbox "Summarize" placed below - Returns a Result(fragments, summarize) where fragments is
+ * Set<ProjectFile> - Enter confirms current input; Escape cancels. No OK/Cancel buttons. - If analyzer is not ready:
+ * disable Classes/Methods/Usages; Files/Folders remain enabled. - Segments gated by analyzer capabilities when ready:
+ * SkeletonProvider / SourceCodeProvider / UsagesProvider. - Registers an AnalyzerCallback to update gating as analyzer
+ * state changes.
  */
 public class AttachContextDialog extends JDialog {
 

@@ -210,9 +210,9 @@ public interface IAnalyzer {
     /**
      * Returns the immediate children of the given CodeUnit for language-specific hierarchy traversal.
      *
-     * <p>This method is used by the default getSymbols(java.util.Set) implementation to traverse the code unit hierarchy
-     * and collect symbols from nested declarations. The specific parent-child relationships depend on the target
-     * language:
+     * <p>This method is used by the default getSymbols(java.util.Set) implementation to traverse the code unit
+     * hierarchy and collect symbols from nested declarations. The specific parent-child relationships depend on the
+     * target language:
      *
      * <ul>
      *   <li><strong>Classes:</strong> Return methods, fields, and nested classes

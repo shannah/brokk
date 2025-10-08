@@ -3,7 +3,6 @@ package io.github.jbellis.brokk.prompts;
 import static org.junit.jupiter.api.Assertions.*;
 
 import io.github.jbellis.brokk.difftool.performance.PerformanceConstants;
-import java.lang.reflect.Method;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.List;

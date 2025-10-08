@@ -56,7 +56,8 @@ class BlitzForgeTest {
             }
 
             @Override
-            public void onFileResult(ProjectFile file, boolean edited, @Nullable String errorMessage, String llmOutput) {
+            public void onFileResult(
+                    ProjectFile file, boolean edited, @Nullable String errorMessage, String llmOutput) {
                 progresses.incrementAndGet();
             }
 

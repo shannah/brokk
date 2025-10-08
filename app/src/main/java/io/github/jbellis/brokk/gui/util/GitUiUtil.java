@@ -43,7 +43,10 @@ public final class GitUiUtil {
 
     private GitUiUtil() {}
 
-    /** Capture uncommitted diffs for the specified files, adding the result to the context. `selectedFiles` must not be empty. */
+    /**
+     * Capture uncommitted diffs for the specified files, adding the result to the context. `selectedFiles` must not be
+     * empty.
+     */
     public static void captureUncommittedDiff(
             ContextManager contextManager, Chrome chrome, List<ProjectFile> selectedFiles) {
         assert !selectedFiles.isEmpty();
