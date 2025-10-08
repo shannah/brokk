@@ -78,7 +78,7 @@ public class NonTextHeuristicResolverTest {
         var mergeConflict = ConflictInspector.inspectFromProject(project);
 
         // Find DELETE_MODIFY entry
-        var dmEntries = mergeConflict.nonText().entrySet().stream()
+        var dmEntries = mergeConflict.orElseThrow().nonText().entrySet().stream()
                 .filter(e -> e.getValue().type() == NonTextType.DELETE_MODIFY)
                 .toList();
         assertFalse(dmEntries.isEmpty(), "Expected at least one DELETE_MODIFY conflict");

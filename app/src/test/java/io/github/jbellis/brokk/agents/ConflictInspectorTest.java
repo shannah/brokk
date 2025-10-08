@@ -167,7 +167,7 @@ class ConflictInspectorTest {
             // merge -> conflict
             runGitAllowFail(projectRoot, "merge feature");
 
-            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo));
+            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo)).orElseThrow();
             assertEquals(MergeAgent.MergeMode.MERGE, conflict.state());
             assertEquals(mainSha, conflict.ourCommitId());
             assertEquals(featureSha, conflict.otherCommitId());
@@ -225,7 +225,7 @@ class ConflictInspectorTest {
             // merge -> conflict (rename/modify vs modify)
             runGitAllowFail(projectRoot, "merge feature");
 
-            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo));
+            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo)).orElseThrow();
             assertEquals(MergeAgent.MergeMode.MERGE, conflict.state());
 
             var cf = conflict.files().iterator().next();
@@ -296,7 +296,7 @@ class ConflictInspectorTest {
             // merge -> modify/delete conflict
             runGitAllowFail(projectRoot, "merge feature");
 
-            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo));
+            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo)).orElseThrow();
             assertEquals(MergeAgent.MergeMode.MERGE, conflict.state());
             assertEquals(oursDelSha, conflict.ourCommitId());
             assertEquals(featureSha, conflict.otherCommitId());
@@ -364,7 +364,7 @@ class ConflictInspectorTest {
             // merge -> add/add conflict
             runGitAllowFail(projectRoot, "merge feature");
 
-            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo));
+            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo)).orElseThrow();
             assertEquals(MergeAgent.MergeMode.MERGE, conflict.state());
             assertEquals(oursSha, conflict.ourCommitId());
             assertEquals(featureSha, conflict.otherCommitId());
@@ -427,7 +427,7 @@ class ConflictInspectorTest {
             // squash merge -> expect conflict
             runGitAllowFail(projectRoot, "merge --squash feature");
 
-            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo));
+            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo)).orElseThrow();
             assertEquals(MergeAgent.MergeMode.SQUASH, conflict.state());
             assertEquals(mainSha, conflict.ourCommitId());
             assertEquals(featureSha, conflict.otherCommitId());
@@ -469,7 +469,7 @@ class ConflictInspectorTest {
             runGit(projectRoot, "checkout feature");
             runGitAllowFail(projectRoot, "rebase " + mainBranch);
 
-            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo));
+            var conflict = ConflictInspector.inspectFromProject(makeProject(projectRoot, repo)).orElseThrow();
             assertEquals(MergeAgent.MergeMode.REBASE, conflict.state());
             // base of the cherry-picked OTHER is the original base
             assertEquals(repo.shortHash(baseSha), repo.shortHash(conflict.baseCommitId()));

@@ -13,6 +13,8 @@ import java.nio.file.Path;
 import java.util.List;
 import java.util.Set;
 import java.util.concurrent.atomic.AtomicInteger;
+import java.util.function.Supplier;
+import org.jetbrains.annotations.Nullable;
 import org.junit.jupiter.api.Test;
 
 class BlitzForgeTest {
@@ -33,14 +35,10 @@ class BlitzForgeTest {
         BlitzForge.RunConfig cfg = new BlitzForge.RunConfig(
                 "Do thing",
                 null,
-                false,
-                null,
-                null,
+                (Supplier<String>) () -> "",
+                (Supplier<String>) () -> "",
                 "",
-                BlitzForge.ParallelOutputMode.ALL,
-                false,
-                "",
-                BlitzForge.Action.CODE);
+                BlitzForge.ParallelOutputMode.ALL);
 
         class StubListener implements BlitzForge.Listener {
             final AtomicInteger starts = new AtomicInteger();
@@ -55,6 +53,11 @@ class BlitzForgeTest {
             @Override
             public IConsoleIO getConsoleIO(ProjectFile file) {
                 return new HeadlessConsole();
+            }
+
+            @Override
+            public void onFileResult(ProjectFile file, boolean edited, @Nullable String errorMessage, String llmOutput) {
+                progresses.incrementAndGet();
             }
 
             @Override
