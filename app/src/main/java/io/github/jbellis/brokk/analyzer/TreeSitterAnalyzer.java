@@ -448,7 +448,8 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
         return withFileProperties(props -> props.getOrDefault(file, FileProperties.empty()));
     }
 
-    protected List<CodeUnit> topLevelCodeUnitsOf(ProjectFile file) {
+    @Override
+    public List<CodeUnit> topLevelCodeUnitsOf(ProjectFile file) {
         return fileProperties(file).topLevelCodeUnits();
     }
 

@@ -91,6 +91,16 @@ public class MultiAnalyzer
     }
 
     @Override
+    public List<CodeUnit> topLevelCodeUnitsOf(ProjectFile file) {
+        var lang = Languages.fromExtension(Files.getFileExtension(file.absPath().toString()));
+        var delegate = delegates.get(lang);
+        if (delegate != null) {
+            return delegate.topLevelCodeUnitsOf(file);
+        }
+        return List.of();
+    }
+
+    @Override
     public Set<String> getMethodSources(String fqName, boolean includeComments) {
         return findFirst(analyzer -> analyzer.as(SourceCodeProvider.class)
                         .map(scp -> scp.getMethodSources(fqName, includeComments))
