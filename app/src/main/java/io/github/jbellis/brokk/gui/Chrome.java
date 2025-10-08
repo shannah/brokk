@@ -42,6 +42,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
+import java.util.prefs.Preferences;
 import javax.swing.*;
 import javax.swing.border.EmptyBorder;
 import org.apache.logging.log4j.LogManager;
@@ -72,6 +73,10 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
     // Track active preview windows for reuse
     private final Map<String, JFrame> activePreviewWindows = new ConcurrentHashMap<>();
+    private @Nullable Rectangle dependenciesDialogBounds = null;
+
+    @Nullable
+    private JDialog dependenciesDialog = null;
 
     /**
      * Gets whether updates to the output panel are skipped on context changes.
@@ -154,6 +159,18 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     private int lastExpandedSidebarLocation = -1;
     private boolean sidebarCollapsed = false;
 
+    // Workspace collapse state (toggled by clicking token/cost label)
+    private boolean workspaceCollapsed = false;
+
+    // Pin exact Instructions height (in px) during collapse so only Output resizes
+    private int pinnedInstructionsHeightPx = -1;
+
+    // Save the Workspace↔Instructions divider as a proportion (0..1) to restore Workspace height precisely
+    private double savedTopSplitProportion = -1.0;
+
+    // Guard to prevent recursion when clamping the Output↔Bottom divider
+    private boolean adjustingMainDivider = false;
+
     // Swing components:
     final JFrame frame;
     private JLabel backgroundStatusLabel;
@@ -170,15 +187,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
     /** Horizontal split between left tab stack and right output stack */
     private JSplitPane bottomSplitPane;
 
-    // Workspace | Dependencies (right drawer)
-    @SuppressWarnings("NullAway.Init") // Initialized in constructor
-    private JSplitPane workspaceDependenciesSplit;
-
     @SuppressWarnings("NullAway.Init") // Initialized in constructor
     private JPanel workspaceTopContainer;
-
-    @SuppressWarnings("NullAway.Init")
-    private io.github.jbellis.brokk.gui.dependencies.DependenciesDrawerPanel dependenciesDrawerPanel;
 
     // Panels:
     private final WorkspacePanel workspacePanel;
@@ -415,19 +425,14 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // 1) Nested split for Workspace (top) / Instructions (bottom)
         JSplitPane workspaceInstructionsSplit = new JSplitPane(JSplitPane.VERTICAL_SPLIT);
 
-        // Create a right-hand Dependencies drawer beside the Workspace
-        workspaceDependenciesSplit = new JSplitPane(JSplitPane.HORIZONTAL_SPLIT);
-        this.dependenciesDrawerPanel = new DependenciesDrawerPanel(this, workspaceDependenciesSplit);
-        workspaceDependenciesSplit.setResizeWeight(0.67); // Give more space to workspace by default
-        workspaceDependenciesSplit.setLeftComponent(workspacePanel);
-        workspaceDependenciesSplit.setRightComponent(this.dependenciesDrawerPanel);
-        // Drawer state will be restored from GlobalUiSettings after layout
-
         workspaceTopContainer = new JPanel(new BorderLayout());
-        workspaceTopContainer.add(workspaceDependenciesSplit, BorderLayout.CENTER);
+        workspaceTopContainer.add(workspacePanel, BorderLayout.CENTER);
 
         // Create terminal drawer panel
         instructionsDrawerSplit = new DrawerSplitPanel();
+        // Ensure bottom area doesn't get squeezed to near-zero height on first layout after swaps
+        // This is the minimum height for the Instructions+Drawer when the workspace is hidden.
+        instructionsDrawerSplit.setMinimumSize(new Dimension(200, 325));
         terminalDrawer = new TerminalDrawerPanel(this, instructionsDrawerSplit);
 
         // Attach instructions (left) and drawer (right)
@@ -438,6 +443,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         workspaceInstructionsSplit.setTopComponent(workspaceTopContainer);
         workspaceInstructionsSplit.setBottomComponent(instructionsDrawerSplit);
         workspaceInstructionsSplit.setResizeWeight(0.583); // ~35 % Workspace / 25 % Instructions
+        // Ensure the bottom area of the Output↔Bottom split (when workspace is visible) never collapses
+        workspaceInstructionsSplit.setMinimumSize(new Dimension(200, 325));
 
         // Keep reference so existing persistence logic still works
         topSplitPane = workspaceInstructionsSplit;
@@ -1146,7 +1153,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         rootPane.getActionMap().put("toggleDependenciesDrawer", new AbstractAction() {
             @Override
             public void actionPerformed(ActionEvent e) {
-                dependenciesDrawerPanel.openPanel();
+                showDependenciesModalDialog();
             }
         });
 
@@ -1447,15 +1454,31 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                     themeManager.isDarkTheme() ? UIManager.getColor("chat_background") : Color.WHITE);
 
             var project = contextManager.getProject();
-            var storedBounds = project.getPreviewWindowBounds(); // Use preview bounds
-            if (storedBounds.width > 0 && storedBounds.height > 0) {
-                previewFrame.setBounds(storedBounds);
-                if (!isPositionOnScreen(storedBounds.x, storedBounds.y)) {
-                    previewFrame.setLocationRelativeTo(frame); // Center if off-screen
+            boolean isDependencies = contentComponent instanceof DependenciesDrawerPanel;
+
+            if (isDependencies) {
+                if (dependenciesDialogBounds != null
+                        && dependenciesDialogBounds.width > 0
+                        && dependenciesDialogBounds.height > 0) {
+                    previewFrame.setBounds(dependenciesDialogBounds);
+                    if (!isPositionOnScreen(dependenciesDialogBounds.x, dependenciesDialogBounds.y)) {
+                        previewFrame.setLocationRelativeTo(frame); // Center if off-screen
+                    }
+                } else {
+                    previewFrame.setSize(800, 500);
+                    previewFrame.setLocationRelativeTo(frame);
                 }
             } else {
-                previewFrame.setSize(800, 600); // Default size if no bounds saved
-                previewFrame.setLocationRelativeTo(frame); // Center relative to main window
+                var storedBounds = project.getPreviewWindowBounds(); // Use preview bounds
+                if (storedBounds.width > 0 && storedBounds.height > 0) {
+                    previewFrame.setBounds(storedBounds);
+                    if (!isPositionOnScreen(storedBounds.x, storedBounds.y)) {
+                        previewFrame.setLocationRelativeTo(frame); // Center if off-screen
+                    }
+                } else {
+                    previewFrame.setSize(800, 600); // Default size if no bounds saved
+                    previewFrame.setLocationRelativeTo(frame); // Center relative to main window
+                }
             }
 
             // Set a minimum width for preview windows to ensure search controls work properly
@@ -1466,12 +1489,20 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             previewFrame.addComponentListener(new java.awt.event.ComponentAdapter() {
                 @Override
                 public void componentMoved(java.awt.event.ComponentEvent e) {
-                    project.savePreviewWindowBounds(finalFrameForBounds); // Save JFrame bounds
+                    if (isDependencies) {
+                        dependenciesDialogBounds = finalFrameForBounds.getBounds();
+                    } else {
+                        project.savePreviewWindowBounds(finalFrameForBounds); // Save JFrame bounds
+                    }
                 }
 
                 @Override
                 public void componentResized(java.awt.event.ComponentEvent e) {
-                    project.savePreviewWindowBounds(finalFrameForBounds); // Save JFrame bounds
+                    if (isDependencies) {
+                        dependenciesDialogBounds = finalFrameForBounds.getBounds();
+                    } else {
+                        project.savePreviewWindowBounds(finalFrameForBounds); // Save JFrame bounds
+                    }
                 }
             });
         } else {
@@ -1571,6 +1602,69 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             // For other types of previews, use a generic key based on class and title
             return "preview:" + contentComponent.getClass().getSimpleName() + ":" + title;
         }
+    }
+
+    // Opens the Dependencies UI as an application-modal dialog
+    public void showDependenciesModalDialog() {
+        assert SwingUtilities.isEventDispatchThread() : "Must be called on EDT";
+        if (dependenciesDialog != null && dependenciesDialog.isDisplayable()) {
+            dependenciesDialog.toFront();
+            dependenciesDialog.requestFocus();
+            return;
+        }
+
+        var dependenciesPanel = new DependenciesDrawerPanel(this);
+        var dialog = new JDialog(frame, "Manage Dependencies", Dialog.ModalityType.APPLICATION_MODAL);
+        Chrome.applyIcon(dialog);
+        dialog.setDefaultCloseOperation(WindowConstants.DISPOSE_ON_CLOSE);
+        dialog.setLayout(new BorderLayout());
+        dialog.add(dependenciesPanel, BorderLayout.CENTER);
+
+        if (dependenciesDialogBounds != null
+                && dependenciesDialogBounds.width > 0
+                && dependenciesDialogBounds.height > 0) {
+            dialog.setBounds(dependenciesDialogBounds);
+            if (!isPositionOnScreen(dependenciesDialogBounds.x, dependenciesDialogBounds.y)) {
+                dialog.setLocationRelativeTo(frame);
+            }
+        } else {
+            dialog.setSize(800, 500);
+            dialog.setLocationRelativeTo(frame);
+        }
+
+        dialog.addComponentListener(new java.awt.event.ComponentAdapter() {
+            @Override
+            public void componentMoved(java.awt.event.ComponentEvent e) {
+                dependenciesDialogBounds = dialog.getBounds();
+            }
+
+            @Override
+            public void componentResized(java.awt.event.ComponentEvent e) {
+                dependenciesDialogBounds = dialog.getBounds();
+            }
+        });
+
+        // Close on ESC
+        var rootPane = dialog.getRootPane();
+        rootPane.getInputMap(JComponent.WHEN_IN_FOCUSED_WINDOW)
+                .put(KeyStroke.getKeyStroke(KeyEvent.VK_ESCAPE, 0), "closeWindow");
+        rootPane.getActionMap().put("closeWindow", new AbstractAction() {
+            @Override
+            public void actionPerformed(ActionEvent e) {
+                dialog.dispatchEvent(new WindowEvent(dialog, WindowEvent.WINDOW_CLOSING));
+            }
+        });
+
+        dialog.addWindowListener(new java.awt.event.WindowAdapter() {
+            @Override
+            public void windowClosed(WindowEvent e) {
+                dependenciesDialog = null;
+            }
+        });
+
+        dependenciesDialog = dialog;
+        dependenciesPanel.openPanel();
+        dialog.setVisible(true); // Modal; blocks until closed
     }
 
     /** Closes all active preview windows and clears the tracking map. Useful for cleanup or when switching projects. */
@@ -1989,6 +2083,18 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
         // Restore drawer states from global settings
         restoreDrawersFromGlobalSettings();
+
+        // Restore Workspace collapsed/expanded state: prefer per-project, fallback to global default
+        try {
+            Boolean projCollapsed = readProjectWorkspaceCollapsed();
+            boolean collapsed = (projCollapsed != null) ? projCollapsed : readGlobalWorkspaceCollapsed();
+            // Only apply if different from current to avoid redundant relayout
+            if (collapsed != this.workspaceCollapsed) {
+                setWorkspaceCollapsed(collapsed);
+            }
+        } catch (Exception ignored) {
+            // Defensive: do not let preference errors interrupt UI construction
+        }
     }
 
     /**
@@ -1996,22 +2102,70 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
      * handled by TerminalDrawerPanel itself to respect per-project settings.
      */
     private void restoreDrawersFromGlobalSettings() {
-        // Dependencies drawer (global)
-        boolean depOpen = GlobalUiSettings.isDependenciesDrawerOpen();
-        double depProp = GlobalUiSettings.getDependenciesDrawerProportion();
-        if (depOpen) {
-            // Ensure drawer is open synchronously before first layout to avoid startup motion
-            dependenciesDrawerPanel.openInitially();
-            if (depProp > 0.0 && depProp < 1.0) {
-                workspaceDependenciesSplit.setDividerLocation(depProp);
-            }
-        } else {
-            // Ensure it is collapsed
-            dependenciesDrawerPanel.collapseIfEmpty();
-        }
-
         // Do not restore Terminal drawer here.
         // TerminalDrawerPanel.restoreInitialState() handles per-project-first, then global fallback.
+    }
+
+    // --- Workspace collapsed persistence (per-project with global fallback) ---
+
+    private static final String PREFS_ROOT = "io.github.jbellis.brokk";
+    private static final String PREFS_PROJECTS = "projects";
+    private static final String PREF_KEY_WORKSPACE_COLLAPSED = "workspaceCollapsed";
+    private static final String PREF_KEY_WORKSPACE_COLLAPSED_GLOBAL = "workspaceCollapsedGlobal";
+
+    private static Preferences prefsRoot() {
+        return Preferences.userRoot().node(PREFS_ROOT);
+    }
+
+    private static String sanitizeNodeName(String s) {
+        // Preferences node names may not contain '/'.
+        return s.replace('/', '_').replace('\\', '_').replace(':', '_');
+    }
+
+    private Preferences projectPrefsNode() {
+        String projKey = sanitizeNodeName(getProject().getRoot().toString());
+        return prefsRoot().node(PREFS_PROJECTS).node(projKey);
+    }
+
+    /** Save the current workspace collapsed state both per-project and as a global default. */
+    private void saveWorkspaceCollapsedSetting(boolean collapsed) {
+        try {
+            // Per-project
+            var p = projectPrefsNode();
+            p.putBoolean(PREF_KEY_WORKSPACE_COLLAPSED, collapsed);
+            p.flush();
+        } catch (Exception ignored) {
+            // Non-fatal persistence failure
+        }
+        try {
+            // Global default
+            var g = prefsRoot();
+            g.putBoolean(PREF_KEY_WORKSPACE_COLLAPSED_GLOBAL, collapsed);
+            g.flush();
+        } catch (Exception ignored) {
+            // Non-fatal persistence failure
+        }
+    }
+
+    /** Returns the per-project collapsed setting if present; otherwise returns null. */
+    private @Nullable Boolean readProjectWorkspaceCollapsed() {
+        try {
+            var p = projectPrefsNode();
+            String raw = p.get(PREF_KEY_WORKSPACE_COLLAPSED, null);
+            return (raw == null) ? null : Boolean.valueOf(raw);
+        } catch (Exception ignored) {
+            return null;
+        }
+    }
+
+    /** Returns the global default collapsed setting, defaulting to false if unset. */
+    private boolean readGlobalWorkspaceCollapsed() {
+        try {
+            var g = prefsRoot();
+            return g.getBoolean(PREF_KEY_WORKSPACE_COLLAPSED_GLOBAL, false);
+        } catch (Exception ignored) {
+            return false;
+        }
     }
 
     /** Adds property change listeners to split panes for saving positions (global-first). */
@@ -2028,13 +2182,40 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         });
 
         mainVerticalSplitPane.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-            if (mainVerticalSplitPane.isShowing()) {
-                var newPos = mainVerticalSplitPane.getDividerLocation();
-                if (newPos > 0) {
-                    // Keep backward-compat but persist globally as the source of truth
-                    project.saveRightVerticalSplitPosition(newPos);
-                    GlobalUiSettings.saveRightVerticalSplitPosition(newPos);
+            if (!mainVerticalSplitPane.isShowing()) {
+                return;
+            }
+
+            int newPos = mainVerticalSplitPane.getDividerLocation();
+
+            // Clamp so the bottom (Instructions area) never shrinks below its minimum height.
+            int total = mainVerticalSplitPane.getHeight();
+            if (total > 0) {
+                int dividerSize = mainVerticalSplitPane.getDividerSize();
+                Component bottom = mainVerticalSplitPane.getBottomComponent();
+                int minBottom = (bottom != null) ? Math.max(0, bottom.getMinimumSize().height) : 0;
+                int maxLocation = Math.max(0, total - dividerSize - minBottom);
+
+                if (newPos > maxLocation) {
+                    if (!adjustingMainDivider) {
+                        adjustingMainDivider = true;
+                        SwingUtilities.invokeLater(() -> {
+                            try {
+                                mainVerticalSplitPane.setDividerLocation(maxLocation);
+                            } finally {
+                                adjustingMainDivider = false;
+                            }
+                        });
+                    }
+                    // Do not persist out-of-bounds positions
+                    return;
                 }
+            }
+
+            if (newPos > 0) {
+                // Keep backward-compat but persist globally as the source of truth
+                project.saveRightVerticalSplitPosition(newPos);
+                GlobalUiSettings.saveRightVerticalSplitPosition(newPos);
             }
         });
 
@@ -2051,23 +2232,6 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
                     }
                 }
             }
-        });
-
-        // Persist Dependencies drawer open/proportion globally
-        workspaceDependenciesSplit.addPropertyChangeListener(JSplitPane.DIVIDER_LOCATION_PROPERTY, e -> {
-            if (workspaceDependenciesSplit.isShowing()) {
-                int total = workspaceDependenciesSplit.getWidth();
-                if (total > 0) {
-                    double prop = Math.max(
-                            0.05,
-                            Math.min(0.95, (double) workspaceDependenciesSplit.getDividerLocation() / (double) total));
-                    GlobalUiSettings.saveDependenciesDrawerProportion(prop);
-                    GlobalUiSettings.saveDependenciesDrawerOpen(workspaceDependenciesSplit.getDividerSize() > 0);
-                }
-            }
-        });
-        workspaceDependenciesSplit.addPropertyChangeListener("dividerSize", e -> {
-            GlobalUiSettings.saveDependenciesDrawerOpen(workspaceDependenciesSplit.getDividerSize() > 0);
         });
 
         // Persist Terminal drawer open/proportion globally
@@ -2828,6 +2992,155 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         int max = (int) (frameWidth * maxFraction);
 
         return Math.max(min, Math.min(ideal, max));
+    }
+
+    /**
+     * Toggle collapsing the Workspace (top of Workspace|Instructions split) and hide/show the divider between Output
+     * and the bottom stack.
+     */
+    public void toggleWorkspaceCollapsed() {
+        setWorkspaceCollapsed(!workspaceCollapsed);
+    }
+
+    /**
+     * Collapse/expand the Workspace area.
+     *
+     * <p>New behavior: - When collapsed, completely remove the Workspace+Instructions split from the bottom stack and
+     * show only the Instructions/Drawer as the bottom component. The Output↔Bottom divider remains visible. - When
+     * expanded, restore the original Workspace+Instructions split as the bottom component and restore the previous
+     * divider location for the top split (Workspace↔Instructions).
+     */
+    public void setWorkspaceCollapsed(boolean collapsed) {
+        Runnable r = () -> {
+            if (this.workspaceCollapsed == collapsed) {
+                return;
+            }
+
+            if (collapsed) {
+                // Also save as a proportion for robust restore after resizes
+                try {
+                    int t = Math.max(0, topSplitPane.getHeight());
+                    if (t > 0) {
+                        double p = (double) Math.max(0, topSplitPane.getDividerLocation()) / (double) t;
+                        // Clamp to avoid pathological values
+                        savedTopSplitProportion = Math.max(0.05, Math.min(0.95, p));
+                    }
+                } catch (Exception ignored) {
+                    // fallback will be used on restore
+                }
+
+                // Measure the current on-screen height of the Instructions area so we can keep it EXACT
+                int instructionsHeightPx = 0;
+                try {
+                    // Bottom of the topSplitPane is the Instructions container when expanded
+                    Component bottom = topSplitPane.getBottomComponent();
+                    if (bottom != null) {
+                        instructionsHeightPx = Math.max(0, bottom.getHeight());
+                    }
+                    // Fallback estimate if height not realized yet
+                    if (instructionsHeightPx == 0) {
+                        int tsTotal = Math.max(0, topSplitPane.getHeight());
+                        int tsDivider = topSplitPane.getDividerSize();
+                        int maxFromTop = Math.max(0, tsTotal - tsDivider);
+                        int minBottom = (bottom != null) ? Math.max(0, bottom.getMinimumSize().height) : 0;
+                        instructionsHeightPx = Math.min(
+                                Math.max(minBottom, instructionsDrawerSplit.getMinimumSize().height), maxFromTop);
+                    }
+                } catch (Exception ignored) {
+                    // Defensive; we'll clamp during restore regardless
+                }
+                // Pin the measured Instructions height for exact restore later
+                pinnedInstructionsHeightPx = instructionsHeightPx;
+
+                // Swap to Instructions-only in the bottom
+                mainVerticalSplitPane.setBottomComponent(instructionsDrawerSplit);
+
+                // Revalidate layout, then set the main divider so bottom == pinned Instructions height
+                mainVerticalSplitPane.revalidate();
+                SwingUtilities.invokeLater(
+                        () -> applyMainDividerForExactBottomHeight(Math.max(0, pinnedInstructionsHeightPx)));
+
+                this.workspaceCollapsed = true;
+            } else {
+                // Ensure the workspace split bottom points to the instructions drawer, then restore it as bottom
+                try {
+                    topSplitPane.setBottomComponent(instructionsDrawerSplit);
+                } catch (Exception ignored) {
+                    // If it's already set due to prior operations, ignore
+                }
+                mainVerticalSplitPane.setBottomComponent(topSplitPane);
+
+                // Revalidate the top split, then restore Workspace and bottom height exactly
+                topSplitPane.revalidate();
+                SwingUtilities.invokeLater(() -> {
+                    // Choose saved proportion; fall back to DEFAULT if missing
+                    double p = (savedTopSplitProportion > 0.0 && savedTopSplitProportion < 1.0)
+                            ? savedTopSplitProportion
+                            : DEFAULT_WORKSPACE_INSTRUCTIONS_SPLIT;
+                    // Clamp proportion
+                    p = Math.max(0.05, Math.min(0.95, p));
+
+                    // Compute the target bottom height so that Instructions stays at pinnedInstructionsHeightPx
+                    // For a vertical JSplitPane: bottomHeight = (1 - p) * T - dividerSize  =>  T = (pinned +
+                    // dividerSize) / (1 - p)
+                    int dividerSizeTS = topSplitPane.getDividerSize();
+                    int pinned = Math.max(0, pinnedInstructionsHeightPx);
+                    int desiredBottom = (int) Math.round((pinned + dividerSizeTS) / Math.max(0.05, (1.0 - p)));
+
+                    // Set the main Output↔Bottom divider so bottom == desiredBottom (clamped)
+                    applyMainDividerForExactBottomHeight(desiredBottom);
+
+                    // Finally set the top split divider by proportion to restore Workspace share
+                    try {
+                        topSplitPane.setDividerLocation(p);
+                    } catch (Exception ignored) {
+                        // ignore
+                    }
+                });
+
+                this.workspaceCollapsed = false;
+            }
+
+            // Refresh layout/paint
+            mainVerticalSplitPane.revalidate();
+            mainVerticalSplitPane.repaint();
+
+            // Persist collapsed/expanded state (per-project + global)
+            try {
+                saveWorkspaceCollapsedSetting(this.workspaceCollapsed);
+            } catch (Exception ignored) {
+                // Non-fatal persistence failure
+            }
+        };
+
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
+            SwingUtilities.invokeLater(r);
+        }
+    }
+
+    /**
+     * Set the Output↔Bottom divider so that the bottom height equals the exact desired pixel height, clamped to the
+     * bottom component's minimum size. This is used when collapsing Workspace to guarantee the Instructions area does
+     * not resize at all.
+     */
+    private void applyMainDividerForExactBottomHeight(int desiredBottomPx) {
+        int total = mainVerticalSplitPane.getHeight();
+        if (total <= 0) {
+            return;
+        }
+        int dividerSize = mainVerticalSplitPane.getDividerSize();
+        java.awt.Component bottom = mainVerticalSplitPane.getBottomComponent();
+        int minBottom = (bottom != null) ? Math.max(0, bottom.getMinimumSize().height) : 0;
+
+        int target = Math.max(0, desiredBottomPx);
+        int minAllowed = minBottom;
+        int maxAllowed = Math.max(minAllowed, total - dividerSize); // cannot exceed available space
+        int clampedBottom = Math.max(minAllowed, Math.min(target, maxAllowed));
+
+        int safeDivider = Math.max(0, total - dividerSize - clampedBottom);
+        mainVerticalSplitPane.setDividerLocation(safeDivider);
     }
 
     /** Updates the terminal font size for all active terminals. */
