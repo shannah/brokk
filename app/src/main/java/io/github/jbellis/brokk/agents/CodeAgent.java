@@ -109,8 +109,6 @@ public class CodeAgent {
         var blocks = new ArrayList<EditBlock.SearchReplaceBlock>(); // This will be part of WorkspaceState
         Map<ProjectFile, String> originalFileContents = new HashMap<>();
 
-        var msg = "Code Agent engaged: `%s...`".formatted(LogDescription.getShortDescription(userInput));
-        io.showNotification(IConsoleIO.NotificationRole.INFO, msg);
         TaskResult.StopDetails stopDetails;
 
         var parser = EditBlockParser.instance;
@@ -677,8 +675,7 @@ public class CodeAgent {
         return new Step.Continue(nextCs, es);
     }
 
-    private EditBlock.EditResult applyBlocksAndHandleErrors(
-            List<EditBlock.SearchReplaceBlock> blocksToApply, Set<ProjectFile> changedFilesCollector)
+    private EditBlock.EditResult applyBlocksAndHandleErrors(List<EditBlock.SearchReplaceBlock> blocksToApply)
             throws EditStopException, InterruptedException {
 
         EditBlock.EditResult editResult;
@@ -689,8 +686,6 @@ public class CodeAgent {
             // io.toolError is handled by caller if this exception propagates
             throw new EditStopException(new TaskResult.StopDetails(TaskResult.StopReason.IO_ERROR, eMessage));
         }
-
-        changedFilesCollector.addAll(editResult.originalContents().keySet());
         return editResult;
     }
 
@@ -756,12 +751,11 @@ public class CodeAgent {
 
         EditBlock.EditResult editResult;
         int updatedConsecutiveApplyFailures = es.consecutiveApplyFailures();
-        EditState esForStep = es; // Will be updated
+        EditState esForStep; // Will be updated
         ConversationState csForStep = cs; // Will be updated
 
         try {
-            editResult =
-                    applyBlocksAndHandleErrors(es.pendingBlocks(), es.changedFiles() /* Helper mutates this set */);
+            editResult = applyBlocksAndHandleErrors(es.pendingBlocks());
 
             int attemptedBlockCount = es.pendingBlocks().size();
             var failedBlocks = editResult.failedBlocks();
@@ -771,12 +765,7 @@ public class CodeAgent {
             int succeededCount = attemptedBlockCount - failedBlocks.size();
             int newBlocksAppliedWithoutBuild = es.blocksAppliedWithoutBuild() + succeededCount;
 
-            // Update originalFileContents in the workspace state being built for the next step
-            Map<ProjectFile, String> nextOriginalFileContents = new HashMap<>(es.originalFileContents());
-            editResult.originalContents().forEach(nextOriginalFileContents::putIfAbsent);
-
-            List<EditBlock.SearchReplaceBlock> nextPendingBlocks =
-                    new ArrayList<>(); // Blocks are processed, so clear for next step's ws
+            List<EditBlock.SearchReplaceBlock> nextPendingBlocks = List.of();
 
             if (!failedBlocks.isEmpty()) { // Some blocks failed the direct apply
                 if (succeededCount == 0) { // Total failure for this batch of pendingBlocks
@@ -806,7 +795,7 @@ public class CodeAgent {
                             nextPendingBlocks,
                             updatedConsecutiveApplyFailures,
                             newBlocksAppliedWithoutBuild,
-                            nextOriginalFileContents);
+                            editResult.originalContents());
                     report("Failed to apply %s block(s), asking LLM to retry".formatted(failedBlocks.size()));
                     return new Step.Retry(csForStep, esForStep);
                 }
@@ -819,7 +808,7 @@ public class CodeAgent {
                         nextPendingBlocks,
                         updatedConsecutiveApplyFailures,
                         newBlocksAppliedWithoutBuild,
-                        nextOriginalFileContents);
+                        editResult.originalContents());
                 return new Step.Continue(csForStep, esForStep);
             }
         } catch (EditStopException e) {
@@ -1059,7 +1048,7 @@ public class CodeAgent {
                     continue;
                 }
 
-                var description = formatJdtProblem(absPath, cu, prob);
+                var description = formatJdtProblem(absPath, cu, prob, src);
                 diags.add(new JavaDiagnostic(id, catId, description));
             }
 
@@ -1101,12 +1090,64 @@ public class CodeAgent {
         return new Step.Retry(nextCs, nextEs);
     }
 
-    private static String formatJdtProblem(Path absPath, CompilationUnit cu, IProblem prob) {
+    private static String formatJdtProblem(Path absPath, CompilationUnit cu, IProblem prob, String src) {
         int start = Math.max(0, prob.getSourceStart());
         long line = Math.max(1, cu.getLineNumber(start));
         long col = Math.max(1, cu.getColumnNumber(start));
         var message = Objects.toString(prob.getMessage(), "Problem");
-        return "%s:%d:%d: %s".formatted(absPath.toString(), line, col, message);
+
+        String lineText = extractLine(src, (int) line);
+        String pointer = lineText.isEmpty() ? "" : caretIndicator(lineText, (int) col);
+
+        return """
+                %s:%d:%d: %s
+                > %s
+                  %s
+                """
+                .stripIndent()
+                .formatted(absPath.toString(), line, col, message, lineText, pointer);
+    }
+
+    private static String extractLine(String src, int oneBasedLine) {
+        if (src.isEmpty() || oneBasedLine < 1) return "";
+        int len = src.length();
+        int current = 1;
+        int i = 0;
+        int lineStart = 0;
+
+        // Advance to the requested line start
+        while (i < len && current < oneBasedLine) {
+            char c = src.charAt(i++);
+            if (c == '\n') {
+                current++;
+                lineStart = i;
+            } else if (c == '\r') {
+                // handle CRLF or lone CR
+                if (i < len && src.charAt(i) == '\n') i++;
+                current++;
+                lineStart = i;
+            }
+        }
+
+        if (current != oneBasedLine) {
+            // Line beyond EOF
+            return "";
+        }
+
+        // Find end of line
+        int j = lineStart;
+        while (j < len) {
+            char c = src.charAt(j);
+            if (c == '\n' || c == '\r') break;
+            j++;
+        }
+        return src.substring(lineStart, j);
+    }
+
+    private static String caretIndicator(String lineText, int oneBasedCol) {
+        if (lineText.isEmpty()) return "";
+        int idx = Math.max(0, Math.min(oneBasedCol - 1, Math.max(0, lineText.length() - 1)));
+        return " ".repeat(idx) + "^";
     }
 
     /** next FSM state */
@@ -1232,7 +1273,7 @@ public class CodeAgent {
                     0,
                     newBuildError,
                     changedFiles,
-                    new HashMap<>(), // Clear per-turn baseline
+                    Map.of(), // Clear per-turn baseline
                     javaLintDiagnostics);
         }
 
@@ -1242,6 +1283,16 @@ public class CodeAgent {
                 int newApplyFailures,
                 int newBlocksApplied,
                 Map<ProjectFile, String> newOriginalContents) {
+            // Merge affected files from this apply into the running changedFiles set.
+            var mergedChangedFiles = new HashSet<>(changedFiles);
+            mergedChangedFiles.addAll(newOriginalContents.keySet());
+
+            // Merge per-turn original contents, preserving the earliest snapshot for each file
+            var mergedOriginals = new HashMap<>(originalFileContents);
+            for (var e : newOriginalContents.entrySet()) {
+                mergedOriginals.putIfAbsent(e.getKey(), e.getValue());
+            }
+
             return new EditState(
                     newPendingBlocks,
                     consecutiveParseFailures,
@@ -1249,8 +1300,8 @@ public class CodeAgent {
                     consecutiveBuildFailures,
                     newBlocksApplied,
                     lastBuildError,
-                    changedFiles,
-                    newOriginalContents,
+                    Collections.unmodifiableSet(mergedChangedFiles),
+                    Collections.unmodifiableMap(mergedOriginals),
                     javaLintDiagnostics);
         }
 

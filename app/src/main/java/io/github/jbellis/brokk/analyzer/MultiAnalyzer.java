@@ -48,6 +48,11 @@ public class MultiAnalyzer
     }
 
     @Override
+    public Set<Language> languages() {
+        return delegates.keySet();
+    }
+
+    @Override
     public List<CodeUnit> getUses(String fqName) {
         return delegates.values().stream()
                 .flatMap(
@@ -87,8 +92,9 @@ public class MultiAnalyzer
 
     @Override
     public Set<String> getMethodSources(String fqName, boolean includeComments) {
-        return findFirst(analyzer ->
-                        analyzer.as(SourceCodeProvider.class).map(scp -> scp.getMethodSources(fqName, includeComments)))
+        return findFirst(analyzer -> analyzer.as(SourceCodeProvider.class)
+                        .map(scp -> scp.getMethodSources(fqName, includeComments))
+                        .filter(sources -> !sources.isEmpty()))
                 .orElse(Collections.emptySet());
     }
 

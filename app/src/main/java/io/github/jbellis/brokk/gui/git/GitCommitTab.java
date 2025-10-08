@@ -532,7 +532,7 @@ public class GitCommitTab extends JPanel {
             }
         }
 
-        contextManager.submitExclusiveAction(() -> {
+        contextManager.submitBackgroundTask("Opening diff for uncommitted files", () -> {
             try {
                 var builder = new BrokkDiffPanel.Builder(chrome.getTheme(), contextManager);
 
@@ -671,7 +671,7 @@ public class GitCommitTab extends JPanel {
                         new HashSet<>(selectedFiles),
                         new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
 
-                try (var scope = contextManager.beginTask("", false)) {
+                try (var scope = contextManager.beginTask(rollbackDescription, false)) {
                     scope.append(taskResult);
                 }
 
