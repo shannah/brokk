@@ -160,7 +160,9 @@ public class Messages {
     }
 
     public static int getApproximateMessageTokens(Collection<ChatMessage> messages) {
-        return messages.parallelStream().mapToInt(m -> getApproximateTokens(getText(m))).sum();
+        return messages.parallelStream()
+                .mapToInt(m -> getApproximateTokens(getText(m)))
+                .sum();
     }
 
     public static boolean isReasoningMessage(ChatMessage message) {

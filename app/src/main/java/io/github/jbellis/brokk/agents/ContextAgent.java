@@ -61,7 +61,9 @@ public class ContextAgent {
             throws InterruptedException {
         this.cm = contextManager;
         this.llm = contextManager.getLlm(model, "ContextAgent (%s): %s".formatted(deepScan ? "Deep" : "Quick", goal));
-        this.filesLlm = contextManager.getLlm(contextManager.getService().quickestModel(), "ContextAgent Files (%s): %s".formatted(deepScan ? "Deep" : "Quick", goal));
+        this.filesLlm = contextManager.getLlm(
+                contextManager.getService().quickestModel(),
+                "ContextAgent Files (%s): %s".formatted(deepScan ? "Deep" : "Quick", goal));
         this.goal = goal;
         this.analyzer = contextManager.getAnalyzer();
         this.deepScan = deepScan;
@@ -89,8 +91,7 @@ public class ContextAgent {
             boolean success,
             List<ContextFragment> fragments,
             String reasoning,
-            @Nullable Llm.RichTokenUsage tokenUsage) {
-    }
+            @Nullable Llm.RichTokenUsage tokenUsage) {}
 
     /** Result record for the LLM tool call, holding recommended files, class names, and the LLM's reasoning. */
     private record LlmRecommendation(
@@ -201,8 +202,7 @@ public class ContextAgent {
         if (!deepScan) {
             // Quick mode: filenames only, ignore analyzer entirely
             var recs = askLlmQuickRecommendContext(
-                    allFiles.stream().map(ProjectFile::toString).toList(),
-                    workspaceRepresentation);
+                    allFiles.stream().map(ProjectFile::toString).toList(), workspaceRepresentation);
             return createResult(recs, existingFiles);
         }
 
@@ -243,8 +243,7 @@ public class ContextAgent {
 
         // Fallback 2: deep mixed again on the pruned set
         try {
-            var finalResult =
-                    executeDeepMixed(prunedFiles, existingFiles, workspaceRepresentation, false);
+            var finalResult = executeDeepMixed(prunedFiles, existingFiles, workspaceRepresentation, false);
             cumulativeUsage = addTokenUsage(cumulativeUsage, finalResult.tokenUsage());
             return new RecommendationResult(
                     finalResult.success(), finalResult.fragments(), finalResult.reasoning(), cumulativeUsage);
@@ -268,8 +267,7 @@ public class ContextAgent {
                     .flatMap(f -> f.files().stream())
                     .toList();
             try {
-                var finalResult2 =
-                        executeDeepMixed(prunedFiles2, existingFiles, workspaceRepresentation, false);
+                var finalResult2 = executeDeepMixed(prunedFiles2, existingFiles, workspaceRepresentation, false);
                 cumulativeUsage = addTokenUsage(cumulativeUsage, finalResult2.tokenUsage());
                 return new RecommendationResult(
                         finalResult2.success(), finalResult2.fragments(), finalResult2.reasoning(), cumulativeUsage);
@@ -310,9 +308,7 @@ public class ContextAgent {
         }
 
         // Any file without a produced summary becomes non-analyzable for content purposes
-        var summarizedFiles = summaries.keySet().stream()
-                .map(CodeUnit::source)
-                .collect(Collectors.toSet());
+        var summarizedFiles = summaries.keySet().stream().map(CodeUnit::source).collect(Collectors.toSet());
 
         var nonAnalyzableFiles = filesToConsider.stream()
                 .filter(f -> !summarizedFiles.contains(f))
@@ -332,7 +328,6 @@ public class ContextAgent {
                 contentTokens,
                 combinedTokens);
 
-
         if (allowSkipPruning && combinedTokens <= skipPruningBudget) {
             // Include everything without LLM
             var allFiles = new ArrayList<>(nonAnalyzableFiles);
@@ -349,10 +344,10 @@ public class ContextAgent {
         return createResult(llmRec, existingFiles);
     }
 
-
     private RecommendationResult createResult(LlmRecommendation llmRecommendation, Set<ProjectFile> existingFiles) {
         var originalFiles = llmRecommendation.recommendedFiles();
-        var filteredFiles = originalFiles.stream().filter(f -> !existingFiles.contains(f)).toList();
+        var filteredFiles =
+                originalFiles.stream().filter(f -> !existingFiles.contains(f)).toList();
         if (filteredFiles.size() != originalFiles.size()) {
             debug(
                     "Post-filtered LLM recommended files from {} to {} by excluding files already in the workspace",
@@ -393,7 +388,8 @@ public class ContextAgent {
         var pathFragments = filteredFiles.stream()
                 .map(f -> (ContextFragment) new ContextFragment.ProjectPathFragment(f, cm))
                 .toList();
-        var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream()).toList();
+        var combinedFragments = Stream.concat(skeletonFragments.stream(), pathFragments.stream())
+                .toList();
 
         return new RecommendationResult(true, combinedFragments, reasoning, llmRecommendation.tokenUsage());
     }
@@ -411,7 +407,8 @@ public class ContextAgent {
         var coalescedClasses = AnalyzerUtil.coalesceInnerClasses(Set.copyOf(classes));
         debug("Found {} classes", coalescedClasses.size());
 
-        return coalescedClasses.parallelStream().map(cu -> {
+        return coalescedClasses.parallelStream()
+                .map(cu -> {
                     final String skeleton = analyzer.as(SkeletonProvider.class)
                             .flatMap(skp -> skp.getSkeleton(cu.fqName()))
                             .orElse("");
@@ -420,7 +417,6 @@ public class ContextAgent {
                 .filter(entry -> !entry.getValue().isEmpty())
                 .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1));
     }
-
 
     // --- Deep Scan: filename pruning utilities ---
 
@@ -520,7 +516,8 @@ public class ContextAgent {
     }
 
     private LlmRecommendation deepPruneFilenamesInChunks(
-            List<String> filenames, int filenameTokens, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
+            List<String> filenames, int filenameTokens, Collection<ChatMessage> workspaceRepresentation)
+            throws InterruptedException {
         debug("Chunking {} filenames for parallel pruning", filenames.size());
 
         // Assume each filename has roughly equal token cost and split into N+1 chunks,
@@ -615,7 +612,8 @@ public class ContextAgent {
                         return "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), filename, body);
                     })
                     .collect(Collectors.joining("\n\n"));
-            userMessageText.append("<available_summaries>\n")
+            userMessageText
+                    .append("<available_summaries>\n")
                     .append(summariesText)
                     .append("\n</available_summaries>\n\n");
         }
@@ -625,7 +623,8 @@ public class ContextAgent {
                     .map(entry -> "<file path='%s'>\n%s\n</file>"
                             .formatted(entry.getKey().toString(), entry.getValue()))
                     .collect(Collectors.joining("\n\n"));
-            userMessageText.append("<available_files_content>\n")
+            userMessageText
+                    .append("<available_files_content>\n")
                     .append(filesText)
                     .append("\n</available_files_content>\n\n");
         }
@@ -666,7 +665,8 @@ public class ContextAgent {
         var tokenUsage = result.tokenUsage();
         if (result.error() != null) {
             var error = result.error();
-            if (error.getMessage() != null && error.getMessage().toLowerCase(Locale.ROOT).contains("context")) {
+            if (error.getMessage() != null
+                    && error.getMessage().toLowerCase(Locale.ROOT).contains("context")) {
                 throw new ContextTooLargeException();
             }
             logger.warn("Error from LLM during context recommendation: {}. Returning empty", error.getMessage());
@@ -731,9 +731,7 @@ public class ContextAgent {
     }
 
     private LlmRecommendation askLlmQuickRecommendContext(
-            List<String> filenames,
-            Collection<ChatMessage> workspaceRepresentation)
-            throws InterruptedException {
+            List<String> filenames, Collection<ChatMessage> workspaceRepresentation) throws InterruptedException {
 
         // Quick mode: filenames only, ignore analyzer entirely
         String reasoning = "LLM recommended via simple prompt (filenames only).";
@@ -748,8 +746,8 @@ public class ContextAgent {
         }
 
         var filenameString = String.join("\n", filenames);
-        var responseLines = simpleRecommendItems(
-                ContextInputType.FILE_PATHS, filenameString, null, workspaceRepresentation);
+        var responseLines =
+                simpleRecommendItems(ContextInputType.FILE_PATHS, filenameString, null, workspaceRepresentation);
 
         recommendedFiles = new ArrayList<>(toProjectFiles(responseLines));
         debug("LLM simple suggested {} relevant files after pruning", recommendedFiles.size());

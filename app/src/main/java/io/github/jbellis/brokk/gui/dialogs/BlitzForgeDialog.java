@@ -953,8 +953,8 @@ public class BlitzForgeDialog extends JDialog {
         }
         var maxTokens = service.getMaxInputTokens(model);
 
-        var workspaceTokens =
-                Messages.getApproximateMessageTokens(CodePrompts.instance.getWorkspaceContentsMessages(cm.topContext()));
+        var workspaceTokens = Messages.getApproximateMessageTokens(
+                CodePrompts.instance.getWorkspaceContentsMessages(cm.topContext()));
         var historyTokens = Messages.getApproximateMessageTokens(cm.getHistoryMessages());
 
         long remaining = (long) maxTokens - workspaceTokens - historyTokens;
