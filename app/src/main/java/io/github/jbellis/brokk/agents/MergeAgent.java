@@ -69,7 +69,7 @@ public class MergeAgent {
     private final ContextManager.TaskScope scope;
     private final String mergeInstructions;
 
-    private static final String DEFAULT_MERGE_INSTRUCTIONS =
+    public static final String DEFAULT_MERGE_INSTRUCTIONS =
             "Resolve ALL conflicts with the minimal change that preserves the\n"
                     + "semantics of the changes made in both \"theirs\" and \"ours.\"";
 
@@ -82,7 +82,7 @@ public class MergeAgent {
             StreamingChatModel codeModel,
             MergeConflict conflict,
             ContextManager.TaskScope scope,
-            @Nullable String mergeInstructions) {
+            String mergeInstructions) {
         this.cm = cm;
         this.planningModel = planningModel;
         this.codeModel = codeModel;
@@ -93,19 +93,7 @@ public class MergeAgent {
         this.otherCommitId = conflict.otherCommitId();
         this.conflicts = conflict.files();
         this.scope = scope;
-        this.mergeInstructions = (mergeInstructions == null || mergeInstructions.isBlank())
-                ? DEFAULT_MERGE_INSTRUCTIONS
-                : mergeInstructions;
-    }
-
-    // Backwards-compatible constructor for callers that do not supply custom merge instructions (e.g., CLI).
-    public MergeAgent(
-            IContextManager cm,
-            StreamingChatModel planningModel,
-            StreamingChatModel codeModel,
-            MergeConflict conflict,
-            ContextManager.TaskScope scope) {
-        this(cm, planningModel, codeModel, conflict, scope, null);
+        this.mergeInstructions = mergeInstructions.isBlank() ? DEFAULT_MERGE_INSTRUCTIONS : mergeInstructions;
     }
 
     /**
