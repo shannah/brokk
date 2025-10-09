@@ -99,8 +99,13 @@ public final class MergeOneFile {
         var llm = cm.getLlm(planningModel, "Merge %s: %s".formatted(repo.shortHash(otherCommitId), file));
         llm.setOutput(io);
 
-        // refine the progress bar total to reflect merge complexity: 5 * [conflicted lines]
-        setProgressTargetFromConflicts(io, file);
+        // refine the progress bar total to reflect merge complexity
+        if (io instanceof BlitzForgeProgressDialog.ProgressAware pa) {
+            int conflicted1 = conflict.conflictLineCount();
+            if (conflicted1 > 0) {
+                pa.setProgressTotal(Math.max(1, 3 * conflicted1));
+            }
+        }
 
         // Reset per-file state
         this.lastCodeAgentResult = null;
@@ -419,43 +424,6 @@ public final class MergeOneFile {
             return "```text\n<unable to read " + file + ">\n```";
         }
         return "```" + ext + "\n" + text + "\n```";
-    }
-
-    /** Count non-marker lines within all Git-style conflict regions. */
-    private static int countConflictLines(String text) {
-        int count = 0;
-        boolean inConflict = false;
-        var lines = text.split("\n", -1);
-        for (var line : lines) {
-            if (line.startsWith("<<<<<<<")) {
-                inConflict = true;
-                continue;
-            }
-            if (line.startsWith(">>>>>>>")) {
-                inConflict = false;
-                continue;
-            }
-            if (inConflict) {
-                // Exclude marker lines within a conflict block
-                if (!line.startsWith("<<<<<<<") && !line.startsWith("=======") && !line.startsWith(">>>>>>>")) {
-                    count++;
-                }
-            }
-        }
-        return count;
-    }
-
-    /** If the UI console supports progress updates, set total units to 5 * [conflicted lines]. */
-    private static void setProgressTargetFromConflicts(IConsoleIO io, ProjectFile file) {
-        if (io instanceof BlitzForgeProgressDialog.ProgressAware pa) {
-            var textOpt = file.read();
-            if (textOpt.isPresent()) {
-                int conflicted = countConflictLines(textOpt.get());
-                if (conflicted > 0) {
-                    pa.setProgressTotal(Math.max(1, 3 * conflicted));
-                }
-            }
-        }
     }
 
     /** Build a structured XML snippet for a CodeAgent failure for downstream parsing. */

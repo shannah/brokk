@@ -53,7 +53,7 @@ public final class ConflictAnnotator {
             String contents,
             Set<String> theirCommits,
             Set<String> ourCommits,
-            int conflictBlockCount) {}
+            int conflictLineCount) {}
 
     private final AtomicInteger conflictCounter = new AtomicInteger();
     private final GitRepo repo;
@@ -128,7 +128,7 @@ public final class ConflictAnnotator {
         var outLines = new ArrayList<String>();
         var ourCommitIds = new LinkedHashSet<String>();
         var theirCommitIds = new LinkedHashSet<String>();
-        int actualConflictBlockCount = 0;
+        int actualConflictLineCount = 0;
 
         for (int i = 0; i < chunkList.size(); i++) {
             var chunk = chunkList.get(i);
@@ -182,7 +182,8 @@ public final class ConflictAnnotator {
                 }
                 // Emit BRK_* annotated conflict (custom format) with a sequential number
                 int conflictNum = conflictCounter.incrementAndGet();
-                actualConflictBlockCount++;
+                int linesInConflict = ourLines.size() + baseLines.size() + theirLines.size();
+                actualConflictLineCount += linesInConflict;
                 outLines.add("BRK_CONFLICT_BEGIN_" + conflictNum);
                 // Header with a commit-ish for our side (best-effort)
                 outLines.add("BRK_OUR_VERSION " + oursShort);
@@ -219,7 +220,7 @@ public final class ConflictAnnotator {
                 String.join("\n", outLines),
                 Set.copyOf(theirCommitIds),
                 Set.copyOf(ourCommitIds),
-                actualConflictBlockCount);
+                actualConflictLineCount);
     }
 
     private static @Nullable BlameResult getBlame(

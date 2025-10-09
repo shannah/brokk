@@ -241,7 +241,7 @@ public class MergeAgent {
         var result = blitz.executeParallel(acByFile.keySet(), file -> {
             var ac = requireNonNull(acByFile.get(file));
 
-            if (ac.conflictBlockCount() == 0) {
+            if (ac.conflictLineCount() == 0) {
                 try {
                     repo.add(List.of(file));
                 } catch (GitAPIException e) {
