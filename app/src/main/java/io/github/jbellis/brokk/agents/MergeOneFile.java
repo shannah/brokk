@@ -233,18 +233,8 @@ public final class MergeOneFile {
                     }
 
                     var textOpt = file.read();
-                    if (textOpt.isPresent() && !containsConflictMarkers(textOpt.get())) {
-                        // Attempt to stage the resolved file so successful CodeAgent edits are added to the index.
-                        try {
-                            repo.add(List.of(file));
-                            io.llmOutput("Conflicts resolved for " + file + " (staged)", ChatMessageType.AI);
-                        } catch (GitAPIException e) {
-                            logger.warn("Failed to add {} to index after CodeAgent success: {}", file, e.getMessage());
-                            io.showNotification(
-                                    IConsoleIO.NotificationRole.INFO,
-                                    "Warning: failed to git add " + file + ": " + e.getMessage());
-                            io.llmOutput("Conflicts resolved for " + file, ChatMessageType.AI);
-                        }
+                    if (textOpt.isPresent() && !ConflictAnnotator.containsConflictMarkers(textOpt.get())) {
+                        io.llmOutput("Conflicts resolved for " + file, ChatMessageType.AI);
                         return new Outcome(Status.RESOLVED, null);
                     } else {
                         var details = formatFailure(file, exec.resultText());
@@ -429,10 +419,6 @@ public final class MergeOneFile {
             return "```text\n<unable to read " + file + ">\n```";
         }
         return "```" + ext + "\n" + text + "\n```";
-    }
-
-    private static boolean containsConflictMarkers(String text) {
-        return text.contains("<<<<<<<") || text.contains("=======") || text.contains(">>>>>>>");
     }
 
     /** Count non-marker lines within all Git-style conflict regions. */

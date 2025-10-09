@@ -16,7 +16,6 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.util.AdaptiveExecutor;
 import java.io.IOException;
 import java.util.ArrayList;
-import java.util.Comparator;
 import java.util.List;
 import java.util.Map;
 import java.util.Set;
@@ -220,7 +219,7 @@ public class MergeAgent {
             }
         });
 
-        // Build a lookup from ProjectFile -> annotated conflict details
+        // BlitzForge only works on ProjectFile inputs so map back to the ConflictFileCommits with this
         var acByFile = annotatedConflicts.stream()
                 .collect(Collectors.toMap(ConflictAnnotator.ConflictFileCommits::file, ac -> ac));
 
@@ -239,13 +238,17 @@ public class MergeAgent {
 
         var blitz = new BlitzForge(cm, cm.getService(), bfConfig, bfListener);
 
-        var allAnnotatedFiles = annotatedConflicts.stream()
-                .map(ConflictAnnotator.ConflictFileCommits::file)
-                .sorted(Comparator.comparing(ProjectFile::toString))
-                .toList();
-
-        var result = blitz.executeParallel(allAnnotatedFiles, file -> {
+        var result = blitz.executeParallel(acByFile.keySet(), file -> {
             var ac = requireNonNull(acByFile.get(file));
+
+            if (ac.conflictBlockCount() == 0) {
+                try {
+                    repo.add(List.of(file));
+                } catch (GitAPIException e) {
+                    throw new RuntimeException(e);
+                }
+                return new BlitzForge.FileResult(file, true, null, "");
+            }
 
             IConsoleIO console = bfListener.getConsoleIO(file);
 
@@ -254,12 +257,8 @@ public class MergeAgent {
 
             var outcome = planner.merge();
 
-            boolean edited = false;
-            var textOpt = file.read();
-            if (textOpt.isPresent()) {
-                var text = textOpt.get();
-                edited = !containsConflictMarkers(text);
-            }
+            boolean edited =
+                    file.read().map(current -> !current.equals(ac.contents())).orElse(false);
 
             if (outcome.status() == MergeOneFile.Status.UNRESOLVED) {
                 var detail = (outcome.details() != null)
@@ -267,6 +266,14 @@ public class MergeAgent {
                         : "<unknown code-agent failure for " + file + ">";
                 codeAgentFailures.put(file, detail);
                 return new BlitzForge.FileResult(file, edited, detail, "");
+            }
+
+            if (outcome.status() == MergeOneFile.Status.RESOLVED) {
+                try {
+                    repo.add(List.of(file));
+                } catch (GitAPIException e) {
+                    throw new RuntimeException(e);
+                }
             }
 
             return new BlitzForge.FileResult(file, edited, null, "");
@@ -345,10 +352,6 @@ public class MergeAgent {
 
         var agent = new ArchitectAgent(contextManager, planningModel, codeModel, agentInstructions, scope);
         return agent.executeWithSearch(scope);
-    }
-
-    private static boolean containsConflictMarkers(String text) {
-        return text.contains("<<<<<<<") || text.contains("=======") || text.contains(">>>>>>>");
     }
 
     private static void validateOtherIsNotMergeCommitForNonMergeMode(
