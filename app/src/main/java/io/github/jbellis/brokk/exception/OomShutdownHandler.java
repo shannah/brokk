@@ -32,8 +32,7 @@ public class OomShutdownHandler implements UncaughtExceptionHandler {
             // This may or may not be shown to the user
             SwingUtilities.invokeLater(() -> JOptionPane.showMessageDialog(
                     null,
-                    "The application has run out of memory and will now shut down.\n"
-                            + "On the next startup, settings will be adjusted to prevent this.",
+                    "The application has run out of memory and will now shut down.",
                     "Critical Memory Error",
                     JOptionPane.ERROR_MESSAGE));
 
@@ -50,8 +49,14 @@ public class OomShutdownHandler implements UncaughtExceptionHandler {
 
     public static void showRecoveryMessage() {
         try {
-            SwingUtilities.invokeAndWait(() -> {
-                var message = "<html>"
+            var jdeployVersion = System.getProperty("jdeploy.app.version");
+            var isJdeploy = jdeployVersion != null;
+            final String message;
+            if (isJdeploy) {
+                logger.info(
+                        "Detected JDeploy environment (jdeploy.app.version={}). Showing recovery message.",
+                        jdeployVersion);
+                message = "<html>"
                         + "The application ran out of memory during the last session.<br>"
                         + "Any active projects have been cleared to prevent this from immediately reoccurring.<br><br>"
                         + "To adjust memory allocation:<br>"
@@ -59,9 +64,21 @@ public class OomShutdownHandler implements UncaughtExceptionHandler {
                         + "- Increase the memory allocation<br><br>"
                         + "A restart is required for changes to take effect."
                         + "</html>";
-
-                JOptionPane.showMessageDialog(null, message, "Memory Error Recovery", JOptionPane.WARNING_MESSAGE);
-            });
+            } else {
+                logger.info("JDeploy environment not detected. Showing Gradle run memory guidance.");
+                message =
+                        """
+                    <html>
+                    The application ran out of memory during the last session.<br><br>
+                    When running from source (Gradle), prefer setting <code>JAVA_TOOL_OPTIONS</code> to raise the JVM heap (e.g., <code>-Xmx</code>).<br>
+                    Example:<br>
+                    <code>JAVA_TOOL_OPTIONS=&quot;-Xmx8G&quot; ./gradlew run</code><br><br>
+                    Note: <code>-Dorg.gradle.jvmargs</code> and <code>GRADLE_OPTS</code> configure Gradle's JVM only and do not affect the application's JVM.
+                    </html>
+                    """;
+            }
+            SwingUtilities.invokeAndWait(() ->
+                    JOptionPane.showMessageDialog(null, message, "Memory Error Recovery", JOptionPane.WARNING_MESSAGE));
         } catch (InterruptedException | InvocationTargetException e) {
             logger.warn("Failed to synchronously show memory recovery message dialog.", e);
             Thread.currentThread().interrupt();
