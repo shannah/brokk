@@ -884,7 +884,7 @@ public class GitCommitTab extends JPanel {
             }
 
             // Now execute the merge in an exclusive action
-            contextManager.submitExclusiveAction(() -> {
+            contextManager.submitLlmAction(() -> {
                 var service = contextManager.getService();
 
                 // Resolve planning model from InstructionsPanel
