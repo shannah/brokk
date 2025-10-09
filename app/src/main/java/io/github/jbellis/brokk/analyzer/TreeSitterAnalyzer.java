@@ -2996,6 +2996,6 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
      * @return true if the fqName seems like it belongs to a lambda function or anonymous class, false if otherwise.
      */
     protected boolean isAnonymousStructure(String fqName) {
-        return fqName.endsWith("");
+        return false;
     }
 }
