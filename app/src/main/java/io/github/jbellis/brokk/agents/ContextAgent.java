@@ -56,12 +56,15 @@ public class ContextAgent {
     public ContextAgent(ContextManager contextManager, StreamingChatModel model, String goal)
             throws InterruptedException {
         this.cm = contextManager;
-        this.llm = contextManager.getLlm(model, "ContextAgent (%s): %s".formatted("Deep", goal));
-        var options = new Llm.Options(
+        var options = new Llm.Options(model, "ContextAgent (%s): %s".formatted("Deep", goal))
+                .withForceReasoningEcho()
+                .withEcho();
+        this.llm = contextManager.getLlm(options);
+        options = new Llm.Options(
                         contextManager.getService().quickestModel(),
                         "ContextAgent Files (%s): %s".formatted("Deep", goal))
-                .withForceReasoningEcho();
-        options = options.withEcho();
+                .withForceReasoningEcho()
+                .withEcho();
         this.filesLlm = contextManager.getLlm(options);
         this.goal = goal;
         this.analyzer = contextManager.getAnalyzer();
