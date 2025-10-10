@@ -23,6 +23,7 @@ import io.github.jbellis.brokk.Llm;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.analyzer.*;
 import io.github.jbellis.brokk.context.ContextFragment;
+import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.mcp.McpUtils;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.McpPrompts;
@@ -143,7 +144,7 @@ public class SearchAgent {
             var allowedToolNames = calculateAllowedToolNames();
             var toolSpecs = new ArrayList<>(toolRegistry.getRegisteredTools(allowedToolNames));
 
-            // Agent-owned terminal tools (instance methods)
+            // Agent-owned tools (instance methods)
             var agentTerminalTools = new ArrayList<String>();
             if (allowedTerminals.contains(Terminal.ANSWER)) {
                 agentTerminalTools.add("answer");
@@ -472,6 +473,11 @@ public class SearchAgent {
         names.add("appendNote");
         names.add("dropWorkspaceFragments");
 
+        // Human-in-the-loop tool (only meaningful when GUI is available; safe to include otherwise)
+        if (io instanceof Chrome) {
+            names.add("askHuman");
+        }
+
         if (!mcpTools.isEmpty()) {
             names.add("callMcpTool");
         }
@@ -518,6 +524,7 @@ public class SearchAgent {
         return switch (toolName) {
             case "dropWorkspaceFragments" -> 1;
             case "addTextToWorkspace", "appendNote" -> 2;
+            case "askHuman" -> 2;
             case "addClassSummariesToWorkspace", "addFileSummariesToWorkspace", "addMethodsToWorkspace" -> 3;
             case "addFilesToWorkspace", "addClassesToWorkspace", "addSymbolUsagesToWorkspace" -> 4;
             case "getRelatedClasses" -> 5;
