@@ -279,7 +279,7 @@ public class Llm {
                             fenceOpen.set(true);
                         }
                         if (forceReasoningEcho) {
-                            io.llmOutput(accumulatedTextBuilder.toString(), ChatMessageType.AI, false, true);
+                            io.llmOutput(token, ChatMessageType.AI, false, true);
                         } else {
                             io.llmOutput(token, ChatMessageType.AI);
                         }
@@ -430,7 +430,11 @@ public class Llm {
         var response = completedChatResponse.get(); // Will be null if an error occurred or onComplete got null
         assert response != null : "If no error, completedChatResponse must be set by onCompleteResponse";
         if (echo) {
-            io.llmOutput("\n", ChatMessageType.AI);
+            if (forceReasoningEcho) {
+                io.llmOutput("\n", ChatMessageType.AI, false, true);
+            } else {
+                io.llmOutput("\n", ChatMessageType.AI);
+            }
         }
         return StreamingResult.fromResponse(response, null);
     }
