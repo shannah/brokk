@@ -80,5 +80,5 @@ jobs:
         uses: shannah/jdeploy@master
         with:
           github_token: ${{ github.token }}
-          jdeploy_version: '5.2.2-dev.2'
+          jdeploy_version: '5.2.2-dev.3'
           jdeploy_registry_url: 'https://dev.jdeploy.com/'
