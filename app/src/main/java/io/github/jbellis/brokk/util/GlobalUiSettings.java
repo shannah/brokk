@@ -52,7 +52,7 @@ public final class GlobalUiSettings {
 
     private GlobalUiSettings() {}
 
-    public static Path getConfigDir() {
+    private static Path getConfigDir() {
         var os = System.getProperty("os.name").toLowerCase(Locale.ROOT);
         if (os.contains("win")) {
             var appData = System.getenv("APPDATA");

@@ -4,11 +4,11 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import io.github.jbellis.brokk.MainProject;
-import io.github.jbellis.brokk.util.GlobalUiSettings;
 import io.github.jbellis.brokk.util.Json;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
+import java.nio.file.Path;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -58,7 +58,7 @@ public class JDeploySettingsUtil {
             return;
         }
 
-        var configDir = GlobalUiSettings.getConfigDir();
+        var configDir = Path.of(home, ".config", "brokk");
         try {
             Files.createDirectories(configDir);
         } catch (IOException e) {
