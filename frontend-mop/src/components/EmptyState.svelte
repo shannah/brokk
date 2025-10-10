@@ -35,6 +35,16 @@
     if (!langs) return null;
     return Array.isArray(langs) ? langs.join(", ") : langs;
   }
+
+  function pluralize(n: number, singular: string, plural?: string): string {
+    return n === 1 ? singular : (plural ?? `${singular}s`);
+  }
+
+  let depCount: number | undefined;
+  $: depCount =
+    $envStore.nativeFileCount !== undefined && $envStore.totalFileCount !== undefined
+      ? Math.max($envStore.totalFileCount - $envStore.nativeFileCount, 0)
+      : undefined;
 </script>
 
 <div class="empty-state">
@@ -72,10 +82,11 @@
         {#if $envStore.nativeFileCount !== undefined || $envStore.totalFileCount !== undefined}
           <span class="env-muted">
             (
-            {#if $envStore.nativeFileCount !== undefined}
-              {$envStore.nativeFileCount} files{#if $envStore.totalFileCount !== undefined}, {/if}
-            {/if}
-            {#if $envStore.totalFileCount !== undefined}
+            {#if $envStore.nativeFileCount !== undefined && $envStore.totalFileCount !== undefined}
+              {$envStore.nativeFileCount} {pluralize($envStore.nativeFileCount, 'file', 'files')}, {depCount} {pluralize(depCount ?? 0, 'dep', 'deps')}
+            {:else if $envStore.nativeFileCount !== undefined}
+              {$envStore.nativeFileCount} {pluralize($envStore.nativeFileCount, 'file', 'files')}
+            {:else}
               {$envStore.totalFileCount} total files with deps
             {/if}
             )
