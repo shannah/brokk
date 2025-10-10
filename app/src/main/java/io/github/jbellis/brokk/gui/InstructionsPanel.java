@@ -72,8 +72,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public static final String ACTION_ASK = "Ask";
     public static final String ACTION_SEARCH = "Search";
     public static final String ACTION_RUN = "Run";
-    public static final String ACTION_RUN_TESTS = "Run Selected Tests";
-    public static final String ACTION_SCAN_PROJECT = "Scan Project";
 
     private static final String PLACEHOLDER_TEXT =
             """
@@ -2044,7 +2042,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 case ACTION_CODE -> runCodeCommand();
                 case ACTION_SEARCH -> runSearchCommand();
                 case ACTION_ASK -> runAskCommand(getInstructions());
-                case ACTION_SCAN_PROJECT -> runScanProjectCommand();
                 default -> runArchitectCommand();
             }
         }
@@ -2080,59 +2077,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             clearCommandInput();
         }
         instructionsArea.requestFocusInWindow(); // Give it focus
-    }
-
-    public void runScanProjectCommand() {
-        var goal = getInstructions();
-        if (goal.isBlank()) {
-            chrome.toolError("Please provide instructions before scanning the project");
-            return;
-        }
-
-        final var modelToUse = selectDropdownModelOrShowError("Scan Project", true);
-        if (modelToUse == null) {
-            return;
-        }
-
-        chrome.getProject().addToInstructionsHistory(goal, 20);
-        clearCommandInput();
-
-        submitAction(ACTION_SCAN_PROJECT, goal, () -> {
-            try {
-                var cm = chrome.getContextManager();
-                var contextAgent = new ContextAgent(cm, modelToUse, goal, true);
-                var recommendation = contextAgent.getRecommendations(true);
-                var totalTokens = contextAgent.calculateFragmentTokens(recommendation.fragments());
-                int finalBudget = cm.getService().getMaxInputTokens(modelToUse) / 2;
-
-                if (totalTokens > finalBudget) {
-                    var summary = ContextFragment.getSummary(recommendation.fragments());
-                    cm.addVirtualFragment(new ContextFragment.StringFragment(
-                            cm,
-                            summary,
-                            "Summary of Project Scan",
-                            recommendation.fragments().stream()
-                                    .findFirst()
-                                    .map(ContextFragment::syntaxStyle)
-                                    .orElseThrow()));
-                } else {
-                    WorkspaceTools.addToWorkspace(cm, recommendation);
-                }
-                return new TaskResult(
-                        chrome.getContextManager(),
-                        ACTION_SCAN_PROJECT + ": " + goal,
-                        List.copyOf(chrome.getContextManager().getIo().getLlmRawMessages()),
-                        Set.of(),
-                        new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
-            } catch (InterruptedException e) {
-                return new TaskResult(
-                        chrome.getContextManager(),
-                        ACTION_SCAN_PROJECT + ": " + goal,
-                        List.copyOf(chrome.getContextManager().getIo().getLlmRawMessages()),
-                        Set.of(),
-                        new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
-            }
-        });
     }
 
     public VoiceInputButton getVoiceInputButton() {
