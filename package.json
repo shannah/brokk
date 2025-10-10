@@ -8,7 +8,7 @@
     "version": "1.0.0",
     "jdeploy": {
         "jdk": false,
-        "args": ["--add-modules jdk.incubator.vector"],
+        "args": ["--add-modules jdk.incubator.vector", "-Djdeploy.file.limit=16384"],
         "publishTargets": [{
             "name": "github: brokk",
             "type": "GITHUB",
