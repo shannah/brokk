@@ -70,7 +70,6 @@ dependencies {
     implementation(libs.okhttp)
 
     implementation(libs.jtokkit)
-    implementation(libs.jlama.core)
 
     // Console and logging
     implementation(libs.bundles.logging)
