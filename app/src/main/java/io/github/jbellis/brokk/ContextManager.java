@@ -25,6 +25,7 @@ import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.tools.UiTools;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.*;
 import io.github.jbellis.brokk.util.UserActionManager.ThrowingRunnable;
@@ -349,6 +350,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         assert SwingUtilities.isEventDispatchThread();
 
         this.io = new Chrome(this);
+        this.toolRegistry.register(new UiTools((Chrome) this.io));
         this.userActions.setIo(this.io);
 
         var analyzerListener = createAnalyzerListener();
@@ -2270,8 +2272,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 project.getSessionManager().renameSession(sessionId, newName);
                 logger.debug("Renamed session {} to {}", sessionId, newName);
             } catch (Exception e) {
-                logger.error("Error renaming Session {}", sessionId, e);
-                throw new RuntimeException(e);
+                logger.warn("Error renaming Session {}", sessionId, e);
             }
         });
     }
