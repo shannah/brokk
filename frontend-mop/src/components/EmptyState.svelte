@@ -87,7 +87,7 @@
             {:else if $envStore.nativeFileCount !== undefined}
               {$envStore.nativeFileCount} {pluralize($envStore.nativeFileCount, 'file', 'files')}
             {:else}
-              {$envStore.totalFileCount} total files with deps
+              total files with deps
             {/if}
             )
           </span>
