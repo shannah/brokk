@@ -205,11 +205,6 @@ public class ContextAgent {
                 existingFiles);
         cumulativeUsage = addTokenUsage(cumulativeUsage, filenameResult.tokenUsage());
 
-        if (!filenameResult.success) {
-            logGiveUp("filename list (too large for LLM pruning)");
-            return new RecommendationResult(false, List.of(), filenameResult.reasoning(), cumulativeUsage);
-        }
-
         var prunedFiles = filenameResult.fragments.stream()
                 .flatMap(f -> f.files().stream())
                 .toList();
@@ -289,7 +284,7 @@ public class ContextAgent {
         // Any file without a produced summary becomes non-analyzable for content purposes
         var summarizedFiles = summaries.keySet().stream().map(CodeUnit::source).collect(Collectors.toSet());
 
-        var nonAnalyzableFiles = filesToConsider.stream()
+        var nonAnalyzableFiles = candidates.stream()
                 .filter(f -> !summarizedFiles.contains(f))
                 .toList();
 
