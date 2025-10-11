@@ -7,6 +7,7 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.ContextHistory;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.tasks.TaskList;
 import io.github.jbellis.brokk.util.HistoryIo;
 import io.github.jbellis.brokk.util.SerialByKeyExecutor;
 import java.io.IOException;
@@ -542,11 +543,11 @@ public class SessionManager implements AutoCloseable {
      * });
      * }</pre>
      */
-    public CompletableFuture<Void> writeTaskList(UUID sessionId, TaskListData data) {
+    public CompletableFuture<Void> writeTaskList(UUID sessionId, TaskList.TaskListData data) {
         Path zipPath = getSessionHistoryPath(sessionId);
         return sessionExecutorByKey.submit(sessionId.toString(), () -> {
             try {
-                var normalized = new TaskListData(List.copyOf(data.tasks()));
+                var normalized = new TaskList.TaskListData(List.copyOf(data.tasks()));
                 String json = AbstractProject.objectMapper.writeValueAsString(normalized);
                 writeTaskListJson(zipPath, json);
             } catch (IOException e) {
@@ -572,22 +573,22 @@ public class SessionManager implements AutoCloseable {
      * });
      * }</pre>
      */
-    public CompletableFuture<TaskListData> readTaskList(UUID sessionId) {
+    public CompletableFuture<TaskList.TaskListData> readTaskList(UUID sessionId) {
         Path zipPath = getSessionHistoryPath(sessionId);
         return sessionExecutorByKey.submit(sessionId.toString(), () -> {
             if (!Files.exists(zipPath)) {
-                return new TaskListData(List.of());
+                return new TaskList.TaskListData(List.of());
             }
             try {
                 String json = readTaskListJson(zipPath);
                 if (json == null || json.isBlank()) {
-                    return new TaskListData(List.of());
+                    return new TaskList.TaskListData(List.of());
                 }
-                var loaded = AbstractProject.objectMapper.readValue(json, TaskListData.class);
-                return new TaskListData(List.copyOf(loaded.tasks()));
+                var loaded = AbstractProject.objectMapper.readValue(json, TaskList.TaskListData.class);
+                return new TaskList.TaskListData(List.copyOf(loaded.tasks()));
             } catch (IOException e) {
                 logger.warn("Error reading task list for session {}: {}", sessionId, e.getMessage());
-                return new TaskListData(List.of());
+                return new TaskList.TaskListData(List.of());
             }
         });
     }
