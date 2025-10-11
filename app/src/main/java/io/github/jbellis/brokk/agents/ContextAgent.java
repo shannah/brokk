@@ -182,21 +182,25 @@ public class ContextAgent {
                 .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
 
-        var allFiles = cm.getProject().getAllFiles().stream()
-                .filter(f -> !existingFiles.contains(f))
-                .sorted()
-                .toList();
-
-        logger.debug(
-                "Filtered out {} existing files from a total of {}. Considering {} files for context recommendation.",
-                existingFiles.size(),
-                cm.getProject().getAllFiles().size(),
-                allFiles.size());
+        // Generate candidates: if we have existing context in the workspace, use Git-based distance ranking
+        // to limit the surface area; otherwise, use all files
+        List<ProjectFile> candidates;
+        if (existingFiles.isEmpty()) {
+            candidates = cm.getProject().getAllFiles().stream().sorted().toList();
+            logger.debug("Empty workspace; using all files ({}) for context recommendation.", candidates.size());
+        } else {
+            var seeds = existingFiles.stream().collect(Collectors.toMap(f -> f, f -> 1.0, (v1, v2) -> v1));
+            candidates = AnalyzerUtil.combinedRankingFor(cm.getProject(), seeds).stream()
+                    .filter(f -> !existingFiles.contains(f))
+                    .sorted()
+                    .toList();
+            logger.debug("Non-empty workspace; using Git-based distance candidates (target FQNs: {})", candidates);
+        }
 
         // Deep mode: partition into analyzed / not-analyzed; process groups in parallel
         RecommendationResult firstPassResult = null;
         try {
-            firstPassResult = executeDeepMixed(allFiles, existingFiles, workspaceRepresentation, allowSkipPruning);
+            firstPassResult = executeDeepMixed(candidates, existingFiles, workspaceRepresentation, allowSkipPruning);
             if (firstPassResult.success) {
                 return firstPassResult;
             }
@@ -265,23 +269,12 @@ public class ContextAgent {
     // --- Deep mixed processing (summaries + contents) ---
 
     private RecommendationResult executeDeepMixed(
-            List<ProjectFile> filesToConsider,
+            List<ProjectFile> candidates,
             Set<ProjectFile> existingFiles,
             Collection<ChatMessage> workspaceRepresentation,
             boolean allowSkipPruning)
             throws InterruptedException, ContextTooLargeException {
 
-        List<ProjectFile> candidates;
-        if (!existingFiles.isEmpty()) {
-            var seeds = existingFiles.stream().collect(Collectors.toMap(f -> f, f -> 1.0, (v1, v2) -> v1));
-            candidates = AnalyzerUtil.combinedRankingFor(cm.getProject(), seeds).stream()
-                    .filter(f -> !existingFiles.contains(f))
-                    .toList();
-            logger.debug("Non-empty workspace; using Git-based distance candidates (target FQNs: {})", candidates);
-        } else {
-            // Scan all the files
-            candidates = filesToConsider;
-        }
         Map<CodeUnit, String> summaries = analyzer.as(SkeletonProvider.class)
                 .map(skp -> candidates.parallelStream()
                         .map(skp::getSkeletons)
