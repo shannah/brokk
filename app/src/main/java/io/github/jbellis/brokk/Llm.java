@@ -565,7 +565,7 @@ public class Llm {
             long backoffSeconds = 1L << (attempt - 1);
             backoffSeconds = Math.min(backoffSeconds, 16L);
 
-            // Busywait with countdown
+            // Throttled countdown notifications (every ~2s)
             if (backoffSeconds > 1) {
                 io.showNotification(
                         IConsoleIO.NotificationRole.INFO,
@@ -577,13 +577,25 @@ public class Llm {
                         IConsoleIO.NotificationRole.INFO,
                         String.format("LLM issue on attempt %d/%d (retrying).", attempt, maxAttempts));
             }
-            long endTime = System.currentTimeMillis() + backoffSeconds * 1000;
-            while (System.currentTimeMillis() < endTime) {
-                long remain = endTime - System.currentTimeMillis();
-                if (remain <= 0) break;
-                io.showNotification(
-                        IConsoleIO.NotificationRole.INFO, "Retrying in %.1f seconds...".formatted(remain / 1000.0));
-                Thread.sleep(Math.min(remain, 100));
+
+            long endTime = System.currentTimeMillis() + backoffSeconds * 1000L;
+            long nextNotifyAt = System.currentTimeMillis() + 2000L; // notify at most every 2 seconds
+            while (true) {
+                long now = System.currentTimeMillis();
+                long remain = endTime - now;
+                if (remain <= 0) {
+                    break;
+                }
+
+                if (backoffSeconds > 1 && now >= nextNotifyAt) {
+                    long secsLeft = (long) Math.ceil(remain / 1000.0);
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO, "Retrying in %d seconds...".formatted(secsLeft));
+                    nextNotifyAt = now + 2000L;
+                }
+
+                // short sleep to remain responsive to interruption while avoiding busy-wait
+                Thread.sleep(Math.min(remain, 200));
             }
         }
 
