@@ -214,7 +214,7 @@ public class ContextAgent {
         logger.debug("Falling back to filename-based pruning.");
         var filenameResult = createResult(
                 askLlmDeepPruneFilenamesWithChunking(
-                        allFiles.stream().map(ProjectFile::toString).toList(), workspaceRepresentation),
+                        candidates.stream().map(ProjectFile::toString).toList(), workspaceRepresentation),
                 existingFiles);
         cumulativeUsage = addTokenUsage(cumulativeUsage, filenameResult.tokenUsage());
 
