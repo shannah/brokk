@@ -18,16 +18,15 @@ import io.github.jbellis.brokk.prompts.MergePrompts;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.util.Messages;
 import java.net.URI;
+import java.util.Arrays;
 import java.util.HashSet;
 import java.util.List;
-import java.util.Optional;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.lib.Constants;
-import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 public final class GitWorkflow {
@@ -42,7 +41,7 @@ public final class GitWorkflow {
 
     public record PrSuggestion(String title, String description, boolean usedCommitMessages) {}
 
-    private final IContextManager cm;
+    private final IContextManager contextManager;
     private final GitRepo repo;
 
     // Fields for tool calling results
@@ -53,16 +52,37 @@ public final class GitWorkflow {
     private String prDescription;
 
     public GitWorkflow(IContextManager contextManager) {
-        this.cm = contextManager;
+        this.contextManager = contextManager;
         this.repo = (GitRepo) contextManager.getProject().getRepo();
     }
 
-    /** Synchronously commit the given files. If {@code files} is empty, commit all modified files. */
-    public CommitResult commit(List<ProjectFile> files, String msg) throws GitAPIException {
-        assert !files.isEmpty();
-        assert !msg.isBlank();
+    /**
+     * Synchronously commit the given files. If {@code files} is empty, commit all modified files. If {@code rawMessage}
+     * is null/blank, a suggestion will be generated (may still be blank). Comment lines (# …) are removed.
+     */
+    public CommitResult commit(List<ProjectFile> files, @Nullable String rawMessage) throws GitAPIException {
+        var filesToCommit = files.isEmpty()
+                ? repo.getModifiedFiles().stream()
+                        .map(GitRepo.ModifiedFile::file)
+                        .toList()
+                : files;
 
-        String sha = repo.commitFiles(files, msg);
+        if (filesToCommit.isEmpty()) {
+            throw new IllegalStateException("No files to commit.");
+        }
+
+        String msg = normaliseMessage(rawMessage);
+        if (msg.isBlank()) {
+            // suggestCommitMessage can throw RuntimeException if diffing fails
+            // or InterruptedException occurs. Let it propagate.
+            msg = suggestCommitMessage(filesToCommit);
+        }
+
+        if (msg.isBlank()) {
+            throw new IllegalStateException("No commit message available after attempting suggestion.");
+        }
+
+        String sha = repo.commitFiles(filesToCommit, msg);
         var first = msg.contains("\n") ? msg.substring(0, msg.indexOf('\n')) : msg;
         return new CommitResult(sha, first);
     }
@@ -71,7 +91,7 @@ public final class GitWorkflow {
      * Background helper that returns a suggestion or empty string. The caller decides on threading; no Swing here. Can
      * throw RuntimeException if diffing fails or InterruptedException occurs.
      */
-    public String suggestCommitMessage(List<ProjectFile> files, String taskDescription) throws InterruptedException {
+    public String suggestCommitMessage(List<ProjectFile> files) {
         logger.debug("Suggesting commit message for {} files", files.size());
 
         String diff;
@@ -83,15 +103,27 @@ public final class GitWorkflow {
         }
 
         if (diff.isBlank()) {
-            throw new IllegalStateException("No modifications present in %s".formatted(files));
+            logger.debug("Empty diff - no commit message to suggest");
+            return "";
         }
 
-        var messages = CommitPrompts.instance.collectMessages(cm.getProject(), diff);
-        Llm.StreamingResult result;
-        result = cm.getLlm(cm.getService().quickestModel(), "Infer commit message")
-                .sendRequest(messages);
+        var messages = CommitPrompts.instance.collectMessages(contextManager.getProject(), diff);
+        if (messages.isEmpty()) {
+            logger.debug("No commit message generated - diff preprocessing returned empty result");
+            return "";
+        }
 
-        return result.error() == null ? result.text() : taskDescription;
+        Llm.StreamingResult result;
+        try {
+            result = contextManager
+                    .getLlm(contextManager.getService().quickestModel(), "Infer commit message")
+                    .sendRequest(messages);
+        } catch (InterruptedException ie) {
+            Thread.currentThread().interrupt();
+            throw new RuntimeException("Commit message suggestion was interrupted", ie);
+        }
+
+        return result.error() == null ? result.text() : "";
     }
 
     public PushPullState evaluatePushPull(String branch) throws GitAPIException {
@@ -181,7 +213,7 @@ public final class GitWorkflow {
         var mergeBase = repo.getMergeBase(source, target);
         String diff = (mergeBase != null) ? repo.showDiff(source, mergeBase) : "";
 
-        var service = cm.getService();
+        var service = contextManager.getService();
         var preferredModel = service.getModel(Service.GPT_5_MINI);
         var modelToUse = preferredModel != null ? preferredModel : service.quickestModel(); // Fallback
 
@@ -193,10 +225,10 @@ public final class GitWorkflow {
             messages = SummarizerPrompts.instance.collectPrTitleAndDescriptionMessages(diff);
         }
 
-        var toolSpecs = cm.getToolRegistry().getTools(this, List.of("suggestPrDetails"));
+        var toolSpecs = contextManager.getToolRegistry().getTools(this, List.of("suggestPrDetails"));
         var toolContext = new ToolContext(toolSpecs, ToolChoice.REQUIRED, this);
 
-        var llm = cm.getLlm(new Llm.Options(modelToUse, "PR-description")
+        var llm = contextManager.getLlm(new Llm.Options(modelToUse, "PR-description")
                 .withPartialResponses()
                 .withEcho());
         llm.setOutput(streamingOutput);
@@ -210,7 +242,7 @@ public final class GitWorkflow {
             throw new RuntimeException("LLM did not call the suggestPrDetails tool");
         }
 
-        cm.getToolRegistry().executeTool(this, result.toolRequests().getFirst());
+        contextManager.getToolRegistry().executeTool(this, result.toolRequests().getFirst());
 
         String title = prTitle;
         String description = prDescription;
@@ -234,11 +266,19 @@ public final class GitWorkflow {
         String base = target.replaceFirst("^origin/", "");
 
         // 3. GitHub call
-        var auth = GitHubAuth.getOrCreateInstance(cm.getProject());
+        var auth = GitHubAuth.getOrCreateInstance(contextManager.getProject());
         var ghRepo = auth.getGhRepository();
         var pr = ghRepo.createPullRequest(title, head, base, body);
 
         return pr.getHtmlUrl().toURI();
+    }
+
+    private static String normaliseMessage(@Nullable String raw) {
+        if (raw == null) return "";
+        return Arrays.stream(raw.split("\n"))
+                .filter(l -> !l.trim().startsWith("#"))
+                .collect(Collectors.joining("\n"))
+                .trim();
     }
 
     public static boolean isSyntheticBranchName(String branchName) {
@@ -255,50 +295,6 @@ public final class GitWorkflow {
         } catch (GitAPIException e) {
             return Constants.EMPTY_TREE_ID.getName();
         }
-    }
-
-    /**
-     * Auto-commit any modified files with a message that incorporates the task description.
-     *
-     * <p>This was previously implemented inside ContextManager. It has been moved into GitWorkflow so that all Git
-     * operations (diffing/committing/suggesting messages) live in the Git domain class.
-     *
-     * <p>Behavior: - If modified files cannot be determined, show a tool error and return. - If no modified files, show
-     * an informational notification. - Otherwise, suggest a commit message (falls back to taskDescription) and commit
-     * the files. - On success, show a friendly notification and update the commit panel; on failure, show a tool error.
-     */
-    public Optional<CommitResult> performAutoCommit(String taskDescription) throws InterruptedException {
-        try {
-            return performAutoCommitInternal(taskDescription);
-        } catch (GitAPIException e) {
-            cm.getIo().showNotification(IConsoleIO.NotificationRole.ERROR, "Auto-commit failed: " + e.getMessage());
-            return Optional.empty();
-        }
-    }
-
-    private @NotNull Optional<CommitResult> performAutoCommitInternal(String taskDescription)
-            throws GitAPIException, InterruptedException {
-        var io = cm.getIo();
-        Set<GitRepo.ModifiedFile> modified;
-        modified = repo.getModifiedFiles();
-
-        if (modified.isEmpty()) {
-            io.showNotification(IConsoleIO.NotificationRole.INFO, "No changes to commit for task: " + taskDescription);
-            return Optional.empty();
-        }
-
-        var filesToCommit = modified.stream().map(GitRepo.ModifiedFile::file).collect(Collectors.toList());
-
-        String message = suggestCommitMessage(filesToCommit, taskDescription);
-
-        var commitResult = commit(filesToCommit, message);
-
-        // Friendly notification: include short hash.
-        io.showNotification(
-                IConsoleIO.NotificationRole.INFO,
-                "Committed " + repo.shortHash(commitResult.commitId()) + ": " + commitResult.firstLine());
-        io.updateCommitPanel();
-        return Optional.of(commitResult);
     }
 
     /**
@@ -324,7 +320,7 @@ public final class GitWorkflow {
         var messages = MergePrompts.instance.collectMessages(preprocessedDiff, revision, revision);
 
         var shortId = repo.shortHash(revision);
-        var llm = cm.getLlm(model, "Explain commit %s".formatted(shortId));
+        var llm = contextManager.getLlm(model, "Explain commit %s".formatted(shortId));
         Llm.StreamingResult response = llm.sendRequest(messages);
 
         if (response.error() != null) {

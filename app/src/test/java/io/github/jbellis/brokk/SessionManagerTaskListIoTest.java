@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import io.github.jbellis.brokk.tasks.TaskList;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.ArrayList;
@@ -85,8 +84,7 @@ class SessionManagerTaskListIoTest {
                     sessionManager
                             .writeTaskList(
                                     sessionId1,
-                                    new TaskList.TaskListData(
-                                            List.of(new TaskList.TaskItem("session1_task_" + taskId, false))))
+                                    new TaskListData(List.of(new TaskListEntryDto("session1_task_" + taskId, false))))
                             .get(5, TimeUnit.SECONDS);
                     writeCounts.get(sessionId1).incrementAndGet();
                 } catch (Exception e) {
@@ -98,8 +96,7 @@ class SessionManagerTaskListIoTest {
                     sessionManager
                             .writeTaskList(
                                     sessionId2,
-                                    new TaskList.TaskListData(
-                                            List.of(new TaskList.TaskItem("session2_task_" + taskId, true))))
+                                    new TaskListData(List.of(new TaskListEntryDto("session2_task_" + taskId, true))))
                             .get(5, TimeUnit.SECONDS);
                     writeCounts.get(sessionId2).incrementAndGet();
                 } catch (Exception e) {
@@ -118,8 +115,7 @@ class SessionManagerTaskListIoTest {
         assertEquals(numWrites, writeCounts.get(sessionId2).get());
 
         // Verify final state for session 1
-        TaskList.TaskListData finalData1 =
-                sessionManager.readTaskList(sessionId1).get(5, TimeUnit.SECONDS);
+        TaskListData finalData1 = sessionManager.readTaskList(sessionId1).get(5, TimeUnit.SECONDS);
         assertNotNull(finalData1);
         assertEquals(1, finalData1.tasks().size());
         assertEquals(
@@ -128,8 +124,7 @@ class SessionManagerTaskListIoTest {
         assertFalse(finalData1.tasks().getFirst().done());
 
         // Verify final state for session 2
-        TaskList.TaskListData finalData2 =
-                sessionManager.readTaskList(sessionId2).get(5, TimeUnit.SECONDS);
+        TaskListData finalData2 = sessionManager.readTaskList(sessionId2).get(5, TimeUnit.SECONDS);
         assertNotNull(finalData2);
         assertEquals(1, finalData2.tasks().size());
         assertEquals(
@@ -146,7 +141,7 @@ class SessionManagerTaskListIoTest {
         SessionManager sessionManager = project.getSessionManager();
         UUID sessionId = SessionManager.newSessionId(); // A session that doesn't exist on disk
 
-        TaskList.TaskListData data = sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
+        TaskListData data = sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
         assertNotNull(data);
         assertTrue(data.tasks().isEmpty(), "Reading non-existent task list should return empty data");
 
@@ -173,8 +168,7 @@ class SessionManagerTaskListIoTest {
                     sessionManager
                             .writeTaskList(
                                     sessionId,
-                                    new TaskList.TaskListData(
-                                            List.of(new TaskList.TaskItem("task_write_" + writeValue, false))))
+                                    new TaskListData(List.of(new TaskListEntryDto("task_write_" + writeValue, false))))
                             .get(5, TimeUnit.SECONDS); // Wait for each write to complete
                 } catch (Exception e) {
                     fail("Write task failed: " + e.getMessage());
@@ -184,8 +178,7 @@ class SessionManagerTaskListIoTest {
             // Concurrently submit reads; reads should always see the latest committed write
             futures.add(concurrentTestExecutor.submit(() -> {
                 try {
-                    TaskList.TaskListData data =
-                            sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
+                    TaskListData data = sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
                     assertNotNull(data);
                     if (!data.tasks().isEmpty()) {
                         String taskText = data.tasks().getFirst().text();
@@ -204,7 +197,7 @@ class SessionManagerTaskListIoTest {
         }
 
         // Verify the final state is correct
-        TaskList.TaskListData finalData = sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
+        TaskListData finalData = sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
         assertNotNull(finalData);
         assertEquals(1, finalData.tasks().size());
         assertEquals(
@@ -257,11 +250,10 @@ class SessionManagerTaskListIoTest {
                             sessionManager
                                     .writeTaskList(
                                             sessionId,
-                                            new TaskList.TaskListData(
-                                                    List.of(new TaskList.TaskItem("task_" + value, false))))
+                                            new TaskListData(List.of(new TaskListEntryDto("task_" + value, false))))
                                     .get(5, TimeUnit.SECONDS);
 
-                            TaskList.TaskListData data =
+                            TaskListData data =
                                     sessionManager.readTaskList(sessionId).get(5, TimeUnit.SECONDS);
                             assertNotNull(data);
                             assertEquals(1, data.tasks().size());
@@ -285,18 +277,15 @@ class SessionManagerTaskListIoTest {
         CompletableFuture.allOf(future1, future2, future3).get(15, TimeUnit.SECONDS);
 
         // Verify final state for each session
-        TaskList.TaskListData finalData1 =
-                sessionManager.readTaskList(sessionId1).get(5, TimeUnit.SECONDS);
+        TaskListData finalData1 = sessionManager.readTaskList(sessionId1).get(5, TimeUnit.SECONDS);
         assertEquals(
                 "task_" + (100 + numOperationsPerSession - 1),
                 finalData1.tasks().getFirst().text());
-        TaskList.TaskListData finalData2 =
-                sessionManager.readTaskList(sessionId2).get(5, TimeUnit.SECONDS);
+        TaskListData finalData2 = sessionManager.readTaskList(sessionId2).get(5, TimeUnit.SECONDS);
         assertEquals(
                 "task_" + (200 + numOperationsPerSession - 1),
                 finalData2.tasks().getFirst().text());
-        TaskList.TaskListData finalData3 =
-                sessionManager.readTaskList(sessionId3).get(5, TimeUnit.SECONDS);
+        TaskListData finalData3 = sessionManager.readTaskList(sessionId3).get(5, TimeUnit.SECONDS);
         assertEquals(
                 "task_" + (300 + numOperationsPerSession - 1),
                 finalData3.tasks().getFirst().text());

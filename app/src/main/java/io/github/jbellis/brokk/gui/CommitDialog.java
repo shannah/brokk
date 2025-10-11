@@ -115,8 +115,7 @@ public class CommitDialog extends JDialog {
 
     private void initiateCommitMessageSuggestion() {
         CompletableFuture<String> suggestionFuture = contextManager.submitBackgroundTask(
-                "Suggesting commit message",
-                () -> workflowService.suggestCommitMessage(filesToCommit, "Llm error inferring commit message"));
+                "Suggesting commit message", () -> workflowService.suggestCommitMessage(filesToCommit));
 
         suggestionFuture.whenComplete(
                 (@Nullable String suggestedMessage, @Nullable Throwable throwable) -> SwingUtilities.invokeLater(() -> {

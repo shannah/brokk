@@ -18,7 +18,6 @@ import java.util.function.Predicate;
 import java.util.regex.Pattern;
 import java.util.regex.PatternSyntaxException;
 import java.util.stream.Collectors;
-import javax.swing.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -827,11 +826,11 @@ public class SearchTools {
         }
 
         var io = contextManager.getIo();
-        contextManager.appendTasksToTaskList(tasks);
-        if (io instanceof Chrome chrome) {
-            SwingUtilities.invokeLater(() -> {
-                chrome.getTerminalDrawer().openTaskList();
-            });
+        // Append tasks to Task List Panel (if running in Chrome UI)
+        try {
+            ((Chrome) io).appendTasksToTaskList(tasks);
+        } catch (ClassCastException ignored) {
+            // Not running in Chrome UI; skip appending
         }
         io.showNotification(
                 IConsoleIO.NotificationRole.INFO,
