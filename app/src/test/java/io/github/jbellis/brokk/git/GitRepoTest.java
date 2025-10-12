@@ -1427,21 +1427,14 @@ public class GitRepoTest {
 
         configureOriginRemote();
 
-        // Use reflection to access private method for testing
-        var method = GitRepo.class.getDeclaredMethod("getTargetRemoteBranchName", String.class);
-        method.setAccessible(true);
-        String targetRemote = (String) method.invoke(repo, branchName);
+        String targetRemote = repo.remote().getTargetRemoteBranchName(branchName);
 
         assertEquals("origin/" + branchName, targetRemote, "Should find origin remote branch name");
     }
 
     @Test
-    void testGetTargetRemoteBranchName_NoRemoteConfigured() throws Exception {
-        // Use reflection to access private method for testing
-        var method = GitRepo.class.getDeclaredMethod("getTargetRemoteBranchName", String.class);
-        method.setAccessible(true);
-        String targetRemote = (String) method.invoke(repo, "test-branch");
-
+    void testGetTargetRemoteBranchName_NoRemoteConfigured() {
+        String targetRemote = repo.remote().getTargetRemoteBranchName("test-branch");
         assertNull(targetRemote, "Should return null when no remote is configured");
     }
 

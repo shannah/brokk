@@ -14,6 +14,7 @@ import org.eclipse.jgit.transport.PushResult;
 import org.eclipse.jgit.transport.RefSpec;
 import org.eclipse.jgit.transport.RemoteRefUpdate;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
 
 /** Encapsulates remote-related operations for a GitRepo. Stores a reference to the owning GitRepo as `repo`. */
 public class GitRepoRemote {
@@ -368,7 +369,9 @@ public class GitRepoRemote {
      *   <li>origin even if it doesn't exist
      * </ol>
      */
-    private @Nullable String getTargetRemoteBranchName(String branchName) {
+    @VisibleForTesting
+    @Nullable
+    String getTargetRemoteBranchName(String branchName) {
         try {
             var config = repository.getConfig();
             var remoteNames = repository.getRemoteNames();
