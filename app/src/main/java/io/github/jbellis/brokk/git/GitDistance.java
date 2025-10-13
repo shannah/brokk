@@ -131,15 +131,19 @@ public final class GitDistance {
     }
 
     /**
-     * Computes seedless importance scores for ProjectFiles using Personalized PageRank with a uniform
-     * teleport vector and inverse fan-out edge weighting. For each commit that changes m>1 files, each
-     * ordered pair (u -> v, u != v) receives weight 1/(m-1). Outgoing weights are row-normalized when
-     * propagating rank; dangling nodes distribute their mass uniformly. No recency is applied.
+     * Personalized PageRank over the co-change graph with Inverse Fan-Out Edges (IFOE).
      *
-     * @param repo the Git repository.
-     * @param commits the commits to build the co-change graph from.
-     * @return a map from ProjectFile to PageRank score.
-     * @throws GitAPIException if listing changed files fails.
+     * Graph construction:
+     *   For each commit that changes m>1 distinct files, add weight 1/(m-1) to every ordered pair (u->v, u!=v).
+     *
+     * Teleport vector (topic-sensitive):
+     *   π(u) = touches(u) / sum_v touches(v), where touches(u) is the number of commits in the window that touched u.
+     *   If no touches are recorded (shouldn't happen with non-empty commits), π is uniform.
+     *
+     * Dangling handling:
+     *   Rank mass from dangling nodes is redistributed uniformly (1/n), not to π.
+     *
+     * No recency decay is applied; recency is implicit in the provided commit list.
      */
     private static Map<ProjectFile, Double> computeImportanceScores(GitRepo repo, List<CommitInfo> commits)
             throws GitAPIException {
@@ -147,66 +151,77 @@ public final class GitDistance {
 
         var adj = new ConcurrentHashMap<ProjectFile, ConcurrentHashMap<ProjectFile, Double>>();
         var nodes = ConcurrentHashMap.<ProjectFile>newKeySet();
+        var touches = new ConcurrentHashMap<ProjectFile, Integer>();
 
         try (var pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
             pool.submit(() -> commits.parallelStream().forEach(commit -> {
-                        try {
-                            var changed = repo.listFilesChangedInCommit(commit.id());
-                            if (changed.isEmpty()) return;
-                            var distinct = changed.stream().distinct().toList();
-                            nodes.addAll(distinct);
-                            int m = distinct.size();
-                            if (m < 2) return;
-                            double w = 1.0 / (m - 1);
-                            for (int i = 0; i < m; i++) {
-                                var u = distinct.get(i);
-                                var out = adj.computeIfAbsent(u, k -> new ConcurrentHashMap<>());
-                                for (int j = 0; j < m; j++) {
-                                    if (i == j) continue;
-                                    var v = distinct.get(j);
-                                    out.merge(v, w, Double::sum);
-                                }
-                            }
-                        } catch (GitAPIException e) {
-                            throw new RuntimeException("Error processing commit: " + commit.id(), e);
+                try {
+                    var changed = repo.listFilesChangedInCommit(commit.id());
+                    if (changed.isEmpty()) return;
+                    var distinct = changed.stream().distinct().toList();
+                    nodes.addAll(distinct);
+
+                    for (var f : distinct) touches.merge(f, 1, Integer::sum);
+
+                    int m = distinct.size();
+                    if (m < 2) return;
+                    double w = 1.0 / (m - 1);
+
+                    for (int i = 0; i < m; i++) {
+                        var u = distinct.get(i);
+                        var out = adj.computeIfAbsent(u, k -> new ConcurrentHashMap<>());
+                        for (int j = 0; j < m; j++) {
+                            if (i == j) continue;
+                            var v = distinct.get(j);
+                            out.merge(v, w, Double::sum);
                         }
-                    }))
-                    .get();
+                    }
+                } catch (GitAPIException e) {
+                    throw new RuntimeException("Error processing commit: " + commit.id(), e);
+                }
+            })).get();
         } catch (InterruptedException | ExecutionException e) {
             throw new RuntimeException("Error building co-change graph in parallel", e);
         }
 
-        var allNodes = new java.util.HashSet<>(nodes);
-        if (allNodes.isEmpty()) return Map.of();
+        var all = new java.util.HashSet<>(nodes);
+        if (all.isEmpty()) return Map.of();
 
-        var outWeight = new HashMap<ProjectFile, Double>(allNodes.size());
-        for (var u : allNodes) {
+        var outWeight = new HashMap<ProjectFile, Double>(all.size());
+        for (var u : all) {
             var outs = adj.get(u);
             double sum = 0.0;
             if (outs != null) for (var val : outs.values()) sum += val;
             outWeight.put(u, sum);
         }
 
-        int n = allNodes.size();
+        double totalTouches = touches.values().stream().mapToDouble(Integer::doubleValue).sum();
+        var pi = new HashMap<ProjectFile, Double>(all.size());
+        if (totalTouches > 0.0) {
+            for (var u : all) pi.put(u, touches.getOrDefault(u, 0) / totalTouches);
+        } else {
+            double uni = 1.0 / all.size();
+            for (var u : all) pi.put(u, uni);
+        }
+
+        int n = all.size();
         var rank = new HashMap<ProjectFile, Double>(n);
         double init = 1.0 / n;
-        for (var u : allNodes) rank.put(u, init);
+        for (var u : all) rank.put(u, init);
 
         final double d = 0.85;
         final int maxIters = 50;
         final double eps = 1e-6;
-        final int DEBUG_TOP_K = 10;
 
         for (int it = 0; it < maxIters; it++) {
-            double teleport = (1.0 - d) / n;
             double danglingMass = 0.0;
-            for (var v : allNodes) if (outWeight.getOrDefault(v, 0.0) == 0.0) danglingMass += rank.get(v);
-            double danglingContribution = d * danglingMass / n;
+            for (var v : all) if (outWeight.getOrDefault(v, 0.0) == 0.0) danglingMass += rank.get(v);
 
             var next = new HashMap<ProjectFile, Double>(n);
-            for (var u : allNodes) next.put(u, teleport + danglingContribution);
+            double uniformLeak = d * danglingMass / n;
+            for (var u : all) next.put(u, (1.0 - d) * pi.get(u) + uniformLeak);
 
-            for (var v : allNodes) {
+            for (var v : all) {
                 double outSum = outWeight.getOrDefault(v, 0.0);
                 if (outSum == 0.0) continue;
                 var outs = adj.get(v);
@@ -218,18 +233,8 @@ public final class GitDistance {
             }
 
             double delta = 0.0;
-            for (var u : allNodes) delta += Math.abs(next.get(u) - rank.get(u));
+            for (var u : all) delta += Math.abs(next.get(u) - rank.get(u));
             rank = next;
-
-            if (logger.isDebugEnabled()) {
-                var topFiles = rank.entrySet().stream()
-                        .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
-                        .limit(DEBUG_TOP_K)
-                        .map(e -> String.format("%s: %.4f", e.getKey().getFileName(), e.getValue()))
-                        .collect(Collectors.joining(", "));
-                logger.debug("PageRank iteration {}: delta={}, top {}: {}", it, String.format("%.6f", delta), DEBUG_TOP_K, topFiles);
-            }
-
             if (delta < eps) break;
         }
 
