@@ -6,6 +6,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.VisibleForTesting;
+import java.nio.file.Path;
 
 import java.util.Collection;
 import java.util.HashMap;
@@ -301,5 +302,25 @@ public final class GitDistance {
                         reversed ? Double.compare(a.score(), b.score()) : Double.compare(b.score(), a.score()))
                 .limit(k)
                 .toList();
+    }
+
+    public static void main(String[] args) {
+        if (args.length < 1 || args[0].isBlank()) {
+            System.err.println("Usage: GitDistance <path-to-git-repo>");
+            System.exit(1);
+        }
+
+        var repoPath = Path.of(args[0]);
+        logger.info("Analyzing most important files for repository: {}", repoPath);
+
+        try {
+            var repo = new GitRepo(repoPath);
+            var results = getMostImportantFilesScored(repo, 20);
+            results.forEach(fr ->
+                    System.out.printf("%s\t%.6f%n", fr.file().getFileName(), fr.score()));
+        } catch (GitAPIException e) {
+            logger.error("Error computing most important files for repo {}: {}", repoPath, e.getMessage(), e);
+            System.exit(2);
+        }
     }
 }
