@@ -140,7 +140,9 @@ public class ContextAgent {
                     content = file.read().orElse("");
                     totalTokens += Messages.getApproximateTokens(content);
                 } else {
-                    logger.debug("PROJECT_PATH fragment {} did not yield a ProjectFile for token calculation.", fragment.description());
+                    logger.debug(
+                            "PROJECT_PATH fragment {} did not yield a ProjectFile for token calculation.",
+                            fragment.description());
                 }
             } else if (fragment.getType() == ContextFragment.FragmentType.SKELETON) {
                 var skeletonFragment = (ContextFragment.SkeletonFragment) fragment;
@@ -182,7 +184,11 @@ public class ContextAgent {
                 .sorted()
                 .toList();
 
-        logger.debug("Filtered out {} existing files from a total of {}. Considering {} files for context recommendation.", existingFiles.size(), cm.getProject().getAllFiles().size(), allFiles.size());
+        logger.debug(
+                "Filtered out {} existing files from a total of {}. Considering {} files for context recommendation.",
+                existingFiles.size(),
+                cm.getProject().getAllFiles().size(),
+                allFiles.size());
 
         // Deep mode: partition into analyzed / not-analyzed; process groups in parallel
         RecommendationResult firstPassResult = null;
@@ -217,7 +223,8 @@ public class ContextAgent {
             logger.debug("Filename pruning resulted in an empty list. No context found.");
             return new RecommendationResult(true, List.of(), filenameResult.reasoning(), cumulativeUsage);
         }
-        logger.debug("LLM pruned to {} files based on names. Reasoning: {}", prunedFiles.size(), filenameResult.reasoning());
+        logger.debug(
+                "LLM pruned to {} files based on names. Reasoning: {}", prunedFiles.size(), filenameResult.reasoning());
 
         // Fallback 2: deep mixed again on the pruned set
         try {
@@ -299,7 +306,13 @@ public class ContextAgent {
         int contentTokens = Messages.getApproximateTokens(contentsMap.values());
         int combinedTokens = summaryTokens + contentTokens;
 
-        logger.debug("Deep mixed: {} summaries (~{} tokens), {} files content (~{} tokens); combined ~{} tokens", summaries.size(), summaryTokens, contentsMap.size(), contentTokens, combinedTokens);
+        logger.debug(
+                "Deep mixed: {} summaries (~{} tokens), {} files content (~{} tokens); combined ~{} tokens",
+                summaries.size(),
+                summaryTokens,
+                contentsMap.size(),
+                contentTokens,
+                combinedTokens);
 
         if (allowSkipPruning && combinedTokens <= skipPruningBudget) {
             // Include everything without LLM
@@ -322,7 +335,10 @@ public class ContextAgent {
         var filteredFiles =
                 originalFiles.stream().filter(f -> !existingFiles.contains(f)).toList();
         if (filteredFiles.size() != originalFiles.size()) {
-            logger.debug("Post-filtered LLM recommended files from {} to {} by excluding files already in the workspace", originalFiles.size(), filteredFiles.size());
+            logger.debug(
+                    "Post-filtered LLM recommended files from {} to {} by excluding files already in the workspace",
+                    originalFiles.size(),
+                    filteredFiles.size());
         }
 
         var originalClassCount = llmRecommendation.recommendedClasses().size();
@@ -331,7 +347,10 @@ public class ContextAgent {
                 .filter(cu -> !existingFiles.contains(cu.source()))
                 .toList();
         if (recommendedClasses.size() != originalClassCount) {
-            logger.debug("Post-filtered LLM recommended classes from {} to {} by excluding classes whose source files are already present or recommended", originalClassCount, recommendedClasses.size());
+            logger.debug(
+                    "Post-filtered LLM recommended classes from {} to {} by excluding classes whose source files are already present or recommended",
+                    originalClassCount,
+                    recommendedClasses.size());
         }
 
         var reasoning = llmRecommendation.reasoning();
@@ -343,7 +362,13 @@ public class ContextAgent {
                 Messages.getApproximateTokens(String.join("\n", recommendedContentsMap.values()));
         int totalRecommendedTokens = recommendedSummaryTokens + recommendedContentTokens;
 
-        logger.debug("LLM recommended {} classes ({} tokens) and {} files ({} tokens). Total: {} tokens", recommendedSummaries.size(), recommendedSummaryTokens, filteredFiles.size(), recommendedContentTokens, totalRecommendedTokens);
+        logger.debug(
+                "LLM recommended {} classes ({} tokens) and {} files ({} tokens). Total: {} tokens",
+                recommendedSummaries.size(),
+                recommendedSummaryTokens,
+                filteredFiles.size(),
+                recommendedContentTokens,
+                totalRecommendedTokens);
 
         var skeletonFragments = skeletonPerSummary(cm, recommendedSummaries);
         var pathFragments = filteredFiles.stream()
@@ -646,8 +671,12 @@ public class ContextAgent {
                 .filter(CodeUnit::isClass)
                 .collect(Collectors.toSet());
 
-        logger.debug("Tool recommended files: {}", projectFiles.stream().map(ProjectFile::getFileName).collect(Collectors.joining(", ")));
-        logger.debug("Tool recommended classes: {}", projectClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
+        logger.debug(
+                "Tool recommended files: {}",
+                projectFiles.stream().map(ProjectFile::getFileName).collect(Collectors.joining(", ")));
+        logger.debug(
+                "Tool recommended classes: {}",
+                projectClasses.stream().map(CodeUnit::identifier).collect(Collectors.joining(", ")));
         return new LlmRecommendation(projectFiles, projectClasses, result.text(), tokenUsage);
     }
 
