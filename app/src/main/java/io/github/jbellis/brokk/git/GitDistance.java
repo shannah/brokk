@@ -132,122 +132,62 @@ public final class GitDistance {
     }
 
     /**
-     * Personalized PageRank over the co-change graph with Inverse Fan-Out Edges (IFOE) and half-life recency decay.
+     * Using Git history, determines the most important files by analyzing their change frequency, considering both the
+     * number of commits and the recency of those changes. This approach uses a weighted analysis of the Git history
+     * where the weight of changes decays exponentially over time.
      *
-     * Graph construction:
-     *   For each commit with m>1 distinct files, each ordered pair (u->v, u!=v) receives weight:
-     *     w_edge = decay(commit) * 1/(m-1)
-     *   where decay(commit) = 0.5^( age(commit) / halfLife ), and halfLife is a constant (e.g., 90 days).
+     * <p>The formula for a file's score is:
      *
-     * Teleport vector (topic-sensitive):
-     *   π(u) ∝ sum over commits that touched u of decay(commit).
-     *   If no touches are recorded, π is uniform.
+     * <p>S_file = sum_{c in commits} 2^(-(t_latest - t_c) / half-life)
      *
-     * Dangling handling:
-     *   Rank mass from dangling nodes is redistributed uniformly (1/n).
+     * <p>Where:
      *
-     * No explicit seed weights; all seeds are treated equally via π. Recency is applied consistently to both edges and π.
+     * <ul>
+     *   <li>t_c is the timestamp of commit c.
+     *   <li>t_latest is the timestamp of the latest commit in the repository.
+     *   <li>half-life is a constant (30 days) that determines how quickly the weight of changes decays.
+     * </ul>
      */
     private static Map<ProjectFile, Double> computeImportanceScores(GitRepo repo, List<CommitInfo> commits)
             throws GitAPIException {
-        if (commits.isEmpty()) return Map.of();
+        if (commits.isEmpty()) {
+            return Map.of();
+        }
 
-        var newest = commits.stream().map(CommitInfo::date).max(java.util.Comparator.naturalOrder()).orElseThrow();
-        var halfLife = java.time.Duration.ofDays(30);
+        var t_latest = commits.getFirst().date();
+        var halfLife = Duration.ofDays(30);
+        double halfLifeMillis = halfLife.toMillis();
 
-        var adj = new java.util.concurrent.ConcurrentHashMap<ProjectFile, java.util.concurrent.ConcurrentHashMap<ProjectFile, Double>>();
-        var nodes = java.util.concurrent.ConcurrentHashMap.<ProjectFile>newKeySet();
-        var decayedTouches = new java.util.concurrent.ConcurrentHashMap<ProjectFile, Double>();
+        var scores = new ConcurrentHashMap<ProjectFile, Double>();
 
-        try (var pool = new java.util.concurrent.ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
+        try (var pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
             pool.submit(() -> commits.parallelStream().forEach(commit -> {
-                try {
-                    var changed = repo.listFilesChangedInCommit(commit.id());
-                    if (changed.isEmpty()) return;
-                    var distinct = changed.stream().distinct().toList();
-                    nodes.addAll(distinct);
-
-                    double ageSec = java.time.Duration.between(commit.date(), newest).toSeconds();
-                    double decay = Math.pow(0.5, ageSec / Math.max(1, halfLife.toSeconds()));
-
-                    for (var f : distinct) decayedTouches.merge(f, decay, Double::sum);
-
-                    int m = distinct.size();
-                    if (m < 2) return;
-                    double wBase = decay / (m - 1);
-
-                    for (int i = 0; i < m; i++) {
-                        var u = distinct.get(i);
-                        var out = adj.computeIfAbsent(u, k -> new java.util.concurrent.ConcurrentHashMap<>());
-                        for (int j = 0; j < m; j++) {
-                            if (i == j) continue;
-                            var v = distinct.get(j);
-                            out.merge(v, wBase, Double::sum);
+                        List<ProjectFile> changedFiles;
+                        try {
+                            changedFiles = repo.listFilesChangedInCommit(commit.id());
+                        } catch (GitAPIException e) {
+                            throw new RuntimeException("Error processing commit: " + commit.id(), e);
                         }
-                    }
-                } catch (GitAPIException e) {
-                    throw new RuntimeException("Error processing commit: " + commit.id(), e);
-                }
-            })).get();
-        } catch (InterruptedException | java.util.concurrent.ExecutionException e) {
-            throw new RuntimeException("Error building co-change graph in parallel", e);
+                        if (changedFiles.isEmpty()) {
+                            return;
+                        }
+
+                        var t_c = commit.date();
+                        var age = Duration.between(t_c, t_latest);
+                        double ageMillis = age.toMillis();
+
+                        double weight = Math.pow(2, -(ageMillis / halfLifeMillis));
+
+                        for (var file : changedFiles) {
+                            scores.merge(file, weight, Double::sum);
+                        }
+                    }))
+                    .get();
+        } catch (InterruptedException | ExecutionException e) {
+            throw new RuntimeException("Error computing file importance scores in parallel", e);
         }
 
-        var all = new java.util.HashSet<>(nodes);
-        if (all.isEmpty()) return Map.of();
-
-        var outWeight = new java.util.HashMap<ProjectFile, Double>(all.size());
-        for (var u : all) {
-            var outs = adj.get(u);
-            double sum = 0.0;
-            if (outs != null) for (var val : outs.values()) sum += val;
-            outWeight.put(u, sum);
-        }
-
-        double totalTouch = decayedTouches.values().stream().mapToDouble(Double::doubleValue).sum();
-        var pi = new java.util.HashMap<ProjectFile, Double>(all.size());
-        if (totalTouch > 0.0) {
-            for (var u : all) pi.put(u, decayedTouches.getOrDefault(u, 0.0) / totalTouch);
-        } else {
-            double uni = 1.0 / all.size();
-            for (var u : all) pi.put(u, uni);
-        }
-
-        int n = all.size();
-        var rank = new java.util.HashMap<ProjectFile, Double>(n);
-        double init = 1.0 / n;
-        for (var u : all) rank.put(u, init);
-
-        final double d = 0.85;
-        final int maxIters = 50;
-        final double eps = 1e-6;
-
-        for (int it = 0; it < maxIters; it++) {
-            double danglingMass = 0.0;
-            for (var v : all) if (outWeight.getOrDefault(v, 0.0) == 0.0) danglingMass += rank.get(v);
-
-            var next = new java.util.HashMap<ProjectFile, Double>(n);
-            double uniformLeak = d * danglingMass / n;
-            for (var u : all) next.put(u, (1.0 - d) * pi.get(u) + uniformLeak);
-
-            for (var v : all) {
-                double outSum = outWeight.getOrDefault(v, 0.0);
-                if (outSum == 0.0) continue;
-                var outs = adj.get(v);
-                if (outs == null || outs.isEmpty()) continue;
-                double share = d * rank.get(v) / outSum;
-                for (var e : outs.entrySet()) {
-                    next.merge(e.getKey(), share * e.getValue(), Double::sum);
-                }
-            }
-
-            double delta = 0.0;
-            for (var u : all) delta += Math.abs(next.get(u) - rank.get(u));
-            rank = next;
-            if (delta < eps) break;
-        }
-
-        return rank;
+        return scores;
     }
 
     private static List<IAnalyzer.FileRelevance> computePmiScores(
