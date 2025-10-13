@@ -1,13 +1,10 @@
 package io.github.jbellis.brokk.git;
 
+import static java.util.Objects.requireNonNull;
+
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import org.apache.logging.log4j.LogManager;
-import org.apache.logging.log4j.Logger;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.jetbrains.annotations.VisibleForTesting;
 import java.nio.file.Path;
-
 import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
@@ -17,8 +14,10 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.stream.Collectors;
-
-import static java.util.Objects.requireNonNull;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.jetbrains.annotations.VisibleForTesting;
 
 /** Provides the logic to perform a Git-centric distance calculations for given type declarations. */
 public final class GitDistance {
@@ -270,8 +269,7 @@ public final class GitDistance {
         try {
             var repo = new GitRepo(repoPath);
             var results = getMostImportantFilesScored(repo, 20);
-            results.forEach(fr ->
-                    System.out.printf("%s\t%.6f%n", fr.file().getFileName(), fr.score()));
+            results.forEach(fr -> System.out.printf("%s\t%.6f%n", fr.file().getFileName(), fr.score()));
         } catch (GitAPIException e) {
             logger.error("Error computing most important files for repo {}: {}", repoPath, e.getMessage(), e);
             System.exit(2);
