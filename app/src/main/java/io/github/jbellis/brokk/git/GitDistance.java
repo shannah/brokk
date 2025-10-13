@@ -8,6 +8,7 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 import org.jetbrains.annotations.VisibleForTesting;
 import java.nio.file.Path;
 
+import java.time.Duration;
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -131,29 +132,34 @@ public final class GitDistance {
     }
 
     /**
-     * Personalized PageRank over the co-change graph with Inverse Fan-Out Edges (IFOE).
+     * Personalized PageRank over the co-change graph with Inverse Fan-Out Edges (IFOE) and half-life recency decay.
      *
      * Graph construction:
-     *   For each commit that changes m>1 distinct files, add weight 1/(m-1) to every ordered pair (u->v, u!=v).
+     *   For each commit with m>1 distinct files, each ordered pair (u->v, u!=v) receives weight:
+     *     w_edge = decay(commit) * 1/(m-1)
+     *   where decay(commit) = 0.5^( age(commit) / halfLife ), and halfLife is a constant (e.g., 90 days).
      *
      * Teleport vector (topic-sensitive):
-     *   π(u) = touches(u) / sum_v touches(v), where touches(u) is the number of commits in the window that touched u.
-     *   If no touches are recorded (shouldn't happen with non-empty commits), π is uniform.
+     *   π(u) ∝ sum over commits that touched u of decay(commit).
+     *   If no touches are recorded, π is uniform.
      *
      * Dangling handling:
-     *   Rank mass from dangling nodes is redistributed uniformly (1/n), not to π.
+     *   Rank mass from dangling nodes is redistributed uniformly (1/n).
      *
-     * No recency decay is applied; recency is implicit in the provided commit list.
+     * No explicit seed weights; all seeds are treated equally via π. Recency is applied consistently to both edges and π.
      */
     private static Map<ProjectFile, Double> computeImportanceScores(GitRepo repo, List<CommitInfo> commits)
             throws GitAPIException {
         if (commits.isEmpty()) return Map.of();
 
-        var adj = new ConcurrentHashMap<ProjectFile, ConcurrentHashMap<ProjectFile, Double>>();
-        var nodes = ConcurrentHashMap.<ProjectFile>newKeySet();
-        var touches = new ConcurrentHashMap<ProjectFile, Integer>();
+        var newest = commits.stream().map(CommitInfo::date).max(java.util.Comparator.naturalOrder()).orElseThrow();
+        var halfLife = java.time.Duration.ofDays(30);
 
-        try (var pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
+        var adj = new java.util.concurrent.ConcurrentHashMap<ProjectFile, java.util.concurrent.ConcurrentHashMap<ProjectFile, Double>>();
+        var nodes = java.util.concurrent.ConcurrentHashMap.<ProjectFile>newKeySet();
+        var decayedTouches = new java.util.concurrent.ConcurrentHashMap<ProjectFile, Double>();
+
+        try (var pool = new java.util.concurrent.ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
             pool.submit(() -> commits.parallelStream().forEach(commit -> {
                 try {
                     var changed = repo.listFilesChangedInCommit(commit.id());
@@ -161,33 +167,36 @@ public final class GitDistance {
                     var distinct = changed.stream().distinct().toList();
                     nodes.addAll(distinct);
 
-                    for (var f : distinct) touches.merge(f, 1, Integer::sum);
+                    double ageSec = java.time.Duration.between(commit.date(), newest).toSeconds();
+                    double decay = Math.pow(0.5, ageSec / Math.max(1, halfLife.toSeconds()));
+
+                    for (var f : distinct) decayedTouches.merge(f, decay, Double::sum);
 
                     int m = distinct.size();
                     if (m < 2) return;
-                    double w = 1.0 / (m - 1);
+                    double wBase = decay / (m - 1);
 
                     for (int i = 0; i < m; i++) {
                         var u = distinct.get(i);
-                        var out = adj.computeIfAbsent(u, k -> new ConcurrentHashMap<>());
+                        var out = adj.computeIfAbsent(u, k -> new java.util.concurrent.ConcurrentHashMap<>());
                         for (int j = 0; j < m; j++) {
                             if (i == j) continue;
                             var v = distinct.get(j);
-                            out.merge(v, w, Double::sum);
+                            out.merge(v, wBase, Double::sum);
                         }
                     }
                 } catch (GitAPIException e) {
                     throw new RuntimeException("Error processing commit: " + commit.id(), e);
                 }
             })).get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (InterruptedException | java.util.concurrent.ExecutionException e) {
             throw new RuntimeException("Error building co-change graph in parallel", e);
         }
 
         var all = new java.util.HashSet<>(nodes);
         if (all.isEmpty()) return Map.of();
 
-        var outWeight = new HashMap<ProjectFile, Double>(all.size());
+        var outWeight = new java.util.HashMap<ProjectFile, Double>(all.size());
         for (var u : all) {
             var outs = adj.get(u);
             double sum = 0.0;
@@ -195,17 +204,17 @@ public final class GitDistance {
             outWeight.put(u, sum);
         }
 
-        double totalTouches = touches.values().stream().mapToDouble(Integer::doubleValue).sum();
-        var pi = new HashMap<ProjectFile, Double>(all.size());
-        if (totalTouches > 0.0) {
-            for (var u : all) pi.put(u, touches.getOrDefault(u, 0) / totalTouches);
+        double totalTouch = decayedTouches.values().stream().mapToDouble(Double::doubleValue).sum();
+        var pi = new java.util.HashMap<ProjectFile, Double>(all.size());
+        if (totalTouch > 0.0) {
+            for (var u : all) pi.put(u, decayedTouches.getOrDefault(u, 0.0) / totalTouch);
         } else {
             double uni = 1.0 / all.size();
             for (var u : all) pi.put(u, uni);
         }
 
         int n = all.size();
-        var rank = new HashMap<ProjectFile, Double>(n);
+        var rank = new java.util.HashMap<ProjectFile, Double>(n);
         double init = 1.0 / n;
         for (var u : all) rank.put(u, init);
 
@@ -217,7 +226,7 @@ public final class GitDistance {
             double danglingMass = 0.0;
             for (var v : all) if (outWeight.getOrDefault(v, 0.0) == 0.0) danglingMass += rank.get(v);
 
-            var next = new HashMap<ProjectFile, Double>(n);
+            var next = new java.util.HashMap<ProjectFile, Double>(n);
             double uniformLeak = d * danglingMass / n;
             for (var u : all) next.put(u, (1.0 - d) * pi.get(u) + uniformLeak);
 
