@@ -1,10 +1,12 @@
 package io.github.jbellis.brokk.git;
 
-import static java.util.Objects.requireNonNull;
-
 import io.github.jbellis.brokk.analyzer.IAnalyzer;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
-import java.time.Duration;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.eclipse.jgit.api.errors.GitAPIException;
+import org.jetbrains.annotations.VisibleForTesting;
+
 import java.util.Collection;
 import java.util.HashMap;
 import java.util.List;
@@ -13,11 +15,12 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.ForkJoinPool;
 import java.util.stream.Collectors;
-import org.eclipse.jgit.api.errors.GitAPIException;
-import org.jetbrains.annotations.VisibleForTesting;
+
+import static java.util.Objects.requireNonNull;
 
 /** Provides the logic to perform a Git-centric distance calculations for given type declarations. */
 public final class GitDistance {
+    private static final Logger logger = LogManager.getLogger(GitDistance.class);
     private static final int COMMITS_TO_PROCESS = 1_000;
 
     /** Represents an edge between two CodeUnits in the co-occurrence graph. */
@@ -44,32 +47,12 @@ public final class GitDistance {
         }
     }
 
-    /**
-     * Using Git history, determines the most important files by analyzing their change frequency, considering both the
-     * number of commits and the recency of those changes. This approach uses a weighted analysis of the Git history
-     * where the weight of changes decays exponentially over time.
-     *
-     * <p>The formula for a file's score is:
-     *
-     * <p>S_file = sum_{c in commits} 2^(-(t_latest - t_c) / half-life)
-     *
-     * <p>Where:
-     *
-     * <ul>
-     *   <li>t_c is the timestamp of commit c.
-     *   <li>t_latest is the timestamp of the latest commit in the repository.
-     *   <li>half-life is a constant (30 days) that determines how quickly the weight of changes decays.
-     * </ul>
-     *
-     * @param repo the Git repository wrapper.
-     * @param k the maximum number of files to return.
-     * @return a sorted list of the most important files with their relevance scores.
-     */
     @VisibleForTesting
     public static List<IAnalyzer.FileRelevance> getMostImportantFilesScored(GitRepo repo, int k)
             throws GitAPIException {
         var commits = repo.listCommitsDetailed(repo.getCurrentBranch(), COMMITS_TO_PROCESS);
         var scores = computeImportanceScores(repo, commits);
+        logger.info("Computed importance scores for getMostImportantFilesScored: {}", scores);
 
         return scores.entrySet().stream()
                 .map(e -> new IAnalyzer.FileRelevance(e.getKey(), e.getValue()))
@@ -131,6 +114,7 @@ public final class GitDistance {
         Map<ProjectFile, Double> scores;
         try {
             scores = computeImportanceScores(gr, commits);
+            logger.info("Computed importance scores for sortByImportance: {}", scores);
         } catch (GitAPIException e) {
             throw new RuntimeException(e);
         }
@@ -145,46 +129,110 @@ public final class GitDistance {
                 .toList();
     }
 
+    /**
+     * Computes seedless importance scores for ProjectFiles using Personalized PageRank with a uniform
+     * teleport vector and inverse fan-out edge weighting. For each commit that changes m>1 files, each
+     * ordered pair (u -> v, u != v) receives weight 1/(m-1). Outgoing weights are row-normalized when
+     * propagating rank; dangling nodes distribute their mass uniformly. No recency is applied.
+     *
+     * @param repo the Git repository.
+     * @param commits the commits to build the co-change graph from.
+     * @return a map from ProjectFile to PageRank score.
+     * @throws GitAPIException if listing changed files fails.
+     */
     private static Map<ProjectFile, Double> computeImportanceScores(GitRepo repo, List<CommitInfo> commits)
             throws GitAPIException {
-        if (commits.isEmpty()) {
-            return Map.of();
-        }
+        if (commits.isEmpty()) return Map.of();
 
-        var t_latest = commits.getFirst().date();
-        var halfLife = Duration.ofDays(30);
-        double halfLifeMillis = halfLife.toMillis();
-
-        var scores = new ConcurrentHashMap<ProjectFile, Double>();
+        var adj = new ConcurrentHashMap<ProjectFile, ConcurrentHashMap<ProjectFile, Double>>();
+        var nodes = ConcurrentHashMap.<ProjectFile>newKeySet();
 
         try (var pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
             pool.submit(() -> commits.parallelStream().forEach(commit -> {
-                        List<ProjectFile> changedFiles = null;
                         try {
-                            changedFiles = repo.listFilesChangedInCommit(commit.id());
+                            var changed = repo.listFilesChangedInCommit(commit.id());
+                            if (changed.isEmpty()) return;
+                            var distinct = changed.stream().distinct().toList();
+                            nodes.addAll(distinct);
+                            int m = distinct.size();
+                            if (m < 2) return;
+                            double w = 1.0 / (m - 1);
+                            for (int i = 0; i < m; i++) {
+                                var u = distinct.get(i);
+                                var out = adj.computeIfAbsent(u, k -> new ConcurrentHashMap<>());
+                                for (int j = 0; j < m; j++) {
+                                    if (i == j) continue;
+                                    var v = distinct.get(j);
+                                    out.merge(v, w, Double::sum);
+                                }
+                            }
                         } catch (GitAPIException e) {
                             throw new RuntimeException("Error processing commit: " + commit.id(), e);
-                        }
-                        if (changedFiles.isEmpty()) {
-                            return;
-                        }
-
-                        var t_c = commit.date();
-                        var age = Duration.between(t_c, t_latest);
-                        double ageMillis = age.toMillis();
-
-                        double weight = Math.pow(2, -(ageMillis / halfLifeMillis));
-
-                        for (var file : changedFiles) {
-                            scores.merge(file, weight, Double::sum);
                         }
                     }))
                     .get();
         } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException("Error computing file importance scores in parallel", e);
+            throw new RuntimeException("Error building co-change graph in parallel", e);
         }
 
-        return scores;
+        var allNodes = new java.util.HashSet<>(nodes);
+        if (allNodes.isEmpty()) return Map.of();
+
+        var outWeight = new HashMap<ProjectFile, Double>(allNodes.size());
+        for (var u : allNodes) {
+            var outs = adj.get(u);
+            double sum = 0.0;
+            if (outs != null) for (var val : outs.values()) sum += val;
+            outWeight.put(u, sum);
+        }
+
+        int n = allNodes.size();
+        var rank = new HashMap<ProjectFile, Double>(n);
+        double init = 1.0 / n;
+        for (var u : allNodes) rank.put(u, init);
+
+        final double d = 0.85;
+        final int maxIters = 50;
+        final double eps = 1e-6;
+        final int DEBUG_TOP_K = 10;
+
+        for (int it = 0; it < maxIters; it++) {
+            double teleport = (1.0 - d) / n;
+            double danglingMass = 0.0;
+            for (var v : allNodes) if (outWeight.getOrDefault(v, 0.0) == 0.0) danglingMass += rank.get(v);
+            double danglingContribution = d * danglingMass / n;
+
+            var next = new HashMap<ProjectFile, Double>(n);
+            for (var u : allNodes) next.put(u, teleport + danglingContribution);
+
+            for (var v : allNodes) {
+                double outSum = outWeight.getOrDefault(v, 0.0);
+                if (outSum == 0.0) continue;
+                var outs = adj.get(v);
+                if (outs == null || outs.isEmpty()) continue;
+                double share = d * rank.get(v) / outSum;
+                for (var e : outs.entrySet()) {
+                    next.merge(e.getKey(), share * e.getValue(), Double::sum);
+                }
+            }
+
+            double delta = 0.0;
+            for (var u : allNodes) delta += Math.abs(next.get(u) - rank.get(u));
+            rank = next;
+
+            if (logger.isDebugEnabled()) {
+                var topFiles = rank.entrySet().stream()
+                        .sorted((a, b) -> Double.compare(b.getValue(), a.getValue()))
+                        .limit(DEBUG_TOP_K)
+                        .map(e -> String.format("%s: %.4f", e.getKey().getFileName(), e.getValue()))
+                        .collect(Collectors.joining(", "));
+                logger.debug("PageRank iteration {}: delta={}, top {}: {}", it, String.format("%.6f", delta), DEBUG_TOP_K, topFiles);
+            }
+
+            if (delta < eps) break;
+        }
+
+        return rank;
     }
 
     private static List<IAnalyzer.FileRelevance> computePmiScores(
