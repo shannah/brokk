@@ -9,6 +9,7 @@
     "jdeploy": {
         "jdk": false,
         "args": ["--add-modules jdk.incubator.vector"],
+        "fallbackToUniversal": false,
         "publishTargets": [{
             "name": "github: brokk",
             "type": "GITHUB",
@@ -28,7 +29,8 @@
         "jar": "app/build/libs/brokk-*.jar",
         "javafx": true,
         "title": "Brokk",
-        "downloadPage": {"platforms": ["all"]}
+        "downloadPage": {"platforms": ["all"]},
+        "platformBundlesEnabled": true
     },
     "dependencies": {
         "command-exists-promise": "^2.0.2",
