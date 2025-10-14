@@ -216,6 +216,14 @@ val baselineJvmArgsProvider = object : CommandLineArgumentProvider {
     )
 }
 
+val jdwpDebugArgsProvider = object : CommandLineArgumentProvider {
+    override fun asArguments(): Iterable<String> {
+        val port = (project.findProperty("debugPort") as String?) ?: "5005"
+        // Use "*" so it works on macOS 13+/JDK 21+ where "address=*:5005" is the recommended form.
+        return listOf("-agentlib:jdwp=transport=dt_socket,server=y,suspend=n,address=*:$port")
+    }
+}
+
 // Configure main source compilation with ErrorProne/NullAway
 tasks.named<JavaCompile>("compileJava") {
     // Enable NullAway only during 'check' or 'analyze' tasks, or in CI
@@ -294,6 +302,7 @@ tasks.named<JavaCompile>("compileTestJava") {
 tasks.withType<JavaExec>().configureEach {
     // Baseline JVM args provided lazily; composes with applicationDefaultJvmArgs and other plugins
     jvmArgumentProviders.add(baselineJvmArgsProvider)
+    jvmArgumentProviders.add(jdwpDebugArgsProvider)
 }
 
 // Static analysis task without tests (fast, for git hooks)
