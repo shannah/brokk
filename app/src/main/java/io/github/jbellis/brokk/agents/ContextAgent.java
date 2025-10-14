@@ -38,8 +38,26 @@ import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /**
- * Agent responsible for populating the initial workspace context for the ArchitectAgent. It uses different strategies
- * based on project size, available analysis data, and token limits.
+ * ContextAgent looks for code in the current Project relevant to the given query/goal.
+ *
+ * It does this by
+ * 1. Identifying candidates
+ * 2. Asking the LLM to select relevant candidates
+ *
+ * Candidate identification is done as follows:
+ * 1. If there are files in the Workspace, ask GitDistance for the most relevant related files.
+ * 2. Otherwise, all Project files are candidates.
+ *
+ * Candidate selection is done by
+ * 1. If we have few enough candidates that we can fit all summaries into the model's context window,
+ *    just throw them all in.
+ * 2. Otherwise, first filter by filename, then select by summaries.
+ * 3. If filtering by filename still results in too many candidates to fit summaries in the context window,
+ *    use GitDistance to narrow down to the most popular files.
+ *
+ * Finally, if there are files that the Analyzer does not know how to summarize, ContextAgent will do
+ * full-content analysis (but since these are so much larger, necessarily we will be able to fit much
+ * fewer into the window).
  */
 public class ContextAgent {
     private static final Logger logger = LogManager.getLogger(ContextAgent.class);
