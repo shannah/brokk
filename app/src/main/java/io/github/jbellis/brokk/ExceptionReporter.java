@@ -20,7 +20,8 @@ public class ExceptionReporter {
     private final Service service;
 
     // Deduplication: track when we last reported each exception signature
-    private final ConcurrentHashMap<String, Long> reportedExceptions = new ConcurrentHashMap<>();
+    // Static to ensure deduplication works across all instances created via lazy initialization
+    private static final ConcurrentHashMap<String, Long> reportedExceptions = new ConcurrentHashMap<>();
 
     // Only report the same exception once per hour
     private static final long DEDUPLICATION_WINDOW_MS = TimeUnit.HOURS.toMillis(1);
@@ -149,7 +150,7 @@ public class ExceptionReporter {
      * Cleans up old entries from the deduplication map to keep it bounded. Removes entries older than the deduplication
      * window.
      */
-    private void cleanupOldEntries() {
+    private static void cleanupOldEntries() {
         long currentTime = System.currentTimeMillis();
         long cutoffTime = currentTime - DEDUPLICATION_WINDOW_MS;
 

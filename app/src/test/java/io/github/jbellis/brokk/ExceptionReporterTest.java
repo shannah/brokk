@@ -193,13 +193,16 @@ class ExceptionReporterTest {
             // Get the signature that would be generated
             String signature = invokePrivateGenerateExceptionSignature(exception);
 
-            // Get access to the reportedExceptions map
+            // Get access to the reportedExceptions map (now static)
             Field field = ExceptionReporter.class.getDeclaredField("reportedExceptions");
             field.setAccessible(true);
             @SuppressWarnings("unchecked")
-            ConcurrentHashMap<String, Long> reportedExceptions = (ConcurrentHashMap<String, Long>) field.get(reporter);
+            ConcurrentHashMap<String, Long> reportedExceptions = (ConcurrentHashMap<String, Long>) field.get(null);
 
-            // Initially empty
+            // Clear the static map for this test to start with a clean state
+            reportedExceptions.clear();
+
+            // Initially empty after clearing
             assertEquals(0, reportedExceptions.size());
 
             // Manually add to cache (simulating what reportException does)
