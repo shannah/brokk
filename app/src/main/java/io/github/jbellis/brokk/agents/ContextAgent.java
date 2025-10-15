@@ -86,30 +86,31 @@ public class ContextAgent {
     public ContextAgent(ContextManager contextManager, StreamingChatModel model, String goal)
             throws InterruptedException {
         this.cm = contextManager;
-        var options = new Llm.Options(model, "ContextAgent (%s): %s".formatted("Deep", goal))
-                .withForceReasoningEcho()
-                .withEcho();
-        this.llm = contextManager.getLlm(options);
-        options = new Llm.Options(
+        this.goal = goal;
+        this.model = model;
+        this.analyzer = contextManager.getAnalyzer();
+
+        // Files-pruning LLM
+        var options = new Llm.Options(
                         contextManager.getService().quickestModel(),
                         "ContextAgent Files (%s): %s".formatted("Deep", goal))
                 .withForceReasoningEcho()
                 .withEcho();
         this.filesLlm = contextManager.getLlm(options);
-        this.goal = goal;
-        this.analyzer = contextManager.getAnalyzer();
-        this.model = model;
+        // Evaluation LLM
+        options = new Llm.Options(model, "ContextAgent (%s): %s".formatted("Deep", goal))
+                .withForceReasoningEcho()
+                .withEcho();
+        this.llm = contextManager.getLlm(options);
 
+        // Token budgets
         int maxInputTokens = contextManager.getService().getMaxInputTokens(model);
         this.skipPruningBudget = min(32_000, maxInputTokens / 4);
-
         int outputTokens = model.defaultRequestParameters().maxCompletionTokens();
         int actualInputTokens = contextManager.getService().getMaxInputTokens(model) - outputTokens;
-
         // god, our estimation is so bad (yes we do observe the ratio being this far off)
         this.evaluationBudget = (int) (actualInputTokens * 0.65);
         this.filesPruningBudget = min(100_000, evaluationBudget);
-
         logger.debug(
                 "ContextAgent initialized. Budgets: SkipPruning={}, FilesPruning={}, Evaluation={}",
                 skipPruningBudget,
@@ -202,25 +203,22 @@ public class ContextAgent {
         int workspaceTokens = Messages.getApproximateMessageTokens(workspaceRepresentation);
         int evalBudgetRemaining = evaluationBudget - workspaceTokens;
         int pruneBudgetRemaining = filesPruningBudget - workspaceTokens;
-
         logger.debug(
                 "Budgets after workspace: evalRemaining={}, pruneRemaining={}",
                 evalBudgetRemaining,
                 pruneBudgetRemaining);
-
+        // If there's no budget left after we include the Workspace, quit
         if (evalBudgetRemaining < 1000) {
-            // Can't do anything useful here
             return new RecommendationResult(false, List.of(), "Workspace is too large", null);
         }
 
+        // Candidates are most-relevant files to the Workspace, or entire Project if Workspace is empty
         var existingFiles = cm.liveContext()
                 .allFragments()
                 .filter(f -> f.getType() == ContextFragment.FragmentType.PROJECT_PATH
                         || f.getType() == ContextFragment.FragmentType.SKELETON)
                 .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
-
-        // Candidate set (UNCHANGED selection logic)
         List<ProjectFile> candidates;
         if (existingFiles.isEmpty()) {
             candidates = cm.getProject().getAllFiles().stream().sorted().toList();
@@ -235,7 +233,6 @@ public class ContextAgent {
 
         // Group by analyzed (summarizable via SkeletonProvider) vs un-analyzed (need full content)
         var skpOpt = analyzer.as(SkeletonProvider.class);
-
         Map<CodeUnit, String> allSummaries = skpOpt.map(skp -> candidates.parallelStream()
                         .map(skp::getSkeletons)
                         .map(Map::entrySet)
@@ -243,27 +240,21 @@ public class ContextAgent {
                         .filter(e -> !e.getValue().isEmpty())
                         .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue, (v1, v2) -> v1)))
                 .orElseGet(Map::of);
-
         Set<ProjectFile> analyzedFileSet =
                 allSummaries.keySet().stream().map(CodeUnit::source).collect(Collectors.toSet());
-
         List<ProjectFile> analyzedFiles =
                 candidates.stream().filter(analyzedFileSet::contains).sorted().toList();
-
         List<ProjectFile> unAnalyzedFiles = candidates.stream()
                 .filter(f -> !analyzedFileSet.contains(f))
                 .sorted()
                 .toList();
-
         logger.debug("Grouped candidates: analyzed={}, unAnalyzed={}", analyzedFiles.size(), unAnalyzedFiles.size());
 
-        // Process each group in parallel (DRY through shared method)
+        // Process each group in parallel
         RecommendationResult analyzedResult;
         RecommendationResult unAnalyzedResult;
-
         try (var executor = AdaptiveExecutor.create(cm.getService(), model, 2)) {
             List<Callable<RecommendationResult>> tasks = new ArrayList<>();
-
             tasks.add(() -> processGroup(
                     GroupType.ANALYZED,
                     analyzedFiles,
@@ -273,7 +264,6 @@ public class ContextAgent {
                     evalBudgetRemaining,
                     pruneBudgetRemaining,
                     existingFiles));
-
             tasks.add(() -> processGroup(
                     GroupType.UNANALYZED,
                     unAnalyzedFiles,
@@ -285,7 +275,6 @@ public class ContextAgent {
                     existingFiles));
 
             List<Future<RecommendationResult>> futures = executor.invokeAll(tasks);
-
             analyzedResult = futures.get(0).get();
             unAnalyzedResult = futures.get(1).get();
         } catch (ExecutionException e) {
@@ -368,7 +357,7 @@ public class ContextAgent {
             if (workingFiles.isEmpty()) {
                 logger.debug("{} group: filename pruning produced an empty set.", type);
                 return new RecommendationResult(
-                        true, List.of(), (reasoning.toString() + "\nNo files selected after pruning.").strip(), usage);
+                        true, List.of(), (reasoning + "\nNo files selected after pruning.").strip(), usage);
             }
         }
 
@@ -574,10 +563,7 @@ public class ContextAgent {
 
         var result = filesLlm.sendRequest(messages);
         if (result.error() != null) {
-            var error = result.error();
-            boolean contextError = error.getMessage() != null
-                    && error.getMessage().toLowerCase(Locale.ROOT).contains("context");
-            if (contextError && filenames.size() >= 20) {
+            if (isContextError(result.error()) && filenames.size() >= 20) {
                 logger.debug("LLM context-window error with {} filenames; splitting and retrying", filenames.size());
                 int mid = filenames.size() / 2;
                 var left = filenames.subList(0, mid);
@@ -597,7 +583,10 @@ public class ContextAgent {
                 return new LlmRecommendation(new HashSet<>(mergedFiles), Set.of(), mergedReasoning, mergedUsage);
             }
 
-            logger.warn("Error ({}) from LLM during filename pruning: {}. Returning empty", error.getMessage(), error);
+            logger.warn(
+                    "Error from LLM during filename pruning: {}. Returning empty",
+                    result.error().getMessage(),
+                    result.error());
             return LlmRecommendation.EMPTY;
         }
 
@@ -607,6 +596,12 @@ public class ContextAgent {
                 .filter(f -> result.text().contains(f))
                 .toList();
         return new LlmRecommendation(toProjectFiles(selected), Set.of(), result.text(), tokenUsage);
+    }
+
+    private boolean isContextError(Throwable error) {
+        return error.getMessage() != null
+                && (error.getMessage().toLowerCase(Locale.ROOT).contains("context")
+                        || error.getMessage().toLowerCase(Locale.ROOT).contains("token"));
     }
 
     private LlmRecommendation deepPruneFilenamesInChunks(
@@ -655,17 +650,18 @@ public class ContextAgent {
         @Nullable Llm.RichTokenUsage combinedUsage = null;
 
         for (var f : futures) {
+            LlmRecommendation rec;
             try {
-                var rec = f.get();
-                rec.recommendedFiles().stream()
-                        .filter(pf -> !combinedFiles.contains(pf))
-                        .forEach(combinedFiles::add);
-                if (!rec.reasoning().isBlank())
-                    combinedReasoning.append(rec.reasoning()).append('\n');
-                combinedUsage = addTokenUsage(combinedUsage, rec.tokenUsage());
-            } catch (Exception e) {
-                logger.warn("Failed to retrieve chunk result", e);
+                rec = f.get();
+            } catch (ExecutionException e) {
+                throw new RuntimeException(e);
             }
+            rec.recommendedFiles().stream()
+                    .filter(pf -> !combinedFiles.contains(pf))
+                    .forEach(combinedFiles::add);
+            if (!rec.reasoning().isBlank())
+                combinedReasoning.append(rec.reasoning()).append('\n');
+            combinedUsage = addTokenUsage(combinedUsage, rec.tokenUsage());
         }
         return new LlmRecommendation(
                 combinedFiles, Set.of(), combinedReasoning.toString().strip(), combinedUsage);
@@ -762,8 +758,7 @@ public class ContextAgent {
         var tokenUsage = result.tokenUsage();
         if (result.error() != null) {
             var error = result.error();
-            if (error.getMessage() != null
-                    && error.getMessage().toLowerCase(Locale.ROOT).contains("context")) {
+            if (isContextError(error)) {
                 throw new ContextTooLargeException();
             }
             logger.warn("Error from LLM during context recommendation: {}. Returning empty", error.getMessage());
