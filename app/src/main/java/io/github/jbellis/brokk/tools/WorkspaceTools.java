@@ -56,7 +56,7 @@ public class WorkspaceTools {
             logger.debug(
                     "Adding selected ProjectPathFragments: {}",
                     pathFragments.stream()
-                            .map(ContextFragment.ProjectPathFragment::shortDescription)
+                            .map(ppf -> ppf.file().toString())
                             .collect(Collectors.joining(", ")));
             contextManager.addPathFragments(pathFragments);
         }
