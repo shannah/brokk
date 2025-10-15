@@ -712,12 +712,9 @@ public class ContextAgent {
         if (!summaries.isEmpty()) {
             var summariesText = summaries.entrySet().stream()
                     .map(entry -> {
-                        var cn = entry.getKey();
+                        var cu = entry.getKey();
                         var body = entry.getValue();
-                        var filename = analyzer.getFileFor(cn.fqName())
-                                .map(ProjectFile::toString)
-                                .orElse("unknown");
-                        return "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cn.fqName(), filename, body);
+                        return "<class fqcn='%s' file='%s'>\n%s\n</class>".formatted(cu.fqName(), cu.source(), body);
                     })
                     .collect(Collectors.joining("\n\n"));
             userMessageText
