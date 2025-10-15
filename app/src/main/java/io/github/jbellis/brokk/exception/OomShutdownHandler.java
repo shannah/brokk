@@ -5,7 +5,6 @@ import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.util.LowMemoryWatcherManager;
 import java.lang.Thread.UncaughtExceptionHandler;
 import javax.swing.*;
-import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
