@@ -251,35 +251,50 @@ public class ContextAgent {
         logger.debug("Grouped candidates: analyzed={}, unAnalyzed={}", analyzedFiles.size(), unAnalyzedFiles.size());
 
         // Process each group in parallel
-        RecommendationResult analyzedResult;
-        RecommendationResult unAnalyzedResult;
-        try (var executor = AdaptiveExecutor.create(cm.getService(), model, 2)) {
-            List<Callable<RecommendationResult>> tasks = new ArrayList<>();
-            tasks.add(() -> processGroup(
-                    GroupType.ANALYZED,
-                    analyzedFiles,
-                    allSummaries,
-                    workspaceRepresentation,
-                    allowSkipPruning,
-                    evalBudgetRemaining,
-                    pruneBudgetRemaining,
-                    existingFiles));
-            tasks.add(() -> processGroup(
-                    GroupType.UNANALYZED,
-                    unAnalyzedFiles,
-                    Map.of(),
-                    workspaceRepresentation,
-                    allowSkipPruning,
-                    evalBudgetRemaining,
-                    pruneBudgetRemaining,
-                    existingFiles));
+        RecommendationResult[] results = new RecommendationResult[2];
+        Throwable[] errors = new Throwable[2];
 
-            List<Future<RecommendationResult>> futures = executor.invokeAll(tasks);
-            analyzedResult = futures.get(0).get();
-            unAnalyzedResult = futures.get(1).get();
-        } catch (ExecutionException e) {
-            throw new RuntimeException(e);
-        }
+        Thread t1 = Thread.ofVirtual().start(() -> {
+            try {
+                results[0] = processGroup(
+                        GroupType.ANALYZED,
+                        analyzedFiles,
+                        allSummaries,
+                        workspaceRepresentation,
+                        allowSkipPruning,
+                        evalBudgetRemaining,
+                        pruneBudgetRemaining,
+                        existingFiles);
+            } catch (Throwable t) {
+                errors[0] = t;
+            }
+        });
+
+        Thread t2 = Thread.ofVirtual().start(() -> {
+            try {
+                results[1] = processGroup(
+                        GroupType.UNANALYZED,
+                        unAnalyzedFiles,
+                        Map.of(),
+                        workspaceRepresentation,
+                        allowSkipPruning,
+                        evalBudgetRemaining,
+                        pruneBudgetRemaining,
+                        existingFiles);
+            } catch (Throwable t) {
+                errors[1] = t;
+            }
+        });
+
+        t1.join();
+        t2.join();
+
+        if (errors[0] != null) throw new RuntimeException(errors[0]);
+        if (errors[1] != null) throw new RuntimeException(errors[1]);
+
+        var analyzedResult = results[0];
+        var unAnalyzedResult = results[1];
+
         boolean success = analyzedResult.success || unAnalyzedResult.success;
         var combinedFragments = Stream.concat(analyzedResult.fragments.stream(), unAnalyzedResult.fragments.stream())
                 .toList();
