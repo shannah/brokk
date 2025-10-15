@@ -230,8 +230,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.service = new ServiceWrapper();
         this.service.reinit(project);
 
-        // Initialize exception reporter with the service
-        this.exceptionReporter = new ExceptionReporter(this.service.get());
+        // Initialize exception reporter with lazy service access
+        this.exceptionReporter = new ExceptionReporter(this.service::get);
 
         // set up global tools
         this.toolRegistry = new ToolRegistry(this);

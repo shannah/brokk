@@ -182,7 +182,7 @@ class ExceptionReporterTest {
         @BeforeEach
         void setUp() {
             // Create a reporter with a mock Service (we won't actually call it)
-            reporter = new ExceptionReporter(null);
+            reporter = new ExceptionReporter((Service) null);
         }
 
         @Test
@@ -296,7 +296,7 @@ class ExceptionReporterTest {
     private String invokePrivateFormatStackTrace(Throwable throwable) {
         try {
             // Create a temporary ExceptionReporter instance (Service can be null for this test)
-            ExceptionReporter reporter = new ExceptionReporter(null);
+            ExceptionReporter reporter = new ExceptionReporter((Service) null);
             Method method = ExceptionReporter.class.getDeclaredMethod("formatStackTrace", Throwable.class);
             method.setAccessible(true);
             return (String) method.invoke(reporter, throwable);
@@ -308,7 +308,7 @@ class ExceptionReporterTest {
     private String invokePrivateGenerateExceptionSignature(Throwable throwable) {
         try {
             // Create a temporary ExceptionReporter instance (Service can be null for this test)
-            ExceptionReporter reporter = new ExceptionReporter(null);
+            ExceptionReporter reporter = new ExceptionReporter((Service) null);
             Method method = ExceptionReporter.class.getDeclaredMethod("generateExceptionSignature", Throwable.class);
             method.setAccessible(true);
             return (String) method.invoke(reporter, throwable);

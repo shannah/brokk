@@ -1,11 +1,13 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.util.ServiceWrapper;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
+import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -17,7 +19,7 @@ import org.jetbrains.annotations.Nullable;
 public class ExceptionReporter {
     private static final Logger logger = LogManager.getLogger(ExceptionReporter.class);
 
-    private final Service service;
+    private final Supplier<Service> serviceSupplier;
 
     // Deduplication: track when we last reported each exception signature
     private final ConcurrentHashMap<String, Long> reportedExceptions = new ConcurrentHashMap<>();
@@ -28,8 +30,12 @@ public class ExceptionReporter {
     // Maximum stacktrace length to send (prevent extremely large payloads)
     private static final int MAX_STACKTRACE_LENGTH = 10000;
 
+    public ExceptionReporter(Supplier<Service> serviceSupplier) {
+        this.serviceSupplier = serviceSupplier;
+    }
+
     public ExceptionReporter(Service service) {
-        this.service = service;
+        this(() -> service);
     }
 
     /**
@@ -70,6 +76,7 @@ public class ExceptionReporter {
         CompletableFuture.runAsync(() -> {
                     try {
                         String clientVersion = BuildInfo.version;
+                        Service service = serviceSupplier.get();
                         service.reportClientException(stacktrace, clientVersion);
                         logger.debug(
                                 "Successfully reported exception: {} - {}",
