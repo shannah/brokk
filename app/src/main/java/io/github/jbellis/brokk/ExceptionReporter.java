@@ -1,7 +1,6 @@
 package io.github.jbellis.brokk;
 
 import io.github.jbellis.brokk.gui.Chrome;
-import io.github.jbellis.brokk.util.ServiceWrapper;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.concurrent.CompletableFuture;
