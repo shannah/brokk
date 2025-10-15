@@ -1174,14 +1174,7 @@ public class GitIssuesTab extends JPanel implements SettingsChangeListener {
                 }
             } catch (Exception e) {
                 logger.error("Unexpected error processing image {}: {}", imageUri.toString(), e.getMessage(), e);
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(e);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(e);
                 chrome.toolError("Error processing image " + imageUri.toString() + ": " + e.getMessage());
             }
         }

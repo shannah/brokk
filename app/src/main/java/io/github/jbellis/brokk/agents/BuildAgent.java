@@ -168,14 +168,7 @@ public class BuildAgent {
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 logger.error("Unexpected request cancellation in build agent");
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(e);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(e);
                 return BuildDetails.EMPTY;
             }
 

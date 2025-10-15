@@ -82,14 +82,7 @@ public class LocalFileRepo implements IGitRepo {
             });
         } catch (IOException e) {
             logger.error("Unexpected error walking directory tree starting at {}", root, e);
-            try {
-                ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                if (reporter != null) {
-                    reporter.reportException(e);
-                }
-            } catch (Exception reporterEx) {
-                logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-            }
+            ExceptionReporter.tryReportException(e);
             return Set.of();
         }
         return trackedFiles;

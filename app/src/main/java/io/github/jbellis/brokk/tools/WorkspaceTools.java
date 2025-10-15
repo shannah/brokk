@@ -204,14 +204,7 @@ public class WorkspaceTools {
             throw new RuntimeException("Failed to fetch URL content for " + urlString + ": " + e.getMessage(), e);
         } catch (Exception e) {
             logger.error("Unexpected error processing URL: {}", urlString, e);
-            try {
-                ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                if (reporter != null) {
-                    reporter.reportException(e);
-                }
-            } catch (Exception reporterEx) {
-                logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-            }
+            ExceptionReporter.tryReportException(e);
             throw new RuntimeException("Unexpected error processing URL " + urlString + ": " + e.getMessage(), e);
         }
 

@@ -125,14 +125,7 @@ public class FileSelectionTree extends JTree {
         if (parentOfTarget == null) { // Should not happen if targetParentDirAbs is under projectRoot
             RuntimeException ex = new IllegalStateException("Unexpected null parent for path: " + targetParentDirAbs);
             logger.error("Unexpected null parent for path: {}", targetParentDirAbs);
-            try {
-                ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                if (reporter != null) {
-                    reporter.reportException(ex);
-                }
-            } catch (Exception reporterEx) {
-                logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-            }
+            ExceptionReporter.tryReportException(ex);
             return rootNode; // Fallback
         }
 

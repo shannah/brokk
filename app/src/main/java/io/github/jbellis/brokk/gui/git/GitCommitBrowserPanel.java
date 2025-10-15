@@ -1496,14 +1496,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 });
             } catch (Exception ex) {
                 logger.error("Unexpected error pulling {}: {}", branchName, ex.getMessage(), ex);
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(ex);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(ex);
                 SwingUtil.runOnEdt(() -> {
                     chrome.toolError("Unexpected error pulling " + branchName + ": " + ex.getMessage());
                     pullButton.setEnabled(true);
@@ -1560,14 +1553,7 @@ public class GitCommitBrowserPanel extends JPanel implements SettingsChangeListe
                 });
             } catch (Exception ex) {
                 logger.error("Unexpected error pushing {}: {}", branchName, ex.getMessage(), ex);
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(ex);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(ex);
                 SwingUtil.runOnEdt(() -> {
                     chrome.toolError("Unexpected error pushing " + branchName + ": " + ex.getMessage());
                     pushButton.setEnabled(true);

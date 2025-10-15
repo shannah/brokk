@@ -179,4 +179,21 @@ public class ExceptionReporter {
         }
         return null;
     }
+
+    /**
+     * Convenience method to report an exception from the active project. This method handles all error cases gracefully
+     * and never throws exceptions.
+     *
+     * @param throwable The exception to report
+     */
+    public static void tryReportException(Throwable throwable) {
+        try {
+            ExceptionReporter reporter = tryCreateFromActiveProject();
+            if (reporter != null) {
+                reporter.reportException(throwable);
+            }
+        } catch (Exception e) {
+            logger.debug("Failed to report exception: {}", e.getMessage());
+        }
+    }
 }

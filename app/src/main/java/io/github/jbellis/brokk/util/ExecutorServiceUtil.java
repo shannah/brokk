@@ -27,14 +27,7 @@ public final class ExecutorServiceUtil {
                 t.setDaemon(true);
                 t.setUncaughtExceptionHandler((thr, ex) -> {
                     logger.error("Unhandled exception in {}", thr.getName(), ex);
-                    try {
-                        ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                        if (reporter != null) {
-                            reporter.reportException(ex);
-                        }
-                    } catch (Exception reporterEx) {
-                        logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                    }
+                    ExceptionReporter.tryReportException(ex);
                 });
                 return t;
             }
@@ -74,14 +67,7 @@ public final class ExecutorServiceUtil {
                 var t = Thread.ofVirtual().name(threadPrefix + ++count).unstarted(wrapped);
                 t.setUncaughtExceptionHandler((thr, ex) -> {
                     logger.error("Unhandled exception in {}", thr.getName(), ex);
-                    try {
-                        ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                        if (reporter != null) {
-                            reporter.reportException(ex);
-                        }
-                    } catch (Exception reporterEx) {
-                        logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                    }
+                    ExceptionReporter.tryReportException(ex);
                 });
                 return t;
             }

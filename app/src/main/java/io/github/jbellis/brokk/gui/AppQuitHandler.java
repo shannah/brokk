@@ -109,14 +109,7 @@ public final class AppQuitHandler {
             }
         } catch (Exception ex) {
             logger.error("Unexpected error during quit handling on EDT", ex);
-            try {
-                ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                if (reporter != null) {
-                    reporter.reportException(ex);
-                }
-            } catch (Exception reporterEx) {
-                logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-            }
+            ExceptionReporter.tryReportException(ex);
             allowQuit.set(false);
         }
     }

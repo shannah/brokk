@@ -130,14 +130,7 @@ public class BackgroundGitHubAuth {
                 RuntimeException ex = new IllegalStateException(
                         "Background GitHub authentication unexpected result: " + tokenResponse.result());
                 logger.error("Background GitHub authentication unexpected result: {}", tokenResponse.result());
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(ex);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(ex);
             }
         }
 

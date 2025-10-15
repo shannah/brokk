@@ -372,14 +372,7 @@ public class MergeDialogUtil {
                 conflictResultString = "Error checking conflicts: " + e.getMessage();
             } catch (Exception e) { // Catch other potential exceptions
                 logger.error("Unexpected error during conflict check", e);
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(e);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(e);
                 conflictResultString = "Unexpected error during conflict check: " + e.getMessage();
             }
 

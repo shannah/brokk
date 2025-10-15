@@ -259,14 +259,7 @@ public class Llm {
                 logger.error(e);
                 errorRef.set(e);
                 completed.set(true);
-                try {
-                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
-                    if (reporter != null) {
-                        reporter.reportException(e);
-                    }
-                } catch (Exception reporterEx) {
-                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
-                }
+                ExceptionReporter.tryReportException(e);
             } finally {
                 if (firstToken.get()) {
                     firstToken.set(false);
