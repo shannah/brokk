@@ -196,7 +196,9 @@ public class ExceptionReporter {
     public static void tryReportException(Throwable throwable) {
         // Check if exception reporting is enabled
         if (!MainProject.getExceptionReportingEnabled()) {
-            logger.debug("Exception reporting is disabled, skipping report for: {}", throwable.getClass().getName());
+            logger.debug(
+                    "Exception reporting is disabled, skipping report for: {}",
+                    throwable.getClass().getName());
             return;
         }
 
