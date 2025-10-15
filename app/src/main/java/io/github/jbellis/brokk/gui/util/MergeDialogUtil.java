@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.gui.util;
 
 import io.github.jbellis.brokk.ContextManager;
+import io.github.jbellis.brokk.ExceptionReporter;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.WorktreeProject;
 import io.github.jbellis.brokk.git.GitRepo;
@@ -371,6 +372,14 @@ public class MergeDialogUtil {
                 conflictResultString = "Error checking conflicts: " + e.getMessage();
             } catch (Exception e) { // Catch other potential exceptions
                 logger.error("Unexpected error during conflict check", e);
+                try {
+                    ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
+                    if (reporter != null) {
+                        reporter.reportException(e);
+                    }
+                } catch (Exception reporterEx) {
+                    logger.debug("Failed to report exception: {}", reporterEx.getMessage());
+                }
                 conflictResultString = "Unexpected error during conflict check: " + e.getMessage();
             }
 

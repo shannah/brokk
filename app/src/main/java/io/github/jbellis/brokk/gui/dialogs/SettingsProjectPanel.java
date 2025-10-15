@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.dialogs;
 
+import io.github.jbellis.brokk.ExceptionReporter;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.IProject;
 import io.github.jbellis.brokk.IssueProvider;
@@ -955,6 +956,14 @@ public class SettingsProjectPanel extends JPanel implements ThemeAware {
                     return "Connection failed: " + ioException.getMessage();
                 } catch (Exception ex) {
                     logger.error("Unexpected error during Jira connection test: {}", ex.getMessage(), ex);
+                    try {
+                        ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
+                        if (reporter != null) {
+                            reporter.reportException(ex);
+                        }
+                    } catch (Exception reporterEx) {
+                        logger.debug("Failed to report exception: {}", reporterEx.getMessage());
+                    }
                     return "Connection failed with unexpected error: " + ex.getMessage();
                 }
             }

@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui;
 
+import io.github.jbellis.brokk.ExceptionReporter;
 import io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel;
 import java.awt.Container;
 import java.awt.Desktop;
@@ -108,6 +109,14 @@ public final class AppQuitHandler {
             }
         } catch (Exception ex) {
             logger.error("Unexpected error during quit handling on EDT", ex);
+            try {
+                ExceptionReporter reporter = ExceptionReporter.tryCreateFromActiveProject();
+                if (reporter != null) {
+                    reporter.reportException(ex);
+                }
+            } catch (Exception reporterEx) {
+                logger.debug("Failed to report exception: {}", reporterEx.getMessage());
+            }
             allowQuit.set(false);
         }
     }

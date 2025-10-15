@@ -1,9 +1,11 @@
 package io.github.jbellis.brokk.exception;
 
+import io.github.jbellis.brokk.ExceptionReporter;
 import io.github.jbellis.brokk.MainProject;
 import io.github.jbellis.brokk.util.LowMemoryWatcherManager;
 import java.lang.Thread.UncaughtExceptionHandler;
 import javax.swing.*;
+import org.jetbrains.annotations.Nullable;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 
@@ -11,14 +13,46 @@ public class OomShutdownHandler implements UncaughtExceptionHandler {
 
     private static final Logger logger = LoggerFactory.getLogger(OomShutdownHandler.class);
 
+    @Nullable
+    private volatile ExceptionReporter exceptionReporter;
+
     @Override
     public void uncaughtException(Thread t, Throwable throwable) {
-        // Check if the error is an OutOfMemoryError
+        logger.error("An uncaught exception occurred on thread: {}", t.getName(), throwable);
+
+        // Attempt to report the exception to the server
+        tryReportException(throwable);
+
+        // Check if the error is an OutOfMemoryError and handle specially
         if (isOomError(throwable)) {
-            logger.error("Uncaught OutOfMemoryError detected on thread: {}", t.getName());
+            logger.error("OutOfMemoryError detected, initiating shutdown with recovery");
             shutdownWithRecovery();
+        }
+    }
+
+    /**
+     * Attempts to report an exception to the server. Uses lazy initialization to create the ExceptionReporter if it
+     * doesn't exist yet.
+     *
+     * @param throwable The exception to report
+     */
+    private void tryReportException(Throwable throwable) {
+        // Lazy initialization of exception reporter
+        if (exceptionReporter == null) {
+            exceptionReporter = ExceptionReporter.tryCreateFromActiveProject();
+        }
+
+        if (exceptionReporter != null) {
+            try {
+                exceptionReporter.reportException(throwable);
+            } catch (Exception e) {
+                // Catch any exceptions from the reporting process itself to prevent
+                // recursive exception handling
+                logger.debug("Failed to report exception to server: {}", e.getMessage());
+            }
         } else {
-            logger.error("An uncaught exception occurred on thread: {}", t.getName(), throwable);
+            logger.debug(
+                    "Exception reporter not available (no active project or service). Exception will not be reported to server.");
         }
     }
 

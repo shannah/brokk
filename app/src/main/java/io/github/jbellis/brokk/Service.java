@@ -1151,6 +1151,45 @@ public class Service {
         }
     }
 
+    /**
+     * Reports a client exception to the Brokk server for monitoring and debugging purposes.
+     *
+     * @param stacktrace The formatted stacktrace string
+     * @param clientVersion The client version (from BuildInfo.version)
+     * @return The JSON response from the server
+     * @throws IOException If the request fails
+     * @throws IllegalArgumentException if the Brokk key is invalid
+     */
+    public com.fasterxml.jackson.databind.JsonNode reportClientException(String stacktrace, String clientVersion)
+            throws IOException {
+        // Get the full Brokk key - this endpoint may expect the full key as Bearer token
+        String brokkKey = MainProject.getBrokkKey();
+
+        // Build JSON request body
+        var jsonBody = objectMapper.createObjectNode();
+        jsonBody.put("stacktrace", stacktrace);
+        jsonBody.put("client_version", clientVersion);
+
+        RequestBody body = RequestBody.create(jsonBody.toString(), MediaType.parse("application/json"));
+
+        Request request = new Request.Builder()
+                .url(MainProject.getServiceUrl() + "/api/client-exceptions/")
+                .header("Authorization", "Bearer " + brokkKey)
+                .post(body)
+                .build();
+
+        try (Response response = httpClient.newCall(request).execute()) {
+            if (!response.isSuccessful()) {
+                String errorBody = response.body() != null ? response.body().string() : "(no body)";
+                throw new IOException("Failed to report exception: " + response.code() + " - " + errorBody);
+            }
+
+            String responseBody = response.body() != null ? response.body().string() : "{}";
+            logger.debug("Exception reported successfully to server: {}", responseBody);
+            return objectMapper.readTree(responseBody);
+        }
+    }
+
     public static class UnavailableStreamingModel implements StreamingChatModel {
         public UnavailableStreamingModel() {}
 
