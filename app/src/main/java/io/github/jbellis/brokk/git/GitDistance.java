@@ -53,7 +53,7 @@ public final class GitDistance {
             throws GitAPIException {
         var commits = repo.listCommitsDetailed(repo.getCurrentBranch(), COMMITS_TO_PROCESS);
         var scores = computeImportanceScores(repo, commits);
-        logger.info("Computed importance scores for getMostImportantFilesScored: {}", scores);
+        logger.trace("Computed importance scores for getMostImportantFilesScored: {}", scores);
 
         return scores.entrySet().stream()
                 .map(e -> new IAnalyzer.FileRelevance(e.getKey(), e.getValue()))
@@ -115,7 +115,7 @@ public final class GitDistance {
         Map<ProjectFile, Double> scores;
         try {
             scores = computeImportanceScores(gr, commits);
-            logger.info("Computed importance scores for sortByImportance: {}", scores);
+            logger.trace("Computed importance scores for sortByImportance: {}", scores);
         } catch (GitAPIException e) {
             throw new RuntimeException(e);
         }
@@ -257,7 +257,7 @@ public final class GitDistance {
                 .toList();
     }
 
-    public static void main(String[] args) {
+    public static void main(String[] args) throws GitAPIException {
         if (args.length < 1 || args[0].isBlank()) {
             System.err.println("Usage: GitDistance <path-to-git-repo>");
             System.exit(1);
@@ -266,13 +266,8 @@ public final class GitDistance {
         var repoPath = Path.of(args[0]);
         logger.info("Analyzing most important files for repository: {}", repoPath);
 
-        try {
-            var repo = new GitRepo(repoPath);
-            var results = getMostImportantFilesScored(repo, 20);
-            results.forEach(fr -> System.out.printf("%s\t%.6f%n", fr.file().getFileName(), fr.score()));
-        } catch (GitAPIException e) {
-            logger.error("Error computing most important files for repo {}: {}", repoPath, e.getMessage(), e);
-            System.exit(2);
-        }
+        var repo = new GitRepo(repoPath);
+        var results = getMostImportantFilesScored(repo, 20);
+        results.forEach(fr -> System.out.printf("%s\t%.6f%n", fr.file().getFileName(), fr.score()));
     }
 }
