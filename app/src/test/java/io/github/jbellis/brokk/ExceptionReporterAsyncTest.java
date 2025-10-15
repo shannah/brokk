@@ -8,6 +8,7 @@ import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.concurrent.atomic.AtomicInteger;
+import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
@@ -21,11 +22,24 @@ class ExceptionReporterAsyncTest {
 
     private TestServiceSpy serviceSpy;
     private ExceptionReporter exceptionReporter;
+    private String originalBrokkKey;
 
     @BeforeEach
     void setUp() {
+        // Save original key and set a test key
+        originalBrokkKey = MainProject.getBrokkKey();
+        MainProject.setBrokkKey("brk+00000000-0000-0000-0000-000000000000+test-token");
+
         serviceSpy = new TestServiceSpy();
         exceptionReporter = new ExceptionReporter(serviceSpy);
+    }
+
+    @AfterEach
+    void tearDown() {
+        // Restore original key
+        if (originalBrokkKey != null) {
+            MainProject.setBrokkKey(originalBrokkKey);
+        }
     }
 
     @Test
