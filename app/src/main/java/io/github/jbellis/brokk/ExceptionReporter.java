@@ -189,9 +189,17 @@ public class ExceptionReporter {
      * Convenience method to report an exception from the active project. This method handles all error cases gracefully
      * and never throws exceptions. Uses the cached ExceptionReporter from the active ContextManager.
      *
+     * <p>Exception reporting can be disabled via the exceptionReportingEnabled property in brokk.properties.
+     *
      * @param throwable The exception to report
      */
     public static void tryReportException(Throwable throwable) {
+        // Check if exception reporting is enabled
+        if (!MainProject.getExceptionReportingEnabled()) {
+            logger.debug("Exception reporting is disabled, skipping report for: {}", throwable.getClass().getName());
+            return;
+        }
+
         try {
             Chrome activeWindow = Brokk.getActiveWindow();
             if (activeWindow != null) {
