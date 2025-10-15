@@ -2515,6 +2515,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.io = new HeadlessConsole();
         this.userActions.setIo(this.io);
 
+        initializeCurrentSessionAndHistory(true);
+
+        ensureReviewGuide();
+        cleanupOldHistoryAsync();
+        // we deliberately don't infer style guide or build details here -- if they already exist, great;
+        // otherwise we leave them empty
+        var mp = project.getMainProject();
+        if (mp.loadBuildDetails().equals(BuildAgent.BuildDetails.EMPTY)) {
+            mp.setBuildDetails(BuildAgent.BuildDetails.EMPTY);
+        }
+
         // no AnalyzerListener, instead we will block for it to be ready
         this.analyzerWrapper = new AnalyzerWrapper(project, null);
         try {
@@ -2522,13 +2533,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         } catch (InterruptedException e) {
             throw new RuntimeException(e);
         }
-
-        initializeCurrentSessionAndHistory(true);
-
-        ensureStyleGuide();
-        ensureReviewGuide();
-        ensureBuildDetailsAsync();
-        cleanupOldHistoryAsync();
 
         checkBalanceAndNotify();
     }
