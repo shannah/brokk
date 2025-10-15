@@ -392,6 +392,23 @@ public class Brokk {
                 } catch (UnsupportedOperationException ignored) {
                     // AboutHandler not supported on this platform/JVM – safe to ignore
                 }
+
+                // Register OpenFilesHandler for directory associations
+                try {
+                    Desktop.getDesktop().setOpenFileHandler(e -> {
+                        List<Path> pathsToOpen = e.getFiles().stream()
+                                .filter(java.io.File::isDirectory)
+                                .map(java.io.File::toPath)
+                                .toList();
+
+                        if (!pathsToOpen.isEmpty()) {
+                            // Use attemptOpenProjects() - same flow as command-line args
+                            attemptOpenProjects(pathsToOpen);
+                        }
+                    });
+                } catch (UnsupportedOperationException ignored) {
+                    // OpenFileHandler not supported – safe to ignore
+                }
             });
 
             // Set up global preferences handler for all Chrome windows
