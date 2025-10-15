@@ -69,33 +69,6 @@ public final class GitDistance {
     }
 
     /**
-     * Fetches commits that modified any of the specified files, limited to maxResults.
-     *
-     * @param repo the Git repository wrapper.
-     * @param files the collection of files to fetch commits for.
-     * @param maxResults the maximum number of commits to fetch per file.
-     * @return a sorted list of unique commits (newest first).
-     */
-    static List<CommitInfo> getCommitsForFiles(GitRepo repo, Collection<ProjectFile> files, int maxResults) {
-        try (var pool = new ForkJoinPool(Runtime.getRuntime().availableProcessors())) {
-            return pool.submit(() -> files.parallelStream()
-                            .flatMap(file -> {
-                                try {
-                                    return repo.getFileHistory(file, maxResults).stream();
-                                } catch (GitAPIException e) {
-                                    throw new RuntimeException("Error getting file history for " + file, e);
-                                }
-                            })
-                            .distinct()
-                            .sorted((a, b) -> b.date().compareTo(a.date()))
-                            .toList())
-                    .get();
-        } catch (InterruptedException | ExecutionException e) {
-            throw new RuntimeException("Error getting file history in parallel", e);
-        }
-    }
-
-    /**
      * Sorts a collection of files by their importance using Git history analysis. The importance is determined by
      * analyzing change frequency and recency across the pooled commit histories of all provided files.
      *
@@ -111,9 +84,9 @@ public final class GitDistance {
             return List.copyOf(files);
         }
 
-        var commits = getCommitsForFiles(gr, files, Integer.MAX_VALUE);
         Map<ProjectFile, Double> scores;
         try {
+            var commits = ((GitRepo) repo).getFileHistories(files, Integer.MAX_VALUE);
             scores = computeImportanceScores(gr, commits);
             logger.trace("Computed importance scores for sortByImportance: {}", scores);
         } catch (GitAPIException e) {
@@ -191,7 +164,7 @@ public final class GitDistance {
 
     private static List<IAnalyzer.FileRelevance> computePmiScores(
             GitRepo repo, Map<ProjectFile, Double> seedWeights, int k, boolean reversed) throws GitAPIException {
-        var commits = getCommitsForFiles(repo, seedWeights.keySet(), COMMITS_TO_PROCESS);
+        var commits = repo.getFileHistories(seedWeights.keySet(), COMMITS_TO_PROCESS);
         var totalCommits = commits.size();
         if (totalCommits == 0) return List.of();
 

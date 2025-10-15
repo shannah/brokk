@@ -1813,6 +1813,103 @@ public class GitRepo implements Closeable, IGitRepo {
     }
 
     /**
+     * Collect commit history for multiple files using a single RevWalk.
+     * Follows renames by diffing each commit to its parent with DiffFormatter (rename detection on).
+     *
+     * Strategy:
+     *  - Start with each file's current repo-relative path.
+     *  - Walk commits from HEAD backwards (commit-time desc).
+     *  - For each commit, diff(parent, commit). If a diff entry touches a tracked path:
+     *      - record the commit for that file
+     *      - if it's a RENAME where newPath == trackedPath, update trackedPath := oldPath
+     *  - Once a file accumulates maxResults, stop tracking it.
+     *  - Early-exit when all files are satisfied.
+     *
+     * Notes:
+     *  - Uses first parent only for speed. If you need true merge-aware attribution, iterate all parents
+     *    (slower) or make it a toggle.
+     *  - Bodies are not retained (RevWalk#setRetainBody(false)).
+     */
+    public List<CommitInfo> getFileHistories(Collection<ProjectFile> files, int maxResults) throws GitAPIException {
+        if (files.isEmpty() || maxResults <= 0) return List.of();
+
+        final Map<ProjectFile, String> trackedPath = new LinkedHashMap<>();
+        for (var f : files) trackedPath.put(f, toRepoRelativePath(f));
+
+        final Map<ProjectFile, List<CommitInfo>> results = new LinkedHashMap<>();
+        final Set<ProjectFile> active = new LinkedHashSet<>(files);
+        for (var f : files) results.put(f, new ArrayList<>(Math.min(maxResults, 32)));
+
+        try (var revWalk = new RevWalk(repository);
+                var df = new org.eclipse.jgit.diff.DiffFormatter(
+                        org.eclipse.jgit.util.io.DisabledOutputStream.INSTANCE)) {
+
+            var headId = resolveToCommit("HEAD");
+            var head = revWalk.parseCommit(headId);
+
+            // Keep headers only for speed; we'll parse bodies lazily on demand.
+            revWalk.setRetainBody(false);
+            revWalk.sort(RevSort.COMMIT_TIME_DESC, true);
+            revWalk.markStart(head);
+
+            df.setRepository(repository);
+            df.setDetectRenames(true);
+
+            for (var commit : revWalk) {
+                if (active.isEmpty()) break;
+
+                RevCommit parent = (commit.getParentCount() > 0) ? revWalk.parseCommit(commit.getParent(0)) : null;
+                final var newTree = commit.getTree();
+                final var oldTree = (parent == null) ? null : parent.getTree();
+
+                final List<DiffEntry> diffs = df.scan(oldTree, newTree);
+                if (diffs.isEmpty()) continue;
+
+                final Set<String> currentPaths = new HashSet<>();
+                for (var f : active) currentPaths.add(trackedPath.get(f));
+
+                boolean anyHit = false;
+                final Map<ProjectFile, String> backRename = new HashMap<>();
+
+                for (var de : diffs) {
+                    final String newPath = de.getNewPath();
+                    if (!currentPaths.contains(newPath)) continue;
+
+                    for (var f : active) {
+                        if (!Objects.equals(trackedPath.get(f), newPath)) continue;
+
+                        // We’re about to read the short message → ensure the body is available.
+                        // This is cheap and only runs for commits we actually keep.
+                        revWalk.parseBody(commit);
+
+                        var commits = requireNonNull(results.get(f));
+                        commits.add(fromRevCommit(commit));
+                        anyHit = true;
+
+                        if (de.getChangeType() == DiffEntry.ChangeType.RENAME) {
+                            backRename.put(f, de.getOldPath());
+                        }
+                    }
+                }
+
+                trackedPath.putAll(backRename);
+                if (anyHit) {
+                    active.removeIf(f -> requireNonNull(results.get(f)).size() >= maxResults);
+                }
+            }
+
+            return results.values().stream()
+                    .flatMap(List::stream)
+                    .distinct()
+                    .sorted((a, b) -> b.date().compareTo(a.date()))
+                    .toList();
+
+        } catch (IOException e) {
+            throw new GitWrappedIOException(e);
+        }
+    }
+
+    /**
      * Get the URL of the target remote using Git's standard remote resolution including upstream from current branch
      */
     @Override
