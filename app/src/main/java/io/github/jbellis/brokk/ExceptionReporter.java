@@ -20,8 +20,7 @@ public class ExceptionReporter {
     private final Service service;
 
     // Deduplication: track when we last reported each exception signature
-    // Static to ensure deduplication works across all instances created via lazy initialization
-    private static final ConcurrentHashMap<String, Long> reportedExceptions = new ConcurrentHashMap<>();
+    private final ConcurrentHashMap<String, Long> reportedExceptions = new ConcurrentHashMap<>();
 
     // Only report the same exception once per hour
     private static final long DEDUPLICATION_WINDOW_MS = TimeUnit.HOURS.toMillis(1);
@@ -150,7 +149,7 @@ public class ExceptionReporter {
      * Cleans up old entries from the deduplication map to keep it bounded. Removes entries older than the deduplication
      * window.
      */
-    private static void cleanupOldEntries() {
+    private void cleanupOldEntries() {
         long currentTime = System.currentTimeMillis();
         long cutoffTime = currentTime - DEDUPLICATION_WINDOW_MS;
 
@@ -182,14 +181,16 @@ public class ExceptionReporter {
 
     /**
      * Convenience method to report an exception from the active project. This method handles all error cases gracefully
-     * and never throws exceptions.
+     * and never throws exceptions. Uses the cached ExceptionReporter from the active ContextManager.
      *
      * @param throwable The exception to report
      */
     public static void tryReportException(Throwable throwable) {
         try {
-            ExceptionReporter reporter = tryCreateFromActiveProject();
-            if (reporter != null) {
+            Chrome activeWindow = Brokk.getActiveWindow();
+            if (activeWindow != null) {
+                ContextManager contextManager = activeWindow.getContextManager();
+                ExceptionReporter reporter = contextManager.getExceptionReporter();
                 reporter.reportException(throwable);
             }
         } catch (Exception e) {
