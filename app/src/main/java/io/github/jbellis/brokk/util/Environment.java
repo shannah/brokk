@@ -48,7 +48,7 @@ public class Environment {
     /** Unlimited timeout constant (no timeout guard). */
     public static final Duration UNLIMITED_TIMEOUT = Duration.ofNanos(Long.MAX_VALUE);
 
-    private static String exeName(String base) {
+    public static String exeName(String base) {
         var os = System.getProperty("os.name", "").toLowerCase(Locale.ROOT);
         return os.contains("win") ? base + ".exe" : base;
     }

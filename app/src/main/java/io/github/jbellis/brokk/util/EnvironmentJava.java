@@ -2,14 +2,16 @@ package io.github.jbellis.brokk.util;
 
 import eu.hansolo.fx.jdkmon.tools.Distro;
 import eu.hansolo.fx.jdkmon.tools.Finder;
-import io.github.jbellis.brokk.agents.BuildAgent;
-import org.jetbrains.annotations.Nullable;
-
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Comparator;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
+import org.jetbrains.annotations.Nullable;
 
 public class EnvironmentJava {
+    private static final Logger logger = LogManager.getLogger(EnvironmentJava.class);
+
     public static final String JAVA_HOME_SENTINEL = "$JAVA_HOME";
 
     /**
@@ -27,7 +29,7 @@ public class EnvironmentJava {
                 }
             }
         } catch (Exception e) {
-            BuildAgent.logger.debug("Invalid JAVA_HOME '{}': {}", env, e.getMessage());
+            logger.debug("Invalid JAVA_HOME '{}': {}", env, e.getMessage());
         }
 
         // Fallback: use Finder to locate installed JDKs and pick the most suitable one
@@ -38,16 +40,14 @@ public class EnvironmentJava {
                 Comparator<Distro> distroComparator = Comparator.comparing(Distro::getVersionNumber)
                         .thenComparing(
                                 d -> d.getReleaseDate().orElse(null), Comparator.nullsLast(Comparator.naturalOrder()));
-                var best = distros.stream().max(distroComparator).orElse(null);
-                if (best != null) {
-                    var p = best.getPath();
-                    if (p != null && !p.isBlank()) return p;
-                    var loc = best.getLocation();
-                    if (loc != null && !loc.isBlank()) return loc;
-                }
+                var best = distros.stream().max(distroComparator).orElseThrow();
+                var p = best.getPath();
+                if (p != null && !p.isBlank()) return p;
+                var loc = best.getLocation();
+                if (loc != null && !loc.isBlank()) return loc;
             }
         } catch (Throwable t) {
-            BuildAgent.logger.warn("Failed to detect JDK via Finder", t);
+            logger.warn("Failed to detect JDK via Finder", t);
         }
 
         // user will need to download something, leave it alone in the meantime
@@ -56,7 +56,7 @@ public class EnvironmentJava {
 
     private static boolean isJdkHome(Path home) {
         var bin = home.resolve("bin");
-        var javac = bin.resolve(BuildAgent.exeName("javac"));
+        var javac = bin.resolve(Environment.exeName("javac"));
         return Files.isRegularFile(javac);
     }
 }

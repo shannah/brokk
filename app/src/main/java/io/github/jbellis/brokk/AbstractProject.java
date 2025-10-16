@@ -10,6 +10,7 @@ import io.github.jbellis.brokk.git.GitRepoFactory;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.git.LocalFileRepo;
 import io.github.jbellis.brokk.util.AtomicWrites;
+import io.github.jbellis.brokk.util.EnvironmentJava;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.nio.file.Files;
@@ -17,8 +18,6 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.swing.*;
-
-import io.github.jbellis.brokk.util.EnvironmentJava;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;

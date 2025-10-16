@@ -31,6 +31,7 @@ import io.github.jbellis.brokk.util.BuildOutputPreprocessor;
 import io.github.jbellis.brokk.util.BuildToolConventions;
 import io.github.jbellis.brokk.util.BuildToolConventions.BuildSystem;
 import io.github.jbellis.brokk.util.Environment;
+import io.github.jbellis.brokk.util.EnvironmentPython;
 import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.Messages;
 import java.io.StringReader;
@@ -448,6 +449,7 @@ public class BuildAgent {
         }
 
         final Path projectRoot = cm.getProject().getRoot();
+        String pythonVersion = getPythonVersionForProject(projectRoot);
 
         List<String> targetItems;
 
@@ -469,13 +471,13 @@ public class BuildAgent {
                     "Using modules-based template with {} modules (anchor={})",
                     targetItems.size(),
                     anchor == null ? "<inferred import roots>" : anchor);
-            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "modules");
+            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "modules", pythonVersion);
         }
 
         if (isFilesBased) {
             targetItems = workspaceTestFiles.stream().map(ProjectFile::toString).toList();
             logger.debug("Using files-based template with {} files", targetItems.size());
-            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "files");
+            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "files", pythonVersion);
         }
 
         IAnalyzer analyzer;
@@ -499,7 +501,7 @@ public class BuildAgent {
                 return details.buildLintCommand();
             }
             logger.debug("Using fqclasses-based template with {} entries", targetItems.size());
-            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "fqclasses");
+            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "fqclasses", pythonVersion);
         } else {
             targetItems = codeUnits.stream().map(CodeUnit::identifier).sorted().toList();
             if (targetItems.isEmpty()) {
@@ -507,7 +509,7 @@ public class BuildAgent {
                 return details.buildLintCommand();
             }
             logger.debug("Using classes-based template with {} entries", targetItems.size());
-            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "classes");
+            return interpolateMustacheTemplate(testSomeTemplate, targetItems, "classes", pythonVersion);
         }
     }
 
@@ -567,6 +569,16 @@ public class BuildAgent {
         return Optional.empty();
     }
 
+    /** Get the Python version for the project, or null if unable to determine. */
+    private static @Nullable String getPythonVersionForProject(Path projectRoot) {
+        try {
+            return new EnvironmentPython(projectRoot).getPythonVersion();
+        } catch (Exception e) {
+            logger.debug("Unable to determine Python version for project", e);
+            return null;
+        }
+    }
+
     /**
      * Convert a Python source path to a dotted module label.
      * If anchor is non-null and the file lives under it, label is relative to anchor.
@@ -619,13 +631,22 @@ public class BuildAgent {
     }
 
     /**
-     * Interpolates a Mustache template with the given list of items. Supports {{files}}, {{classes}}, {{fqclasses}},
-     * {{modules}} and other list variables with Mustache section syntax.
+     * Interpolates a Mustache template with the given list of items and optional Python version.
+     * Supports {{files}}, {{classes}}, {{fqclasses}}, {{modules}}, and {{pyver}} variables.
      *
      * Note: mustache.java's DecoratedCollection does not support the -last feature like Handlebars does,
      * so we post-process to clean up trailing separators that result from the final iteration.
      */
     public static String interpolateMustacheTemplate(String template, List<String> items, String listKey) {
+        return interpolateMustacheTemplate(template, items, listKey, null);
+    }
+
+    /**
+     * Interpolates a Mustache template with the given list of items and optional Python version.
+     * Supports {{files}}, {{classes}}, {{fqclasses}}, {{modules}}, and {{pyver}} variables.
+     */
+    public static String interpolateMustacheTemplate(
+            String template, List<String> items, String listKey, @Nullable String pythonVersion) {
         if (template.isEmpty()) {
             return "";
         }
@@ -637,6 +658,7 @@ public class BuildAgent {
         Map<String, Object> context = new HashMap<>();
         // Mustache.java handles null or empty lists correctly for {{#section}} blocks.
         context.put(listKey, new DecoratedCollection<>(items));
+        context.put("pyver", pythonVersion == null ? "" : pythonVersion);
 
         StringWriter writer = new StringWriter();
         // This can throw MustacheException, which will propagate as a RuntimeException
