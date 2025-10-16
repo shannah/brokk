@@ -843,7 +843,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                 dtos.add(new TaskList.TaskItem(it.text(), it.done()));
             }
         }
-        var data = new TaskList.TaskListData(java.util.List.copyOf(dtos));
+        var data = new TaskList.TaskListData(List.copyOf(dtos));
 
         // Persist via ContextManager
         chrome.getContextManager().setTaskList(data);
@@ -904,7 +904,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         goStopButton.setToolTipText("Preparing to run tasks...");
 
         // Record the full ordered run for context awareness
-        currentRunOrder = java.util.List.copyOf(toRun);
+        currentRunOrder = List.copyOf(toRun);
 
         // Set up queue: first runs now, the rest are pending
         int first = toRun.get(0);
