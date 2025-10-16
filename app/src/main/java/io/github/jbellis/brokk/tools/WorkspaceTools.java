@@ -256,15 +256,15 @@ public class WorkspaceTools {
         var currentContext = contextManager.liveContext();
         var allFragments = currentContext.getAllFragmentsInDisplayOrder();
 
-        // Prepare existing DISCARDED_CONTEXT map if present (we find this first so we can protect it
+        // Get existing DISCARDED_CONTEXT map (we find this first so we can protect it
         // from being removed by a caller attempting to drop it).
-        var discardedDescription = ContextFragment.DISCARDED_CONTEXT.description();
+        var existingDiscardedMap = currentContext.getDiscardedFragmentsNote();
         var existingDiscarded = currentContext
                 .virtualFragments()
                 .filter(vf -> vf.getType() == ContextFragment.FragmentType.STRING)
                 .filter(vf -> vf instanceof ContextFragment.StringFragment)
                 .map(vf -> (ContextFragment.StringFragment) vf)
-                .filter(sf -> discardedDescription.equals(sf.description()))
+                .filter(sf -> ContextFragment.DISCARDED_CONTEXT.description().equals(sf.description()))
                 .findFirst();
 
         var idsToDropSet = new HashSet<>(idToExplanation.keySet());
@@ -291,15 +291,7 @@ public class WorkspaceTools {
                 && idsToDropSet.contains(existingDiscarded.get().id());
 
         var mapper = Json.getMapper();
-        Map<String, String> mergedDiscarded = new LinkedHashMap<>();
-        existingDiscarded.ifPresent(sf -> {
-            try {
-                var existing = mapper.readValue(sf.text(), new TypeReference<Map<String, String>>() {});
-                mergedDiscarded.putAll(existing);
-            } catch (Exception e) {
-                logger.warn("Failed to parse existing DISCARDED_CONTEXT JSON; starting fresh", e);
-            }
-        });
+        Map<String, String> mergedDiscarded = new LinkedHashMap<>(existingDiscardedMap);
 
         // Merge explanations for successfully dropped fragments (new overwrites old)
         for (var f : toDrop) {
