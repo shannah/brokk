@@ -402,8 +402,16 @@ public class Brokk {
                                 .toList();
 
                         if (!pathsToOpen.isEmpty()) {
-                            // Use attemptOpenProjects() - same flow as command-line args
-                            attemptOpenProjects(pathsToOpen);
+                            // Open projects asynchronously to avoid blocking the handler
+                            SwingUtilities.invokeLater(() -> {
+                                hideSplashScreen();
+                                for (Path path : pathsToOpen) {
+                                    new OpenProjectBuilder(path).open().exceptionally(ex -> {
+                                        logger.error("Failed to open project from file handler: {}", path, ex);
+                                        return false;
+                                    });
+                                }
+                            });
                         }
                     });
                 } catch (UnsupportedOperationException ignored) {
