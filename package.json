@@ -29,7 +29,7 @@
             {
                 "type": "directory",
                 "role": "Editor",
-                "description": "Open folder as project"
+                "description": "Open folder as Brokk project"
             }
         ],
         "jar": "app/build/libs/brokk-*.jar",
