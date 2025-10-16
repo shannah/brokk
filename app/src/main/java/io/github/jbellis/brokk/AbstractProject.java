@@ -2,7 +2,6 @@ package io.github.jbellis.brokk;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.analyzer.Language;
 import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
@@ -18,6 +17,8 @@ import java.nio.file.Path;
 import java.util.*;
 import java.util.stream.Collectors;
 import javax.swing.*;
+
+import io.github.jbellis.brokk.util.EnvironmentJava;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -356,7 +357,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
     public @Nullable String getJdk() {
         var value = workspaceProps.getProperty(PROP_JDK_HOME);
         if (value == null || value.isBlank()) {
-            value = BuildAgent.detectJdk();
+            value = EnvironmentJava.detectJdk();
             setJdk(value);
         }
         return value;

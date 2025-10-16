@@ -234,7 +234,7 @@ public final class BrokkCli implements Callable<Integer> {
                 testSomeCmd != null ? testSomeCmd : "",
                 Set.of());
         System.out.println("Build Details: " + buildDetails);
-        
+
         cm.createHeadless(buildDetails);
         var io = cm.getIo();
 
