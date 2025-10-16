@@ -146,6 +146,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @SuppressWarnings(" vaikka project on final, sen sisältö voi muuttua ")
     private final AbstractProject project;
 
+    // Cached exception reporter for this context
+    private final ExceptionReporter exceptionReporter;
+
     private final ToolRegistry toolRegistry;
 
     // Current session tracking
@@ -226,6 +229,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.contextHistory = new ContextHistory(new Context(this, null));
         this.service = new ServiceWrapper();
         this.service.reinit(project);
+
+        // Initialize exception reporter with lazy service access
+        this.exceptionReporter = new ExceptionReporter(this.service::get);
 
         // set up global tools
         this.toolRegistry = new ToolRegistry(this);
@@ -617,6 +623,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
     @Override
     public Service getService() {
         return service.get();
+    }
+
+    public ExceptionReporter getExceptionReporter() {
+        return exceptionReporter;
     }
 
     /** Returns the configured Architect model, falling back to the system model if unavailable. */
