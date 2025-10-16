@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.TaskResult;
 import io.github.jbellis.brokk.WorktreeProject;
 import io.github.jbellis.brokk.agents.ArchitectAgent;
+import io.github.jbellis.brokk.agents.BuildAgent;
 import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.ConflictInspector;
 import io.github.jbellis.brokk.agents.ContextAgent;
@@ -222,7 +223,19 @@ public final class BrokkCli implements Callable<Integer> {
         var mainProject = new MainProject(projectPath);
         project = worktreePath == null ? mainProject : new WorktreeProject(worktreePath, mainProject);
         cm = new ContextManager(project);
-        cm.createHeadless();
+
+        // Build BuildDetails from environment variables
+        String buildLintCmd = System.getenv("BRK_BUILD_CMD");
+        String testAllCmd = System.getenv("BRK_TESTALL_CMD");
+        String testSomeCmd = System.getenv("BRK_TESTSOME_CMD");
+        var buildDetails = new BuildAgent.BuildDetails(
+                buildLintCmd != null ? buildLintCmd : "",
+                testAllCmd != null ? testAllCmd : "",
+                testSomeCmd != null ? testSomeCmd : "",
+                Set.of());
+        System.out.println("Build Details: " + buildDetails);
+        
+        cm.createHeadless(buildDetails);
         var io = cm.getIo();
 
         //  Model Overrides initialization

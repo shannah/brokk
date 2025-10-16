@@ -281,12 +281,11 @@ public class BuildAgent {
                                        | **Gradle**        | `gradle --quiet test{{#classes}} --tests {{value}}{{/classes}}`
                                        | **Go**            | `go test -run '{{#classes}}{{value}}{{^-last}} | {{/-last}}{{/classes}}`
                                        | **.NET CLI**      | `dotnet test --filter "{{#classes}}FullyQualifiedName\\~{{value}}{{^-last}} | {{/-last}}{{/classes}}"`
-                                       | **pytest**        | `pytest {{#files}}{{value}}{{^-last}} {{/-last}}{{/files}}`
+                                       | **pytest**        | `uv sync && pytest {{#files}}{{value}}{{^-last}} {{/-last}}{{/files}}`
                                        | **Jest**          | `jest {{#files}}{{value}}{{^-last}} {{/-last}}{{/files}}`
 
                                        %s
                                        Only fall back to the bare command (`gradle`, `mvn` …) when no wrapper script is present.
-
 
                                        A baseline set of excluded directories has been established from build conventions and .gitignore.
                                        When you use `reportBuildDetails`, the `excludedDirectories` parameter should contain *additional* directories
@@ -410,7 +409,7 @@ public class BuildAgent {
         var cm = ctx.getContextManager();
 
         // Retrieve build details from the project associated with the ContextManager
-        BuildDetails details = cm.getProject().loadBuildDetails();
+        BuildDetails details = cm.getProject().awaitBuildDetails();
 
         if (details.equals(BuildDetails.EMPTY)) {
             logger.warn("No build details available, cannot determine verification command.");
@@ -420,8 +419,14 @@ public class BuildAgent {
         // Check project setting for test scope
         IProject.CodeAgentTestScope testScope = cm.getProject().getCodeAgentTestScope();
         if (testScope == IProject.CodeAgentTestScope.ALL) {
-            logger.debug("Code Agent Test Scope is ALL, using testAllCommand: {}", details.testAllCommand());
-            return details.testAllCommand();
+            String cmd;
+            if (System.getenv("BRK_TESTALL_CMD") != null) {
+                cmd = System.getenv("BRK_TESTALL_CMD");
+            } else {
+                cmd = details.testAllCommand();
+            }
+            logger.debug("Code Agent Test Scope is ALL, using testAllCommand: {}", cmd);
+            return cmd;
         }
 
         // Proceed with workspace-specific test determination (based on the provided Context)
@@ -451,8 +456,8 @@ public class BuildAgent {
                     "No relevant test files found for {} with Workspace {}; using build/lint command: {}",
                     cm.getProject().getRoot(),
                     summaries,
-                    getBuildLintAllCommand(details));
-            return getBuildLintAllCommand(details);
+                    details.buildLintCommand());
+            return details.buildLintCommand();
         }
 
         return getBuildLintSomeCommand(cm, details, workspaceTestFiles);
@@ -497,8 +502,8 @@ public class BuildAgent {
         if (!isFilesBased && !isClassesBased && !isModulesBased) {
             logger.debug(
                     "Template lacks {{#files}}, {{#classes}}, or {{#modules}}; using build/lint: {}",
-                    getBuildLintAllCommand(details));
-            return getBuildLintAllCommand(details);
+                    details.buildLintCommand());
+            return details.buildLintCommand();
         }
 
         final Path projectRoot = cm.getProject().getRoot();
@@ -574,8 +579,8 @@ public class BuildAgent {
      *  (3) Otherwise, empty (callers will fall back to per-file import roots).
      */
     private static Optional<Path> detectModuleAnchor(Path projectRoot, BuildDetails details) {
-        String testAll = details.testAllCommand() == null ? "" : details.testAllCommand();
-        String testSome = details.testSomeCommand() == null ? "" : details.testSomeCommand();
+        String testAll = details.testAllCommand();
+        String testSome = details.testSomeCommand();
 
         Optional<Path> fromRunner = extractRunnerAnchorFromCommands(projectRoot, List.of(testAll, testSome));
         if (fromRunner.isPresent()) return fromRunner;
@@ -595,7 +600,7 @@ public class BuildAgent {
      */
     private static Optional<Path> extractRunnerAnchorFromCommands(Path projectRoot, List<String> commands) {
         for (String cmd : commands) {
-            if (cmd == null || cmd.isBlank()) continue;
+            if (cmd.isBlank()) continue;
 
             Iterable<String> tokens = Splitter.on(Pattern.compile("\\s+")).split(cmd);
             for (String t : tokens) {
@@ -668,17 +673,8 @@ public class BuildAgent {
             lastWithInit = p;
             p = p.getParent();
         }
-        if (lastWithInit == null) {
-            return Optional.ofNullable(absFile.getParent());
-        }
-        return Optional.ofNullable(lastWithInit.getParent());
-    }
-
-    private static String getBuildLintAllCommand(BuildDetails details) {
-        if (System.getenv("BRK_TESTALL_CMD") != null) {
-            return System.getenv("BRK_TESTALL_CMD");
-        }
-        return details.buildLintCommand();
+        return Optional.ofNullable(
+                Objects.requireNonNullElse(lastWithInit, absFile).getParent());
     }
 
     /**
