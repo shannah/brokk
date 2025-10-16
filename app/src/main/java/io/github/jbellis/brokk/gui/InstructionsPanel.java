@@ -97,20 +97,21 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final ContextManager contextManager;
     private WorkspaceItemsChipPanel workspaceItemsChipPanel;
     private final JPanel centerPanel;
+    private final ContextAreaContainer contextAreaContainer;
     private @Nullable JPanel modeIndicatorPanel;
     private @Nullable JLabel modeBadge;
     private @Nullable JComponent inputLayeredPane;
     private ActionGroupPanel actionGroupPanel;
     private @Nullable SplitButton branchSplitButton;
 
-    private static class ContextAreaContainer extends JPanel {
+    public static class ContextAreaContainer extends JPanel {
         private boolean isDragOver = false;
 
-        ContextAreaContainer() {
+        public ContextAreaContainer() {
             super(new BorderLayout());
         }
 
-        void setDragOver(boolean dragOver) {
+        public void setDragOver(boolean dragOver) {
             if (this.isDragOver != dragOver) {
                 this.isDragOver = dragOver;
                 repaint();
@@ -205,6 +206,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         this.chrome = chrome;
         this.contextManager = chrome.getContextManager();
+        this.workspaceItemsChipPanel = new WorkspaceItemsChipPanel(chrome);
         this.commandInputUndoManager = new UndoManager();
         commandInputOverlay = new OverlayPanel(overlay -> activateCommandInput(), "Click to enter your instructions");
         commandInputOverlay.setCursor(Cursor.getPredefinedCursor(Cursor.TEXT_CURSOR));
@@ -392,7 +394,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         refreshModeIndicator();
 
         // Initialize the workspace chips area below the command input
-        initializeReferenceFileTable();
+        this.contextAreaContainer = createContextAreaContainer();
+        centerPanel.add(contextAreaContainer, 2);
 
         // Do not set a global default button on the root pane. This prevents plain Enter
         // from submitting when focus is in other UI components (e.g., history/branch lists).
@@ -771,10 +774,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * Initializes the file-reference table that sits directly beneath the command-input field and wires a context-menu
      * that targets the specific badge the mouse is over (mirrors ContextPanel behaviour).
      */
-    private void initializeReferenceFileTable() {
-        // Replace former suggestion table with the workspace chips panel
-        this.workspaceItemsChipPanel = new WorkspaceItemsChipPanel(this.chrome);
-
+    private ContextAreaContainer createContextAreaContainer() {
         // Wire chip removal behavior: block while LLM running; otherwise drop and refocus input
         workspaceItemsChipPanel.setOnRemoveFragment(fragment -> {
             var cm = chrome.getContextManager();
@@ -883,7 +883,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Constrain vertical growth to preferred height so it won't stretch on window resize.
         var titledContainer = new ContextAreaContainer();
-        titledContainer.setOpaque(false);
+        titledContainer.setOpaque(true);
         var transferHandler = FileDropHandlerFactory.createFileDropHandler(this.chrome);
         titledContainer.setTransferHandler(transferHandler);
         var dropTargetListener = new DropTargetAdapter() {
@@ -935,11 +935,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         };
         titledContainer.setDropTarget(
                 new DropTarget(titledContainer, DnDConstants.ACTION_COPY, dropTargetListener, true));
-        titledContainer.setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
+        var lineBorder = BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"));
+        var titledBorder = BorderFactory.createTitledBorder(lineBorder, "Context");
+        var marginBorder = BorderFactory.createEmptyBorder(4, 4, 4, 4);
+        titledContainer.setBorder(BorderFactory.createCompoundBorder(marginBorder, titledBorder));
         titledContainer.add(container, BorderLayout.CENTER);
 
         // Insert beneath the command-input area (index 2)
-        centerPanel.add(titledContainer, 2);
+        return titledContainer;
     }
 
     // Emphasize selected label by color; dim the non-selected one (no bold to avoid width changes)
@@ -2202,6 +2205,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             // Fallback to a basic default; Reasoning & Tier defaulted inside ModelConfig
             return new Service.ModelConfig(Service.GPT_5_MINI);
         }
+    }
+
+    public ContextAreaContainer getContextAreaContainer() {
+        return contextAreaContainer;
+    }
+
+    public JPanel getCenterPanel() {
+        return centerPanel;
     }
 
     /**
