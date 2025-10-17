@@ -361,12 +361,7 @@ public class BuildAgent {
         // Check project setting for test scope
         IProject.CodeAgentTestScope testScope = cm.getProject().getCodeAgentTestScope();
         if (testScope == IProject.CodeAgentTestScope.ALL) {
-            String cmd;
-            if (System.getenv("BRK_TESTALL_CMD") != null) {
-                cmd = System.getenv("BRK_TESTALL_CMD");
-            } else {
-                cmd = details.testAllCommand();
-            }
+            String cmd = details.testAllCommand();
             logger.debug("Code Agent Test Scope is ALL, using testAllCommand: {}", cmd);
             return cmd;
         }
@@ -432,9 +427,7 @@ public class BuildAgent {
     public static String getBuildLintSomeCommand(
             IContextManager cm, BuildDetails details, Collection<ProjectFile> workspaceTestFiles) {
 
-        String testSomeTemplate = System.getenv("BRK_TESTSOME_CMD") == null
-                ? details.testSomeCommand()
-                : System.getenv("BRK_TESTSOME_CMD");
+        String testSomeTemplate = details.testSomeCommand();
 
         boolean isFilesBased = testSomeTemplate.contains("{{#files}}");
         boolean isFqBased = testSomeTemplate.contains("{{#fqclasses}}");
