@@ -364,7 +364,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         modelSelector.selectConfig(chrome.getProject().getCodeModelConfig());
         modelSelector.addSelectionListener(cfg -> chrome.getProject().setCodeModelConfig(cfg));
         // Also recompute token/cost indicator when model changes
-        modelSelector.addSelectionListener(cfg -> SwingUtilities.invokeLater(this::updateTokenCostIndicator));
+        modelSelector.addSelectionListener(cfg -> updateTokenCostIndicator());
         // Ensure model selector component is focusable
         modelSelector.getComponent().setFocusable(true);
 
@@ -905,66 +905,45 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var service = chrome.getContextManager().getService();
         var model = service.getModel(config);
 
-        // Handle empty context case
-        if (ctx == null || ctx.isEmpty()) {
-            SwingUtilities.invokeLater(() -> {
-                try {
-                    if (model == null || model instanceof Service.UnavailableStreamingModel) {
-                        tokenUsageBar.setVisible(false);
-                        return;
-                    }
-
-                    int maxTokens = service.getMaxInputTokens(model);
-                    if (maxTokens <= 0) {
-                        maxTokens = 128_000;
-                    }
-
-                    tokenUsageBar.setTokens(0, maxTokens);
-                    String modelName = config.name();
-                    String tooltipHtml = buildTokenUsageTooltip(modelName, maxTokens, "$0.00");
-                    tokenUsageBar.setTooltip(tooltipHtml);
-                    tokenUsageBar.setVisible(true);
-                } catch (Exception ex) {
-                    logger.debug("Failed to update token usage bar for empty context", ex);
-                    tokenUsageBar.setVisible(false);
-                }
-            });
-            return;
-        }
-
-        // Build full text of current context, similar to WorkspacePanel
-        var allFragments = ctx.getAllFragmentsInDisplayOrder();
-        var fullText = new StringBuilder();
-        for (var frag : allFragments) {
-            if (frag.isText() || frag.getType().isOutput()) {
-                fullText.append(frag.text()).append("\n");
-            }
-        }
-
         // Compute tokens off-EDT
         chrome.getContextManager()
-                .submitBackgroundTask(
-                        "Compute token estimate (Instructions)",
-                        () -> Messages.getApproximateTokens(fullText.toString()))
-                .thenAccept(approxTokens -> SwingUtilities.invokeLater(() -> {
+                .submitBackgroundTask("Compute token estimate (Instructions)", () -> {
+                    if (model == null || model instanceof Service.UnavailableStreamingModel) {
+                        return new TokenUsageBarComputation(
+                                buildTokenUsageTooltip("Unavailable", 128000, "0.00"), 128000, 0);
+                    }
+
+                    var fullText = new StringBuilder();
+                    if (ctx != null && !ctx.isEmpty()) {
+                        // Build full text of current context, similar to WorkspacePanel
+                        var allFragments = ctx.getAllFragmentsInDisplayOrder();
+                        for (var frag : allFragments) {
+                            if (frag.isText() || frag.getType().isOutput()) {
+                                fullText.append(frag.text()).append("\n");
+                            }
+                        }
+                    }
+
+                    int approxTokens = Messages.getApproximateTokens(fullText.toString());
+                    int maxTokens = service.getMaxInputTokens(model);
+                    if (maxTokens <= 0) {
+                        // Fallback to a generous default when service does not provide a limit
+                        maxTokens = 128_000;
+                    }
+                    String modelName = config.name();
+                    String costStr = calculateCostEstimate(config, approxTokens, service);
+                    String tooltipHtml = buildTokenUsageTooltip(modelName, maxTokens, costStr);
+                    return new TokenUsageBarComputation(tooltipHtml, maxTokens, approxTokens);
+                })
+                .thenAccept(stat -> SwingUtilities.invokeLater(() -> {
                     try {
-                        if (model == null || model instanceof Service.UnavailableStreamingModel) {
+                        if (stat == null) {
                             tokenUsageBar.setVisible(false);
                             return;
                         }
-
-                        int maxTokens = service.getMaxInputTokens(model);
-                        if (maxTokens <= 0) {
-                            // Fallback to a generous default when service does not provide a limit
-                            maxTokens = 128_000;
-                        }
-
                         // Update bar and tooltip
-                        tokenUsageBar.setTokens(approxTokens, maxTokens);
-                        String modelName = config.name();
-                        String costStr = calculateCostEstimate(config, approxTokens, service);
-                        String tooltipHtml = buildTokenUsageTooltip(modelName, maxTokens, costStr);
-                        tokenUsageBar.setTooltip(tooltipHtml);
+                        tokenUsageBar.setTokens(stat.approxTokens, stat.maxTokens);
+                        tokenUsageBar.setTooltip(stat.toolTipHtml);
                         tokenUsageBar.setVisible(true);
                     } catch (Exception ex) {
                         logger.debug("Failed to update token usage bar", ex);
@@ -973,6 +952,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 }));
     }
 
+    private static record TokenUsageBarComputation(String toolTipHtml, int maxTokens, int approxTokens) {}
     /** Calculate cost estimate mirroring WorkspacePanel for only the model currently selected in InstructionsPanel. */
     private String calculateCostEstimate(Service.ModelConfig config, int inputTokens, Service service) {
         var pricing = service.getModelPricing(config.name());
