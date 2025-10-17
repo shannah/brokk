@@ -324,7 +324,8 @@ public class BuildAgent {
                 .map(Path::toString)
                 .collect(Collectors.toSet());
 
-        this.reportedDetails = new BuildDetails(buildLintCommand, testAllCommand, testSomeCommand, finalExcludes);
+        this.reportedDetails = new BuildDetails(
+                buildLintCommand, testAllCommand, testSomeCommand, finalExcludes, defaultEnvForProject());
         logger.debug(
                 "reportBuildDetails tool executed, details captured. Final excluded directories: {}", finalExcludes);
         return "Build details report received and processed.";
@@ -341,9 +342,21 @@ public class BuildAgent {
 
     /** Holds semi-structured information about a project's build process */
     public record BuildDetails(
-            String buildLintCommand, String testAllCommand, String testSomeCommand, Set<String> excludedDirectories) {
+            String buildLintCommand,
+            String testAllCommand,
+            String testSomeCommand,
+            Set<String> excludedDirectories,
+            java.util.Map<String, String> environmentVariables) {
 
-        public static final BuildDetails EMPTY = new BuildDetails("", "", "", Set.of());
+        public BuildDetails(
+                String buildLintCommand,
+                String testAllCommand,
+                String testSomeCommand,
+                Set<String> excludedDirectories) {
+            this(buildLintCommand, testAllCommand, testSomeCommand, excludedDirectories, java.util.Map.of());
+        }
+
+        public static final BuildDetails EMPTY = new BuildDetails("", "", "", Set.of(), java.util.Map.of());
     }
 
     /** Determine the best verification command using the provided Context (no reliance on CM.topContext()). */
@@ -787,11 +800,17 @@ public class BuildAgent {
         String shellLang = ExecutorConfig.getShellLanguageFromProject(cm.getProject());
         io.llmOutput("\n```" + shellLang + "\n", ChatMessageType.CUSTOM);
         try {
+            var details = cm.getProject().awaitBuildDetails();
+            var envVars = details.environmentVariables();
+            var execCfg = ExecutorConfig.fromProject(cm.getProject());
+
             var output = Environment.instance.runShellCommand(
                     verificationCommand,
                     cm.getProject().getRoot(),
                     line -> io.llmOutput(line + "\n", ChatMessageType.CUSTOM),
-                    Environment.UNLIMITED_TIMEOUT);
+                    Environment.UNLIMITED_TIMEOUT,
+                    execCfg,
+                    envVars);
             io.llmOutput("\n```", ChatMessageType.CUSTOM);
 
             logger.debug("Verification command successful. Output: {}", output);
@@ -803,5 +822,18 @@ public class BuildAgent {
             String processed = BuildOutputPreprocessor.processForLlm(rawBuild, cm);
             return ctx.withBuildResult(false, "Build output:\n" + processed);
         }
+    }
+
+    /**
+     * Provide default environment variables for the project when the agent reports details:
+     * - For Python projects: VIRTUAL_ENV=.venv
+     * - Otherwise: no defaults
+     */
+    private java.util.Map<String, String> defaultEnvForProject() {
+        var lang = project.getBuildLanguage();
+        if (lang == io.github.jbellis.brokk.analyzer.Languages.PYTHON) {
+            return java.util.Map.of("VIRTUAL_ENV", ".venv");
+        }
+        return java.util.Map.of();
     }
 }

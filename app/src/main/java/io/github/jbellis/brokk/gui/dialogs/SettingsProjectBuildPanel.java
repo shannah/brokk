@@ -9,7 +9,6 @@ import io.github.jbellis.brokk.analyzer.Languages;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.util.Environment;
-import io.github.jbellis.brokk.util.EnvironmentJava;
 import io.github.jbellis.brokk.util.ExecutorConfig;
 import io.github.jbellis.brokk.util.ExecutorValidator;
 import java.awt.*;
@@ -477,8 +476,15 @@ public class SettingsProjectBuildPanel extends JPanel {
                     publish("--- Verifying Build/Lint Command ---\n");
                     publish("$ " + buildCmd + "\n");
                     try {
+                        var execCfg = ExecutorConfig.fromProject(project);
+                        var envVars = computeEnvFromUi();
                         Environment.instance.runShellCommand(
-                                buildCmd, root, line -> publish(line + "\n"), Environment.DEFAULT_TIMEOUT, project);
+                                buildCmd,
+                                root,
+                                line -> publish(line + "\n"),
+                                Environment.DEFAULT_TIMEOUT,
+                                execCfg,
+                                envVars);
                         publish("\nSUCCESS: Build/Lint command completed successfully.\n\n");
                     } catch (Environment.SubprocessException e) {
                         publish("\nERROR: Build/Lint command failed.\n");
@@ -496,8 +502,15 @@ public class SettingsProjectBuildPanel extends JPanel {
                     publish("--- Verifying Test All Command ---\n");
                     publish("$ " + testAllCmd + "\n");
                     try {
+                        var execCfg = ExecutorConfig.fromProject(project);
+                        var envVars = computeEnvFromUi();
                         Environment.instance.runShellCommand(
-                                testAllCmd, root, line -> publish(line + "\n"), Environment.DEFAULT_TIMEOUT, project);
+                                testAllCmd,
+                                root,
+                                line -> publish(line + "\n"),
+                                Environment.DEFAULT_TIMEOUT,
+                                execCfg,
+                                envVars);
                         publish("\nSUCCESS: Test All command completed successfully.\n\n");
                     } catch (Environment.SubprocessException e) {
                         publish("\nERROR: Test All command failed.\n");
@@ -542,12 +555,15 @@ public class SettingsProjectBuildPanel extends JPanel {
 
                     publish("$ " + interpolatedCmd + "\n");
                     try {
+                        var execCfg = ExecutorConfig.fromProject(project);
+                        var envVars = computeEnvFromUi();
                         Environment.instance.runShellCommand(
                                 interpolatedCmd,
                                 root,
                                 line -> publish(line + "\n"),
                                 Environment.DEFAULT_TIMEOUT,
-                                project);
+                                execCfg,
+                                envVars);
                         publish(
                                 "\nSUCCESS: 'Test Some' command executed without errors (this is unexpected for a placeholder test).\n\n");
                     } catch (Environment.FailureException e) {
@@ -749,8 +765,26 @@ public class SettingsProjectBuildPanel extends JPanel {
         var newTestAll = allTestsCommandField.getText();
         var newTestSome = someTestsCommandField.getText();
 
+        // Primary language
+        var selectedPrimaryLang = (Language) primaryLanguageComboBox.getSelectedItem();
+
+        // Build environment variables map
+        var envVars = new HashMap<>(currentDetails.environmentVariables());
+        envVars.remove("JAVA_HOME");
+        envVars.remove("VIRTUAL_ENV");
+        if (selectedPrimaryLang == Languages.JAVA) {
+            if (setJavaHomeCheckbox.isSelected()) {
+                var selPath = jdkSelector.getSelectedJdkPath();
+                if (selPath != null && !selPath.isBlank()) {
+                    envVars.put("JAVA_HOME", selPath);
+                }
+            }
+        } else if (selectedPrimaryLang == Languages.PYTHON) {
+            envVars.put("VIRTUAL_ENV", ".venv");
+        }
+
         var newDetails = new BuildAgent.BuildDetails(
-                newBuildLint, newTestAll, newTestSome, currentDetails.excludedDirectories());
+                newBuildLint, newTestAll, newTestSome, currentDetails.excludedDirectories(), envVars);
         if (!newDetails.equals(currentDetails)) {
             project.saveBuildDetails(newDetails);
             logger.debug("Applied Build Details changes.");
@@ -770,23 +804,10 @@ public class SettingsProjectBuildPanel extends JPanel {
             logger.debug("Applied Run Command Timeout: {} seconds", timeout);
         }
 
-        // Primary language
-        var selectedPrimaryLang = (Language) primaryLanguageComboBox.getSelectedItem();
+        // JDK Controls (only for Java)
         if (selectedPrimaryLang != null && selectedPrimaryLang != project.getBuildLanguage()) {
             project.setBuildLanguage(selectedPrimaryLang);
             logger.debug("Applied Primary Language: {}", selectedPrimaryLang);
-        }
-
-        // JDK Controls (only for Java)
-        if (selectedPrimaryLang == Languages.JAVA) {
-            if (setJavaHomeCheckbox.isSelected()) {
-                var selPath = jdkSelector.getSelectedJdkPath();
-                if (selPath != null && !selPath.isBlank()) {
-                    project.setJdk(selPath);
-                }
-            } else {
-                project.setJdk(EnvironmentJava.JAVA_HOME_SENTINEL);
-            }
         }
 
         // Apply executor configuration
@@ -816,9 +837,11 @@ public class SettingsProjectBuildPanel extends JPanel {
     }
 
     private void populateJdkControlsFromProject() {
-        var desired = project.getJdk();
+        BuildAgent.BuildDetails details = project.awaitBuildDetails();
+        var env = details.environmentVariables();
+        String desired = env.get("JAVA_HOME");
 
-        boolean useCustomJdk = desired != null && !EnvironmentJava.JAVA_HOME_SENTINEL.equals(desired);
+        boolean useCustomJdk = desired != null && !desired.isBlank();
         setJavaHomeCheckbox.setSelected(useCustomJdk);
         jdkSelector.setEnabled(useCustomJdk);
 
@@ -830,6 +853,21 @@ public class SettingsProjectBuildPanel extends JPanel {
         boolean isJava = selected == Languages.JAVA;
         setJavaHomeCheckbox.setVisible(isJava);
         jdkSelector.setVisible(isJava);
+    }
+
+    private Map<String, String> computeEnvFromUi() {
+        var env = new HashMap<String, String>();
+        var selected = (Language) primaryLanguageComboBox.getSelectedItem();
+        if (selected == Languages.JAVA && setJavaHomeCheckbox.isSelected()) {
+            String sel = jdkSelector.getSelectedJdkPath();
+            if (sel != null && !sel.isBlank()) {
+                env.put("JAVA_HOME", sel);
+            }
+        }
+        if (selected == Languages.PYTHON) {
+            env.put("VIRTUAL_ENV", ".venv");
+        }
+        return env;
     }
 
     private void populatePrimaryLanguageComboBox() {
