@@ -4,6 +4,7 @@ import static java.util.Objects.requireNonNull;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.AbstractProject;
+import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.MainProject;
@@ -40,15 +41,20 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
+
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 import picocli.CommandLine;
 
-@SuppressWarnings("NullAway.Init") // NullAway is upset that some fiels are initialized in picocli's call()
+@SuppressWarnings("NullAway.Init") // NullAway is upset that some fields are initialized in picocli's call()
 @CommandLine.Command(
         name = "brokk-cli",
         mixinStandardHelpOptions = true,
         description = "One-shot Brokk workspace and task runner.")
 public final class BrokkCli implements Callable<Integer> {
+    private static final Logger logger = LogManager.getLogger(BrokkCli.class);
+
     @CommandLine.Option(names = "--project", description = "Path to the project root.", required = true)
     @Nullable
     private Path projectPath;
@@ -149,7 +155,7 @@ public final class BrokkCli implements Callable<Integer> {
     private AbstractProject project;
 
     public static void main(String[] args) {
-        System.err.println("Starting Brokk CLI...");
+        logger.info("Starting Brokk CLI...");
         System.setProperty("java.awt.headless", "true");
 
         int exitCode = new CommandLine(new BrokkCli()).execute(args);
@@ -201,15 +207,16 @@ public final class BrokkCli implements Callable<Integer> {
         if (worktreePath != null) {
             worktreePath = worktreePath.toAbsolutePath();
             if (Files.exists(worktreePath)) {
-                System.out.println("Worktree directory already exists: " + worktreePath + ". Skipping creation.");
+                logger.debug("Worktree directory already exists: " + worktreePath + ". Skipping creation.");
             } else {
                 try (var gitRepo = new GitRepo(projectPath)) {
                     var defaultBranch = gitRepo.getDefaultBranch();
                     var commitId = gitRepo.resolveToCommit(defaultBranch).getName();
                     gitRepo.worktrees().addWorktreeDetached(worktreePath, commitId);
-                    System.out.println("Successfully created detached worktree at " + worktreePath);
-                    System.out.println("Checked out from " + defaultBranch + " at commit " + commitId);
+                    logger.debug("Successfully created detached worktree at " + worktreePath);
+                    logger.debug("Checked out from " + defaultBranch + " at commit " + commitId);
                 } catch (GitRepo.GitRepoException | GitRepo.NoDefaultBranchException e) {
+                    logger.error("Error creating worktree", e);
                     System.err.println("Error creating worktree: " + e.getMessage());
                     return 1;
                 }
@@ -233,7 +240,7 @@ public final class BrokkCli implements Callable<Integer> {
                 testAllCmd != null ? testAllCmd : "",
                 testSomeCmd != null ? testSomeCmd : "",
                 Set.of());
-        System.out.println("Build Details: " + buildDetails);
+        logger.info("Build Details: " + buildDetails);
 
         cm.createHeadless(buildDetails);
         var io = cm.getIo();
@@ -428,12 +435,12 @@ public final class BrokkCli implements Callable<Integer> {
 
                     var conflictOpt = ConflictInspector.inspectFromProject(cm.getProject());
                     if (conflictOpt.isEmpty()) {
-                        System.out.println(
+                        System.err.println(
                                 "Cannot run --merge: Repository is not in a merge/rebase/cherry-pick/revert conflict state");
                         return 1;
                     }
                     var conflict = conflictOpt.get();
-                    System.out.println(conflict);
+                    logger.debug(conflict.toString());
                     MergeAgent mergeAgent = new MergeAgent(
                             cm, planModel, codeModel, conflict, scope, MergeAgent.DEFAULT_MERGE_INSTRUCTIONS);
                     try {
@@ -495,7 +502,8 @@ public final class BrokkCli implements Callable<Integer> {
                     }
                 }
             } catch (Throwable th) {
-                io.toolError(getStackTrace(th), "Internal error: " + th.getMessage());
+                logger.error("Internal error", th);
+                io.toolError(th.getMessage(), "Internal error");
                 return 1; // internal error
             }
         }
