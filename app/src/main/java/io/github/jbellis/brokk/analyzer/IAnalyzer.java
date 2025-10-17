@@ -62,9 +62,9 @@ public interface IAnalyzer {
 
     default List<CodeUnit> getMembersInClass(String fqClass) {
         return getDefinition(fqClass)
-            .filter(CodeUnit::isClass)
-            .map(this::directChildren)
-            .orElse(List.of());
+                .filter(CodeUnit::isClass)
+                .map(this::directChildren)
+                .orElse(List.of());
     }
 
     /** All top-level declarations in the project. */
