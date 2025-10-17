@@ -4,7 +4,6 @@ import static java.util.Objects.requireNonNull;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.AbstractProject;
-import io.github.jbellis.brokk.Brokk;
 import io.github.jbellis.brokk.ContextManager;
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.MainProject;
@@ -41,7 +40,6 @@ import java.util.function.Function;
 import java.util.function.Supplier;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;

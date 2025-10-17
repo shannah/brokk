@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.tools;
 
-import com.fasterxml.jackson.core.type.TypeReference;
 import dev.langchain4j.agent.tool.P;
 import dev.langchain4j.agent.tool.Tool;
 import io.github.jbellis.brokk.Completions;

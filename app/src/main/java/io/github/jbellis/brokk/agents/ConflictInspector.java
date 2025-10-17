@@ -411,8 +411,7 @@ public final class ConflictInspector {
 
         if (files.isEmpty()) {
             logger.debug(
-                    "Detected merge state {} but no actual conflicted files in index; treating as resolved",
-                    state);
+                    "Detected merge state {} but no actual conflicted files in index; treating as resolved", state);
             return null;
         }
 

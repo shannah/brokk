@@ -560,20 +560,16 @@ public class ContextAgent {
 
         var finalSystemMessage = new SystemMessage(systemPrompt);
         var discardedNote = getDiscardedContextNote();
-        var userPrompt = new StringBuilder()
-                .append("<goal>\n")
-                .append(goal)
-                .append("\n</goal>\n\n");
+        var userPrompt = new StringBuilder().append("<goal>\n").append(goal).append("\n</goal>\n\n");
         if (!discardedNote.isEmpty()) {
-            userPrompt.append("<discarded_context>\n")
-                    .append(discardedNote)
-                    .append("\n</discarded_context>\n\n");
+            userPrompt.append("<discarded_context>\n").append(discardedNote).append("\n</discarded_context>\n\n");
         }
         userPrompt.append(filenamePrompt);
 
         List<ChatMessage> messages = Stream.concat(
                         Stream.of(finalSystemMessage),
-                        Stream.concat(workspaceRepresentation.stream(), Stream.of(new UserMessage(userPrompt.toString()))))
+                        Stream.concat(
+                                workspaceRepresentation.stream(), Stream.of(new UserMessage(userPrompt.toString()))))
                 .toList();
 
         int promptTokens = Messages.getApproximateMessageTokens(messages);

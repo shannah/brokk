@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.util;
 
+import com.google.common.base.Splitter;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -8,7 +9,6 @@ import java.util.*;
 import java.util.regex.Matcher;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
-import com.google.common.base.Splitter;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -78,14 +78,16 @@ public class EnvironmentPython {
 
         // Try explicit versions from CI/tox first
         if (!explicitVersionsWithSource.isEmpty()) {
-            for (var versionWithSource :
-                    explicitVersionsWithSource.stream()
-                            .sorted((a, b) -> compareVersions(b.version(), a.version()))
-                            .toList()) {
+            for (var versionWithSource : explicitVersionsWithSource.stream()
+                    .sorted((a, b) -> compareVersions(b.version(), a.version()))
+                    .toList()) {
                 String v = versionWithSource.version();
                 if (cap310 && compareVersions(v, "3.10") > 0) continue;
                 if (pythonExecutableExists(v)) {
-                    logger.debug("Selected Python version {} from CI/tox ({})", v, versionWithSource.sourceFile().toAbsolutePath());
+                    logger.debug(
+                            "Selected Python version {} from CI/tox ({})",
+                            v,
+                            versionWithSource.sourceFile().toAbsolutePath());
                     return v;
                 }
             }

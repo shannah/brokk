@@ -552,7 +552,8 @@ public class Context {
         var mapper = Json.getMapper();
         try {
             return mapper.readValue(
-                    existingDiscarded.get().text(), new com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>() {});
+                    existingDiscarded.get().text(),
+                    new com.fasterxml.jackson.core.type.TypeReference<Map<String, String>>() {});
         } catch (Exception e) {
             logger.warn("Failed to parse DISCARDED_CONTEXT JSON", e);
             return Map.of();
