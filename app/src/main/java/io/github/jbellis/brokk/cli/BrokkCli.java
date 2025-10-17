@@ -1,6 +1,7 @@
 package io.github.jbellis.brokk.cli;
 
 import static java.util.Objects.requireNonNull;
+import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.AbstractProject;
@@ -129,6 +130,9 @@ public final class BrokkCli implements Callable<Integer> {
     @CommandLine.Option(names = "--merge", description = "Run Merge agent to resolve repository conflicts (no prompt).")
     private boolean merge = false;
 
+    @CommandLine.Option(names = "--build", description = "Run verification build on the current workspace.")
+    private boolean build = false;
+
     @CommandLine.Option(
             names = "--worktree",
             description = "Create a detached worktree at the given path, from the default branch's HEAD.")
@@ -167,14 +171,15 @@ public final class BrokkCli implements Callable<Integer> {
                 .filter(p -> p != null && !p.isBlank())
                 .count();
         if (merge) actionCount++;
+        if (build) actionCount++;
         if (actionCount > 1) {
             System.err.println(
-                    "At most one action (--architect, --code, --ask, --search-answer, --lutz, --merge) can be specified.");
+                    "At most one action (--architect, --code, --ask, --search-answer, --lutz, --merge, --build) can be specified.");
             return 1;
         }
         if (actionCount == 0 && worktreePath == null) {
             System.err.println(
-                    "Exactly one action (--architect, --code, --ask, --search-answer, --lutz, --merge) or --worktree is required.");
+                    "Exactly one action (--architect, --code, --ask, --search-answer, --lutz, --merge, --build) or --worktree is required.");
             return 1;
         }
 
@@ -386,6 +391,8 @@ public final class BrokkCli implements Callable<Integer> {
             scopeInput = "Merge";
         } else if (searchAnswerPrompt != null) {
             scopeInput = requireNonNull(searchAnswerPrompt);
+        } else if (build) {
+            scopeInput = "Build";
         } else { // lutzPrompt != null
             scopeInput = requireNonNull(lutzPrompt);
         }
@@ -458,6 +465,17 @@ public final class BrokkCli implements Callable<Integer> {
                             requireNonNull(searchAnswerPrompt), cm, planModel, EnumSet.of(Terminal.ANSWER));
                     result = agent.execute();
                     scope.append(result);
+                } else if (build) {
+                    String buildError = BuildAgent.runVerification(cm);
+                    io.showNotification(
+                            IConsoleIO.NotificationRole.INFO,
+                            buildError.isEmpty()
+                                    ? "Build verification completed successfully."
+                                    : "Build verification failed:\n" + buildError);
+                    // we have no `result` since we did not interact with the LLM
+                    System.exit(0);
+                    // make the compiler happy
+                    result = null;
                 } else { // lutzPrompt != null
                     if (planModel == null) {
                         System.err.println("Error: --lutz requires --planmodel to be specified.");
@@ -501,11 +519,12 @@ public final class BrokkCli implements Callable<Integer> {
                 }
             } catch (Throwable th) {
                 logger.error("Internal error", th);
-                io.toolError(th.getMessage(), "Internal error");
+                io.toolError(requireNonNull(th.getMessage()), "Internal error");
                 return 1; // internal error
             }
         }
 
+        result = castNonNull(result);
         if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
             io.toolError(
                     result.stopDetails().explanation(),
