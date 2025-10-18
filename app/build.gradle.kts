@@ -212,8 +212,8 @@ val errorProneJvmArgs = listOf(
 val baselineJvmArgsProvider = object : CommandLineArgumentProvider {
     override fun asArguments(): Iterable<String> = listOf(
         "-ea",  // Enable assertions
-        "--add-modules=jdk.incubator.vector",
-        "-Dbrokk.devmode=true"
+        "-Dbrokk.devmode=true",
+        "-Dfile.encoding=UTF-8"
     )
 }
 
@@ -334,8 +334,8 @@ tasks.withType<Test> {
     jvmArgs = listOf(
         "-ea",  // Enable assertions
         "-Xmx1G",  // minimum heap size
-        "--add-modules=jdk.incubator.vector",
         "-Dbrokk.devmode=true",
+        "-Dfile.encoding=UTF-8",
         "-XX:+HeapDumpOnOutOfMemoryError",
         "-XX:HeapDumpPath=./build/test-heap-dumps/"
     )
