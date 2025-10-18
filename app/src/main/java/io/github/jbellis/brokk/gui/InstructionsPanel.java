@@ -12,6 +12,7 @@ import io.github.jbellis.brokk.agents.CodeAgent;
 import io.github.jbellis.brokk.agents.SearchAgent;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.Context;
+import io.github.jbellis.brokk.difftool.utils.ColorUtil;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
@@ -699,7 +700,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         container.add(chipsSizer, BorderLayout.CENTER);
 
         // Bottom line: TokenUsageBar (fills) + Attach button on the right
-        var attachButton = new MaterialButton();
+        var attachButton = new HighContrastAwareButton();
         SwingUtilities.invokeLater(() -> attachButton.setIcon(Icons.ATTACH_FILE));
         attachButton.setToolTipText("Add content to workspace (Ctrl/Cmd+Shift+I)");
         attachButton.setFocusable(false);
@@ -1832,7 +1833,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 actionButton.setEnabled(true);
                 actionButton.setToolTipText("Cancel the current operation");
                 // always use the off red of the light theme
-                Color badgeBackgroundColor = ThemeColors.getColor(false, "git_badge_background");
+                Color badgeBackgroundColor = ThemeColors.getColor(false, ThemeColors.GIT_BADGE_BACKGROUND);
                 actionButton.setBackground(badgeBackgroundColor);
             } else {
                 // If there is no running action, keep the action button enabled so the user can start an action.
@@ -2106,6 +2107,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         private final Supplier<Boolean> isActionRunning;
         private final Color secondaryActionButtonBg;
         private final Color defaultActionButtonBg;
+        private @Nullable Icon originalIcon;
 
         public ThemeAwareRoundedButton(
                 Supplier<Boolean> isActionRunning, Color secondaryActionButtonBg, Color defaultActionButtonBg) {
@@ -2113,6 +2115,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             this.isActionRunning = isActionRunning;
             this.secondaryActionButtonBg = secondaryActionButtonBg;
             this.defaultActionButtonBg = defaultActionButtonBg;
+            this.originalIcon = null;
+        }
+
+        @Override
+        public void setIcon(@Nullable Icon icon) {
+            this.originalIcon = icon;
+            // Apply high-contrast processing if needed
+            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
+            Icon processedIcon = ColorUtil.createHighContrastIcon(icon, getBackground(), isHighContrast);
+            super.setIcon(processedIcon);
         }
 
         @Override
@@ -2167,12 +2179,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             } else {
                 setBackground(this.defaultActionButtonBg);
             }
-            // Mark for any global reapply mechanism
-            // putClientProperty("brokk.primaryButton", true);
+
+            // Re-apply icon with the new theme's high-contrast settings
+            if (this.originalIcon != null) {
+                setIcon(this.originalIcon);
+            }
 
             // Update visuals
-            // revalidate();
-            // repaint();
+            revalidate();
+            repaint();
         }
 
         /**
@@ -2392,6 +2407,28 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 var wandAction = new WandAction(contextManager);
                 wandAction.execute(promptSupplier, promptConsumer, consoleIO, instructionsArea);
             });
+        }
+
+        @Override
+        public void setIcon(@Nullable Icon icon) {
+            // Apply high-contrast processing if needed
+            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
+            Icon processedIcon = ColorUtil.createHighContrastIcon(icon, getBackground(), isHighContrast);
+            super.setIcon(processedIcon);
+        }
+    }
+
+    /**
+     * A MaterialButton that automatically applies high-contrast icon processing.
+     * Used for simple icon buttons that don't need custom behavior.
+     */
+    private static class HighContrastAwareButton extends MaterialButton {
+        @Override
+        public void setIcon(@Nullable Icon icon) {
+            // Apply high-contrast processing if needed
+            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
+            Icon processedIcon = ColorUtil.createHighContrastIcon(icon, getBackground(), isHighContrast);
+            super.setIcon(processedIcon);
         }
     }
 }

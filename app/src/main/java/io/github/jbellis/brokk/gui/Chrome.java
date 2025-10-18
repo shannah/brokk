@@ -836,9 +836,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         // Apply current theme and wrap mode based on global settings
         String currentTheme = MainProject.getTheme();
         logger.trace("Applying theme from project settings: {}", currentTheme);
-        boolean isDark = GuiTheme.THEME_DARK.equalsIgnoreCase(currentTheme);
         boolean wrapMode = MainProject.getCodeBlockWrapMode();
-        switchThemeAndWrapMode(isDark, wrapMode);
+        switchThemeAndWrapMode(currentTheme, wrapMode);
     }
 
     /**
@@ -885,8 +884,17 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         themeManager.applyTheme(isDark);
     }
 
+    public void switchTheme(String themeName) {
+        boolean wordWrap = MainProject.getCodeBlockWrapMode();
+        themeManager.applyTheme(themeName, wordWrap);
+    }
+
     public void switchThemeAndWrapMode(boolean isDark, boolean wordWrap) {
         themeManager.applyTheme(isDark, wordWrap);
+    }
+
+    public void switchThemeAndWrapMode(String themeName, boolean wordWrap) {
+        themeManager.applyTheme(themeName, wordWrap);
     }
 
     public GuiTheme getTheme() {
@@ -1993,7 +2001,7 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
             if (workingFragment.isText()
                     && workingFragment.syntaxStyle().equals(SyntaxConstants.SYNTAX_STYLE_MARKDOWN)) {
                 var markdownPanel = MarkdownOutputPool.instance().borrow();
-                markdownPanel.updateTheme(themeManager.isDarkTheme());
+                markdownPanel.updateTheme(MainProject.getTheme());
                 markdownPanel.setText(List.of(Messages.customSystem(workingFragment.text())));
 
                 // Use shared utility method to create searchable content panel without scroll pane
@@ -2517,6 +2525,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
         closeButton.setBorderPainted(false);
         closeButton.setFocusPainted(false);
         closeButton.setToolTipText("Close");
+        var closeFg = UIManager.getColor("Button.close.foreground");
+        closeButton.setForeground(closeFg != null ? closeFg : Color.GRAY);
 
         closeButton.addMouseListener(new java.awt.event.MouseAdapter() {
             @Override
@@ -2527,7 +2537,8 @@ public class Chrome implements AutoCloseable, IConsoleIO, IContextManager.Contex
 
             @Override
             public void mouseExited(java.awt.event.MouseEvent e) {
-                closeButton.setForeground(null);
+                var closeFg = UIManager.getColor("Button.close.foreground");
+                closeButton.setForeground(closeFg != null ? closeFg : Color.GRAY);
                 closeButton.setCursor(Cursor.getDefaultCursor());
             }
         });
