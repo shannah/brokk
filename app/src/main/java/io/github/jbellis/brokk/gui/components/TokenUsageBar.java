@@ -316,13 +316,13 @@ public class TokenUsageBar extends JComponent implements ThemeAware {
             return this.segments;
         }
 
-        // Pass 1: mark small fragments
+        // Pass 1: mark small fragments (but never group HISTORY fragments)
         double[] rawWidths = new double[usable.size()];
         List<ContextFragment> small = new ArrayList<>();
         for (int i = 0; i < usable.size(); i++) {
             int t = tokensForFragment(usable.get(i));
             rawWidths[i] = (t * 1.0 / totalTokens) * fillWidth;
-            if (rawWidths[i] < MIN_SEGMENT_PX) {
+            if (rawWidths[i] < MIN_SEGMENT_PX && usable.get(i).getType() != ContextFragment.FragmentType.HISTORY) {
                 small.add(usable.get(i));
             }
         }
