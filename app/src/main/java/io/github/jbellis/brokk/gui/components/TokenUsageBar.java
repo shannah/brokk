@@ -35,6 +35,9 @@ public class TokenUsageBar extends JComponent implements ThemeAware {
     // Hover state for highlight
     private boolean hovered = false;
 
+    @Nullable
+    private volatile Runnable onClick = null;
+
     // Rounded rectangle arc (diameter for corner rounding). Radius is arc/2.
     private static final int ARC = 8;
     private static final int MIN_SEGMENT_PX = 8; // 2x radius
@@ -57,8 +60,20 @@ public class TokenUsageBar extends JComponent implements ThemeAware {
         // Seed to enable tooltips; actual content comes from getToolTipText(MouseEvent)
         setToolTipText("Shows Workspace token usage.");
 
-        // Only track hover; no click behavior per requirements
+        // Track hover and support left-click to trigger action if provided
         addMouseListener(new MouseAdapter() {
+            @Override
+            public void mouseClicked(MouseEvent e) {
+                Runnable r = onClick;
+                if (r != null && isEnabled() && SwingUtilities.isLeftMouseButton(e) && !e.isPopupTrigger()) {
+                    try {
+                        r.run();
+                    } catch (Exception ex) {
+                        logger.debug("TokenUsageBar onClick handler threw", ex);
+                    }
+                }
+            }
+
             @Override
             public void mouseEntered(MouseEvent e) {
                 hovered = true;
@@ -97,12 +112,10 @@ public class TokenUsageBar extends JComponent implements ThemeAware {
         repaint();
     }
 
-    /**
-     * Disable click behavior entirely; keep API but ignore the runnable to respect new UX.
-     */
     public void setOnClick(@Nullable Runnable onClick) {
-        setCursor(Cursor.getDefaultCursor());
-        // intentionally ignored (no click behavior in the bar)
+        this.onClick = onClick;
+        setCursor(onClick != null ? Cursor.getPredefinedCursor(Cursor.HAND_CURSOR) : Cursor.getDefaultCursor());
+        repaint();
     }
 
     public void setMaxTokens(int max) {
