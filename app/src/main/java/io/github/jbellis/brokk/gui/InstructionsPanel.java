@@ -376,8 +376,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         tokenUsageBar.setVisible(false);
         tokenUsageBar.setAlignmentY(Component.CENTER_ALIGNMENT);
         tokenUsageBar.setToolTipText("Shows Workspace token usage and estimated cost.");
-        // Click toggles Workspace collapse/expand
-        tokenUsageBar.setOnClick(() -> chrome.toggleWorkspaceCollapsed());
+        // No click behavior in the bar (chips handle the interaction)
 
         // Initialize TokenUsageBar popup menu
         tokenUsageBarPopupMenu = new JPopupMenu();
@@ -1007,9 +1006,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                             tokenUsageBar.setVisible(false);
                             return;
                         }
-                        // Update bar and tooltip
-                        tokenUsageBar.setTokens(stat.approxTokens, stat.maxTokens);
-                        tokenUsageBar.setTooltip(stat.toolTipHtml);
+                        // Update max and unfilled-portion tooltip; fragment breakdown is supplied via contextChanged
+                        tokenUsageBar.setMaxTokens(stat.maxTokens);
+                        tokenUsageBar.setUnfilledTooltip(stat.toolTipHtml);
                         tokenUsageBar.setVisible(true);
                     } catch (Exception ex) {
                         logger.debug("Failed to update token usage bar", ex);
@@ -1916,6 +1915,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var fragments = newCtx.getAllFragmentsInDisplayOrder();
         logger.debug("Context updated: {} fragments", fragments.size());
         workspaceItemsChipPanel.setFragments(fragments);
+        // Feed per-fragment data to the token bar
+        tokenUsageBar.setFragments(fragments);
         // Update compact token/cost indicator on context change
         updateTokenCostIndicator();
     }
