@@ -47,6 +47,9 @@ import org.jetbrains.annotations.Nullable;
  */
 public class GitRepo implements Closeable, IGitRepo {
     private static final Logger logger = LogManager.getLogger(GitRepo.class);
+    static {
+        logger.info("File encoding: {}", System.getProperty("file.encoding"));
+    }
 
     private final Path projectRoot; // The root directory for ProjectFile instances this GitRepo deals with
     private final Path gitTopLevel; // The actual top-level directory of the git repository
