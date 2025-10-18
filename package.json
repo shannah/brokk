@@ -8,7 +8,7 @@
     "version": "1.0.0",
     "jdeploy": {
         "jdk": false,
-        "args": ["-Dfile.encoding=UTF-8"],
+        "args": [],
         "publishTargets": [{
             "name": "github: brokk",
             "type": "GITHUB",

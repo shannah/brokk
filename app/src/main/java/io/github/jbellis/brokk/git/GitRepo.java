@@ -47,9 +47,6 @@ import org.jetbrains.annotations.Nullable;
  */
 public class GitRepo implements Closeable, IGitRepo {
     private static final Logger logger = LogManager.getLogger(GitRepo.class);
-    static {
-        logger.info("File encoding: {}", System.getProperty("file.encoding"));
-    }
 
     private final Path projectRoot; // The root directory for ProjectFile instances this GitRepo deals with
     private final Path gitTopLevel; // The actual top-level directory of the git repository
@@ -497,9 +494,13 @@ public class GitRepo implements Closeable, IGitRepo {
                         String gitPath = treeWalk.getPathString();
                         // Only add paths that are under the projectRoot
                         Path workingTreeRoot = repository.getWorkTree().toPath().normalize();
-                        Path absoluteFilePathInWorktree = workingTreeRoot.resolve(gitPath);
-                        if (absoluteFilePathInWorktree.startsWith(projectRoot)) {
-                            trackedPaths.add(gitPath);
+                        try {
+                            Path absoluteFilePathInWorktree = workingTreeRoot.resolve(gitPath);
+                            if (absoluteFilePathInWorktree.startsWith(projectRoot)) {
+                                trackedPaths.add(gitPath);
+                            }
+                        } catch (InvalidPathException e) {
+                            logger.warn("Skipping file with unmappable path characters: {}", gitPath);
                         }
                     }
                 }
@@ -510,8 +511,13 @@ public class GitRepo implements Closeable, IGitRepo {
             Stream.of(status.getChanged(), status.getModified(), status.getAdded(), status.getRemoved())
                     .flatMap(Collection::stream)
                     .filter(gitPath -> {
-                        Path absoluteFilePathInWorktree = workingTreeRoot.resolve(gitPath);
-                        return absoluteFilePathInWorktree.startsWith(projectRoot);
+                        try {
+                            Path absoluteFilePathInWorktree = workingTreeRoot.resolve(gitPath);
+                            return absoluteFilePathInWorktree.startsWith(projectRoot);
+                        } catch (InvalidPathException e) {
+                            logger.warn("Skipping file with unmappable path characters: {}", gitPath);
+                            return false;
+                        }
                     })
                     .forEach(trackedPaths::add);
         } catch (IOException | GitAPIException e) {

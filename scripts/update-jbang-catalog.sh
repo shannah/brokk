@@ -111,7 +111,7 @@ NEW_ENTRY=$(jq -n --arg version "brokk-$VERSION" --arg url "$JAR_URL" '{
     ($version): {
         "script-ref": $url,
         "java": "21",
-        "java-options": ["-Dfile.encoding=UTF-8"]
+        "java-options": []
     }
 }')
 
