@@ -340,7 +340,7 @@ public final class BrokkCli implements Callable<Integer> {
             io.showNotification(IConsoleIO.NotificationRole.INFO, "# Workspace (pre-scan)");
             io.showNotification(
                     IConsoleIO.NotificationRole.INFO,
-                    ContextFragment.getSummary(cm.topContext().allFragments()));
+                    ContextFragment.describe(cm.topContext().allFragments()));
 
             String goalForScan = Stream.of(architectPrompt, codePrompt, askPrompt, searchAnswerPrompt, lutzPrompt)
                     .filter(s -> s != null && !s.isBlank())
@@ -376,7 +376,7 @@ public final class BrokkCli implements Callable<Integer> {
         io.showNotification(IConsoleIO.NotificationRole.INFO, "# Workspace (pre-task)");
         io.showNotification(
                 IConsoleIO.NotificationRole.INFO,
-                ContextFragment.getSummary(cm.topContext().allFragments()));
+                ContextFragment.describe(cm.topContext().allFragments()));
 
         TaskResult result;
         // Decide scope action/input

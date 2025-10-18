@@ -401,7 +401,7 @@ public class BuildAgent {
 
         // Decide which command to use
         if (workspaceTestFiles.isEmpty()) {
-            var summaries = ContextFragment.getSummary(ctx.allFragments());
+            var summaries = ContextFragment.describe(ctx.allFragments());
             logger.debug(
                     "No relevant test files found for {} with Workspace {}; using build/lint command: {}",
                     cm.getProject().getRoot(),
