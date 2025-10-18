@@ -2,6 +2,8 @@ package io.github.jbellis.brokk.agents;
 
 import static java.util.Objects.requireNonNull;
 
+import com.fasterxml.jackson.annotation.JsonSetter;
+import com.fasterxml.jackson.annotation.Nulls;
 import com.github.mustachejava.DefaultMustacheFactory;
 import com.github.mustachejava.Mustache;
 import com.github.mustachejava.MustacheFactory;
@@ -347,7 +349,7 @@ public class BuildAgent {
             String testAllCommand,
             String testSomeCommand,
             Set<String> excludedDirectories,
-            java.util.Map<String, String> environmentVariables) {
+            @JsonSetter(nulls = Nulls.AS_EMPTY) Map<String, String> environmentVariables) {
 
         @VisibleForTesting
         BuildDetails(
@@ -831,7 +833,7 @@ public class BuildAgent {
      * - For Python projects: VIRTUAL_ENV=.venv
      * - Otherwise: no defaults
      */
-    private java.util.Map<String, String> defaultEnvForProject() {
+    private Map<String, String> defaultEnvForProject() {
         var lang = project.getBuildLanguage();
         if (lang == io.github.jbellis.brokk.analyzer.Languages.PYTHON) {
             return java.util.Map.of("VIRTUAL_ENV", ".venv");
