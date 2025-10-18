@@ -487,42 +487,59 @@ public class SearchAgent {
         return names;
     }
 
+    private enum ToolCategory {
+        TERMINAL, // answer, createTaskList, workspaceComplete, abortSearch
+        WORKSPACE_HYGIENE, // dropWorkspaceFragments, appendNote (safe to pair with terminals)
+        RESEARCH // everything else (blocks terminals)
+    }
+
+    private ToolCategory categorizeTool(String toolName) {
+        return switch (toolName) {
+            case "answer", "createTaskList", "workspaceComplete", "abortSearch" -> ToolCategory.TERMINAL;
+            case "dropWorkspaceFragments", "appendNote" -> ToolCategory.WORKSPACE_HYGIENE;
+            default -> ToolCategory.RESEARCH;
+        };
+    }
+
     private List<ToolExecutionRequest> parseResponseToRequests(AiMessage response) {
         if (!response.hasToolExecutionRequests()) {
             return List.of();
         }
 
-        var finals = new ArrayList<ToolExecutionRequest>();
-        var nonTerminals = new ArrayList<ToolExecutionRequest>();
+        var terminals = new ArrayList<ToolExecutionRequest>();
+        var hygiene = new ArrayList<ToolExecutionRequest>();
+        var researchOrBlocking = new ArrayList<ToolExecutionRequest>();
+
         for (var r : response.toolExecutionRequests()) {
-            var name = r.name();
-            boolean isFinal = name.equals("answer")
-                    || name.equals("createTaskList")
-                    || name.equals("workspaceComplete")
-                    || name.equals("abortSearch");
-            if (isFinal) {
-                finals.add(r);
-            } else {
-                nonTerminals.add(r);
+            switch (categorizeTool(r.name())) {
+                case TERMINAL -> terminals.add(r);
+                case WORKSPACE_HYGIENE -> hygiene.add(r);
+                case RESEARCH -> researchOrBlocking.add(r);
             }
         }
 
-        // Disallow mixed final + research: if any research is present, drop finals this turn
-        if (!nonTerminals.isEmpty()) {
-            if (!finals.isEmpty()) {
+        // Rule: Terminal actions can coexist with workspace hygiene, but not with research/blocking tools.
+        // This ensures research results are evaluated before finalization.
+        if (!researchOrBlocking.isEmpty()) {
+            if (!terminals.isEmpty()) {
                 logger.info(
-                        "Final tool requested alongside research; deferring final to a later turn. Finals present: {}",
-                        finals.stream().map(ToolExecutionRequest::name).toList());
+                        "Final tool requested alongside research/blocking tools; deferring final to a later turn. Finals present: {}",
+                        terminals.stream().map(ToolExecutionRequest::name).toList());
             }
-            return nonTerminals;
+            var result = new ArrayList<>(researchOrBlocking);
+            result.addAll(hygiene);
+            return result;
         }
 
-        // Only finals present: keep the first one
-        if (!finals.isEmpty()) {
-            return List.of(finals.get(0));
+        // Only hygiene and/or terminals present: allow terminal with hygiene
+        if (!terminals.isEmpty()) {
+            var result = new ArrayList<>(hygiene);
+            result.add(terminals.get(0)); // Keep the first terminal
+            return result;
         }
 
-        return List.of();
+        // Only hygiene: return it
+        return hygiene;
     }
 
     private int priority(String toolName) {
