@@ -242,7 +242,8 @@ public final class BrokkCli implements Callable<Integer> {
                 buildLintCmd != null ? buildLintCmd : "",
                 testAllCmd != null ? testAllCmd : "",
                 testSomeCmd != null ? testSomeCmd : "",
-                Set.of("VIRTUAL_ENV", ".venv")); // venv is hardcoded to override swebench task runner
+                Set.of(),
+                Map.of("VIRTUAL_ENV", ".venv")); // venv is hardcoded to override swebench task runner
         logger.info("Build Details: " + buildDetails);
 
         cm.createHeadless(buildDetails);

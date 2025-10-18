@@ -48,6 +48,7 @@ import java.util.stream.Stream;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
+import org.jetbrains.annotations.VisibleForTesting;
 
 /**
  * The BuildAgent class is responsible for executing a process to gather and report build details for a software
@@ -348,7 +349,8 @@ public class BuildAgent {
             Set<String> excludedDirectories,
             java.util.Map<String, String> environmentVariables) {
 
-        public BuildDetails(
+        @VisibleForTesting
+        BuildDetails(
                 String buildLintCommand,
                 String testAllCommand,
                 String testSomeCommand,
