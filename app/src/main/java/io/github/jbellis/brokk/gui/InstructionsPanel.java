@@ -39,6 +39,8 @@ import java.awt.dnd.DropTargetDropEvent;
 import java.awt.dnd.DropTargetEvent;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;
+import java.awt.event.MouseAdapter;
+import java.awt.event.MouseEvent;
 import java.io.IOException;
 import java.nio.file.Path;
 import java.util.*;
@@ -197,6 +199,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final UndoManager commandInputUndoManager;
     private AutoCompletion instructionAutoCompletion;
     private InstructionsCompletionProvider instructionCompletionProvider;
+    private JPopupMenu tokenUsageBarPopupMenu;
 
     public InstructionsPanel(Chrome chrome) {
         super(new BorderLayout(2, 2));
@@ -375,6 +378,26 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         tokenUsageBar.setToolTipText("Shows Workspace token usage and estimated cost.");
         // Click toggles Workspace collapse/expand
         tokenUsageBar.setOnClick(() -> chrome.toggleWorkspaceCollapsed());
+
+        // Initialize TokenUsageBar popup menu
+        tokenUsageBarPopupMenu = new JPopupMenu();
+
+        JMenuItem dropAllMenuItem = new JMenuItem("Drop All");
+        dropAllMenuItem.addActionListener(
+                e -> chrome.getContextPanel().performContextActionAsync(WorkspacePanel.ContextAction.DROP, List.of()));
+        tokenUsageBarPopupMenu.add(dropAllMenuItem);
+
+        JMenuItem copyAllMenuItem = new JMenuItem("Copy All");
+        copyAllMenuItem.addActionListener(
+                e -> chrome.getContextPanel().performContextActionAsync(WorkspacePanel.ContextAction.COPY, List.of()));
+        tokenUsageBarPopupMenu.add(copyAllMenuItem);
+
+        JMenuItem pasteMenuItem = new JMenuItem("Paste text, images, urls");
+        pasteMenuItem.addActionListener(
+                e -> chrome.getContextPanel().performContextActionAsync(WorkspacePanel.ContextAction.PASTE, List.of()));
+        tokenUsageBarPopupMenu.add(pasteMenuItem);
+
+        SwingUtilities.invokeLater(() -> chrome.themeManager.registerPopupMenu(tokenUsageBarPopupMenu));
 
         // Top Bar (History, Configure Models, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
@@ -628,10 +651,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     } else {
                         rows++;
                         lineWidth = w;
-                        if (rows >= 5) break; // cap at 5
+                        if (rows >= 2) break;
                     }
                 }
-                return Math.max(1, Math.min(5, rows));
+                return Math.max(1, Math.min(2, rows));
             }
 
             @Override
@@ -690,6 +713,24 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Ensure the token bar expands to fill available width
         tokenUsageBar.setAlignmentY(Component.CENTER_ALIGNMENT);
+
+        // Add right-click handler to TokenUsageBar
+        tokenUsageBar.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    tokenUsageBarPopupMenu.show(tokenUsageBar, e.getX(), e.getY());
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    tokenUsageBarPopupMenu.show(tokenUsageBar, e.getX(), e.getY());
+                }
+            }
+        });
+
         bottomLinePanel.add(tokenUsageBar, BorderLayout.CENTER);
 
         var contextRightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
@@ -758,6 +799,31 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         var marginBorder = BorderFactory.createEmptyBorder(4, 4, 4, 4);
         titledContainer.setBorder(BorderFactory.createCompoundBorder(marginBorder, titledBorder));
         titledContainer.add(container, BorderLayout.CENTER);
+
+        // Add mouse listener for right-click context menu in empty space
+        titledContainer.addMouseListener(new MouseAdapter() {
+            @Override
+            public void mousePressed(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showMenuIfNotOnChip(e);
+                }
+            }
+
+            @Override
+            public void mouseReleased(MouseEvent e) {
+                if (e.isPopupTrigger()) {
+                    showMenuIfNotOnChip(e);
+                }
+            }
+
+            private void showMenuIfNotOnChip(MouseEvent e) {
+                Component clickedComponent = e.getComponent();
+                if (SwingUtilities.isDescendingFrom(clickedComponent, workspaceItemsChipPanel)) {
+                    return;
+                }
+                tokenUsageBarPopupMenu.show(titledContainer, e.getX(), e.getY());
+            }
+        });
 
         // Insert beneath the command-input area (index 2)
         return titledContainer;
