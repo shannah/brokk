@@ -30,27 +30,6 @@ import org.junit.jupiter.api.io.TempDir;
 
 class CodeAgentTest {
 
-    private static class ScriptedLanguageModel implements StreamingChatModel {
-        private final Queue<String> responses;
-
-        ScriptedLanguageModel(String... cannedTexts) {
-            this.responses = new LinkedList<>(Arrays.asList(cannedTexts));
-        }
-
-        @Override
-        public void doChat(ChatRequest chatRequest, StreamingChatResponseHandler handler) {
-            String responseText = responses.poll();
-            if (responseText == null) {
-                fail("ScriptedLanguageModel ran out of responses.");
-            }
-            handler.onPartialResponse(responseText);
-            var cr = ChatResponse.builder()
-                    .aiMessage(new AiMessage(responseText))
-                    .build();
-            handler.onCompleteResponse(cr);
-        }
-    }
-
     private static class CountingPreprocessorModel implements StreamingChatModel {
         private final AtomicInteger preprocessingCallCount = new AtomicInteger(0);
         private final String cannedResponse;
@@ -437,7 +416,7 @@ class CodeAgentTest {
     // L-1: Loop termination - "no edits, no error"
     @Test
     void testRunTask_exitsSuccessOnNoEdits() {
-        var stubModel = new ScriptedLanguageModel("Okay, I see no changes are needed.");
+        var stubModel = new TestScriptedLanguageModel("Okay, I see no changes are needed.");
         codeAgent = new CodeAgent(contextManager, stubModel, consoleIO);
         contextManager.getProject().setBuildDetails(BuildAgent.BuildDetails.EMPTY); // No build command
 
@@ -472,7 +451,7 @@ class CodeAgentTest {
                             </block>
                             """;
         var secondResponse = "I am unable to fix the build error.";
-        var stubModel = new ScriptedLanguageModel(firstResponse, secondResponse);
+        var stubModel = new TestScriptedLanguageModel(firstResponse, secondResponse);
 
         // Make the build command fail once
         var buildAttempt = new AtomicInteger(0);
