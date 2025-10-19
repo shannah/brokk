@@ -559,7 +559,6 @@ public class CodeAgent {
 
                 Please continue from there (WITHOUT repeating that one).
                 """
-                .stripIndent()
                 .formatted(lastBlock);
     }
 
@@ -1045,7 +1044,6 @@ public class CodeAgent {
                 > %s
                   %s
                 """
-                .stripIndent()
                 .formatted(absPath.toString(), line, col, message, lineText, pointer);
     }
 

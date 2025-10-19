@@ -299,14 +299,13 @@ public class SearchAgent {
         if (!ac.isBlank()) {
             messages.add(new UserMessage(
                     """
-                            <related_classes>
-                            These MAY be relevant. They are NOT in the Workspace yet.
-                            Add summaries or sources if needed; otherwise ignore them.
+        <related_classes>
+        These MAY be relevant. They are NOT in the Workspace yet.
+        Add summaries or sources if needed; otherwise ignore them.
 
-                            %s
-                            </related_classes>
-                            """
-                            .stripIndent()
+        %s
+        </related_classes>
+        """
                             .formatted(ac)));
             messages.add(new AiMessage("Acknowledged. I will explicitly add only what is relevant."));
         }
@@ -326,7 +325,6 @@ public class SearchAgent {
                                 You MUST reduce Workspace size immediately before any further exploration.
                                 Replace full text with summaries and drop non-essential fragments first.
                                 """
-                                .stripIndent()
                                 .formatted(pct, workspaceTokens, minInputLimit);
             } else if (pct > 60.0) {
                 warning =
@@ -334,7 +332,6 @@ public class SearchAgent {
                                 NOTICE: Workspace is using %.0f%% of input budget (%d tokens of %d).
                                 Prefer summaries and prune aggressively before expanding further.
                                 """
-                                .stripIndent()
                                 .formatted(pct, workspaceTokens, minInputLimit);
             }
         }
@@ -353,8 +350,7 @@ public class SearchAgent {
                         - Prefer adding or updating automated tests to demonstrate behavior; if automation is not a good fit, it is acceptable to omit tests rather than prescribe manual steps.
                         - Keep the project buildable and testable after each step.
                         - The executing agent may adjust task scope/order based on more up-to-date information discovered during implementation.
-                    """
-                            .stripIndent());
+                    """);
         }
         if (allowedTerminals.contains(Terminal.WORKSPACE)) {
             finals.add(
@@ -379,7 +375,6 @@ public class SearchAgent {
                         or simple summaries if they just need to be run for validation.
                       %s
                     """
-                            .stripIndent()
                             .formatted(toolHint);
         }
 
@@ -415,7 +410,6 @@ public class SearchAgent {
 
                         %s
                         """
-                        .stripIndent()
                         .formatted(
                                 terminalObjective.type,
                                 goal,
@@ -434,8 +428,7 @@ public class SearchAgent {
                     Finalize now using the best available information.
                     Prefer answer(String) for informational requests; for code-change requests, provide a concise createTaskList(List<String>) if feasible; otherwise use abortSearch with reasons.
                     </beast-mode>
-                    """
-                            .stripIndent();
+                    """;
         }
 
         messages.add(new UserMessage(directive));
@@ -518,8 +511,7 @@ public class SearchAgent {
                     Deliver either a written answer or a task list:
                       - Prefer answer(String) when no code changes are needed.
                       - Prefer createTaskList(List<String>) if code changes will be needed next.
-                    """
-                            .stripIndent());
+                    """);
         }
 
         if (hasWorkspace) {
@@ -529,8 +521,7 @@ public class SearchAgent {
                     """
                     Deliver a curated Workspace containing everything required for the follow-on Code Agent
                     to solve the given task.
-                    """
-                            .stripIndent());
+                    """);
         }
 
         throw new IllegalStateException();
@@ -768,8 +759,7 @@ public class SearchAgent {
                         Your output will be given to the agent running the search, and replaces the raw result.
                         Thus, you must include every relevant class/method name and any
                         relevant code snippets that may be needed later. DO NOT speculate; only use the provided content.
-                        """
-                        .stripIndent());
+                        """);
 
         var user = new UserMessage(
                 """
@@ -783,7 +773,6 @@ public class SearchAgent {
                         %s
                         </tool>
                         """
-                        .stripIndent()
                         .formatted(query, reasoning == null ? "" : reasoning, request.name(), rawResult));
         Llm.StreamingResult sr = summarizer.sendRequest(List.of(sys, user));
         if (sr.error() != null) {

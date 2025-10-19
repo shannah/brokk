@@ -702,8 +702,7 @@ public class ContextAgent {
 
                 IMPORTANT: The provided section contains only one of those categories; do not assume the other category is present.
                 Analyze the provided information and determine which items are most relevant to achieving the goal.
-                """
-                        .stripIndent();
+                """;
 
         var finalSystemMessage = new SystemMessage(deepPromptTemplate);
         var userMessageText = new StringBuilder();

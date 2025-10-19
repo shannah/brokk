@@ -1277,13 +1277,12 @@ public class BlitzForgeDialog extends JDialog {
                         }
                         if (!acFragment.text().isBlank()) {
                             return """
-                                <related_classes>
-                                The user requested to include the top %d related classes.
+                            <related_classes>
+                            The user requested to include the top %d related classes.
 
-                                %s
-                                </related_classes>
-                                """
-                                    .stripIndent()
+                            %s
+                            </related_classes>
+                            """
                                     .formatted(fRelatedKSupplier, acFragment.text());
                         }
                     }
@@ -1474,7 +1473,6 @@ public class BlitzForgeDialog extends JDialog {
                                 %s
                                 </related_classes>
                                 """
-                                        .stripIndent()
                                         .formatted(fRelatedK, acFragment.text());
                         readOnlyMessages.add(new UserMessage(msgText));
                     }
@@ -1499,7 +1497,6 @@ public class BlitzForgeDialog extends JDialog {
                                 %s
                                 </per_file_command_output>
                                 """
-                                        .stripIndent()
                                         .formatted(finalCommand, output);
                     } catch (Environment.SubprocessException ex) {
                         commandOutputText =
@@ -1510,7 +1507,6 @@ public class BlitzForgeDialog extends JDialog {
                                 %s
                                 </per_file_command_output>
                                 """
-                                        .stripIndent()
                                         .formatted(finalCommand, ex.getMessage(), ex.getOutput());
                         dialogIo.toolError(
                                 "Per-file command failed: " + ex.getMessage() + "\nOutput (if any):\n" + ex.getOutput(),
