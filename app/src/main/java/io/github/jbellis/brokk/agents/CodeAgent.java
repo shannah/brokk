@@ -121,7 +121,6 @@ public class CodeAgent {
         @Nullable Metrics metrics = collectMetrics ? new Metrics() : null;
 
         // Create Coder instance with the user's input as the task description
-        var io = contextManager.getIo();
         var coder = contextManager.getLlm(
                 new Llm.Options(model, "Code: " + userInput).withEcho().withPartialResponses());
         coder.setOutput(io);
