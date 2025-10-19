@@ -92,12 +92,12 @@ public interface IGitRepo {
         throw new UnsupportedOperationException();
     }
 
-    default List<ProjectFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId)
+    default List<ModifiedFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId)
             throws GitAPIException {
         throw new UnsupportedOperationException();
     }
 
-    default List<ProjectFile> listFilesChangedBetweenCommits(String newCommitId, String oldCommitId)
+    default List<ModifiedFile> listFilesChangedBetweenCommits(String newCommitId, String oldCommitId)
             throws GitAPIException {
         throw new UnsupportedOperationException();
     }

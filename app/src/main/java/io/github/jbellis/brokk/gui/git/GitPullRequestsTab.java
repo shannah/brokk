@@ -7,7 +7,6 @@ import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.ICommitInfo;
-import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.git.IGitRepo.ModificationType;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.Constants;
@@ -1345,12 +1344,12 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
 
                             if (mergeBase != null) {
                                 changedFiles = repo.listFilesChangedBetweenCommits(headSha, mergeBase).stream()
-                                        .map(projFile -> projFile.toString())
+                                        .map(mf -> mf.file().toString())
                                         .collect(Collectors.toList());
                             } else {
                                 // Fallback to direct diff if merge base calculation fails
                                 changedFiles = repo.listFilesChangedBetweenCommits(headSha, baseSha).stream()
-                                        .map(projFile -> projFile.toString())
+                                        .map(mf -> mf.file().toString())
                                         .collect(Collectors.toList());
                             }
                         } catch (Exception e) {
@@ -1359,7 +1358,7 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                                     prNumber,
                                     e.getMessage());
                             changedFiles = repo.listFilesChangedBetweenCommits(headSha, baseSha).stream()
-                                    .map(projFile -> projFile.toString())
+                                    .map(mf -> mf.file().toString())
                                     .collect(Collectors.toList());
                         }
                         fetchedFilesMap.put(prNumber, changedFiles);

@@ -198,7 +198,9 @@ public final class GitUiUtil {
                     changedFiles = newestCommitInSelection.changedFiles();
                 } else {
                     // Files changed between oldest selected commit's parent and newest selected commit
-                    changedFiles = repo.listFilesChangedBetweenCommits(newestCommitId, oldestCommitId + "^");
+                    changedFiles = repo.listFilesChangedBetweenCommits(newestCommitId, oldestCommitId + "^").stream()
+                            .map(IGitRepo.ModifiedFile::file)
+                            .collect(Collectors.toList());
                 }
 
                 var fileNamesSummary = formatFileList(changedFiles);
@@ -759,7 +761,10 @@ public final class GitUiUtil {
                     return;
                 }
 
-                List<ProjectFile> changedFiles = repo.listFilesChangedBetweenCommits(prHeadSha, effectiveBaseSha);
+                List<ProjectFile> changedFiles =
+                        repo.listFilesChangedBetweenCommits(prHeadSha, effectiveBaseSha).stream()
+                                .map(IGitRepo.ModifiedFile::file)
+                                .collect(Collectors.toList());
                 String fileNamesSummary = formatFileList(changedFiles);
 
                 String description = String.format(
