@@ -1435,32 +1435,6 @@ public class GitRepo implements Closeable, IGitRepo {
         }
     }
 
-    /**
-     * List changed RepoFiles in a commit range.
-     *
-     * @deprecated Prefer listFilesChangedInCommit or listFilesChangedBetweenCommits for clarity. This method diffs
-     *     (lastCommitId + "^") vs (firstCommitId).
-     */
-    @Override
-    @Deprecated
-    public List<ProjectFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId)
-            throws GitAPIException {
-        var firstCommitObj = resolveToCommit(firstCommitId);
-        var lastCommitObj = resolveToCommit(lastCommitId + "^"); // Note the parent operator here
-
-        try (var revWalk = new RevWalk(repository)) {
-            var firstCommit = revWalk.parseCommit(firstCommitObj); // "new"
-            var lastCommitParent = revWalk.parseCommit(lastCommitObj); // "old"
-            try (var diffFormatter = new DiffFormatter(new ByteArrayOutputStream())) {
-                diffFormatter.setRepository(repository);
-                var diffs = diffFormatter.scan(lastCommitParent.getTree(), firstCommit.getTree());
-                return data.extractFilesFromDiffEntries(diffs);
-            }
-        } catch (IOException e) {
-            throw new GitWrappedIOException(e);
-        }
-    }
-
     /** Show diff between two commits (or a commit and the working directory if newCommitId == HEAD). */
     @Override
     public String showDiff(String newCommitId, String oldCommitId) throws GitAPIException {
