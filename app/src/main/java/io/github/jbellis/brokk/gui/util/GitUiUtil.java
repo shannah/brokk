@@ -11,6 +11,7 @@ import io.github.jbellis.brokk.difftool.ui.BufferSource;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.ICommitInfo;
 import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.git.IGitRepo.ModificationType;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.DiffWindowManager;
 import io.github.jbellis.brokk.gui.PrTitleFormatter;
@@ -894,7 +895,7 @@ public final class GitUiUtil {
 
                     BufferSource leftSource, rightSource;
 
-                    if ("deleted".equals(status)) {
+                    if (status == ModificationType.DELETED) {
                         // Deleted: left side has content from base, right side is empty (but still track head SHA for
                         // context)
                         leftSource = new BufferSource.StringSource(
@@ -904,7 +905,7 @@ public final class GitUiUtil {
                                 prBaseSha);
                         rightSource = new BufferSource.StringSource(
                                 "", prHeadSha + " (Deleted)", projectFile.toString(), prHeadSha);
-                    } else if ("new".equals(status)) {
+                    } else if (status == ModificationType.NEW) {
                         // New: left side is empty (but still track base SHA for context), right side has content from
                         // head
                         leftSource = new BufferSource.StringSource(

@@ -13,7 +13,14 @@ import org.jetbrains.annotations.Nullable;
 
 public interface IGitRepo {
 
-    record ModifiedFile(ProjectFile file, String status) {}
+    enum ModificationType {
+        NEW,
+        MODIFIED,
+        DELETED,
+        CONFLICT
+    }
+
+    record ModifiedFile(ProjectFile file, ModificationType status) {}
 
     /** Information about a Git worktree. Branch will be null if worktree is in a detached HEAD state. */
     record WorktreeInfo(Path path, @Nullable String branch, String commitId) {}

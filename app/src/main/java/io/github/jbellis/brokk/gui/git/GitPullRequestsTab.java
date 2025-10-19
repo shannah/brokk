@@ -7,6 +7,8 @@ import io.github.jbellis.brokk.GitHubAuth;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.ICommitInfo;
+import io.github.jbellis.brokk.git.IGitRepo;
+import io.github.jbellis.brokk.git.IGitRepo.ModificationType;
 import io.github.jbellis.brokk.gui.Chrome;
 import io.github.jbellis.brokk.gui.Constants;
 import io.github.jbellis.brokk.gui.FilterBox;
@@ -1654,7 +1656,7 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                     var status = mf.status();
                     io.github.jbellis.brokk.difftool.ui.BufferSource leftSource, rightSource;
 
-                    if ("deleted".equals(status)) {
+                    if (status == ModificationType.DELETED) {
                         // Deleted: left side has content from base, right side is empty (but still track head SHA for
                         // blame)
                         leftSource = new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(
@@ -1664,7 +1666,7 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                                 prBaseSha);
                         rightSource = new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(
                                 "", prHeadSha + " (Deleted)", projectFile.toString(), prHeadSha);
-                    } else if ("new".equals(status)) {
+                    } else if (status == ModificationType.NEW) {
                         // New: left side is empty (but still track base SHA for blame), right side has content from
                         // head
                         leftSource = new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(
@@ -1674,7 +1676,7 @@ public class GitPullRequestsTab extends JPanel implements SettingsChangeListener
                                 prHeadSha,
                                 projectFile.toString(),
                                 prHeadSha);
-                    } else { // modified
+                    } else { // modified or conflict
                         leftSource = new io.github.jbellis.brokk.difftool.ui.BufferSource.StringSource(
                                 repo.getFileContent(prBaseSha, projectFile),
                                 prBaseSha,

@@ -588,20 +588,20 @@ public class GitRepo implements Closeable, IGitRepo {
                 continue; // Skip files with unmappable path characters
             }
             var projectFile = projectFileOpt.get();
-            String determinedStatus;
 
             // Priority: conflicts first, then added/missing, then general modifications
+            ModificationType determinedStatus;
             if (statusResult.getConflicting().contains(path)) {
-                determinedStatus = "conflict";
+                determinedStatus = ModificationType.CONFLICT;
             } else if (statusResult.getAdded().contains(path)) {
-                determinedStatus = "new";
+                determinedStatus = ModificationType.NEW;
             } else if (statusResult.getMissing().contains(path)) {
-                determinedStatus = "deleted";
+                determinedStatus = ModificationType.DELETED;
             } else if (statusResult.getModified().contains(path)
                     || statusResult.getChanged().contains(path)
                     || statusResult.getRemoved().contains(path)) {
                 // If removed from index but present in WT, it's a modification for "commit -a"
-                determinedStatus = "modified";
+                determinedStatus = ModificationType.MODIFIED;
             } else {
                 // This should not be reached if `path` originated from one of the status sets
                 // used to populate `allRelevantPaths` and the logic above is complete.
@@ -2310,29 +2310,29 @@ public class GitRepo implements Closeable, IGitRepo {
                         case ADD, COPY -> {
                             var projFile = toProjectFile(entry.getNewPath());
                             if (projFile.isPresent()) {
-                                result = new ModifiedFile(projFile.get(), "new");
+                                result = new ModifiedFile(projFile.get(), ModificationType.NEW);
                             }
                         }
                         case MODIFY -> {
                             var projFile = toProjectFile(entry.getNewPath());
                             if (projFile.isPresent()) {
-                                result = new ModifiedFile(projFile.get(), "modified");
+                                result = new ModifiedFile(projFile.get(), ModificationType.MODIFIED);
                             }
                         }
                         case DELETE -> {
                             var projFile = toProjectFile(entry.getOldPath());
                             if (projFile.isPresent()) {
-                                result = new ModifiedFile(projFile.get(), "deleted");
+                                result = new ModifiedFile(projFile.get(), ModificationType.DELETED);
                             }
                         }
                         case RENAME -> {
                             var oldProjFile = toProjectFile(entry.getOldPath());
                             if (oldProjFile.isPresent()) {
-                                modifiedFiles.add(new ModifiedFile(oldProjFile.get(), "deleted"));
+                                modifiedFiles.add(new ModifiedFile(oldProjFile.get(), ModificationType.DELETED));
                             }
                             var newProjFile = toProjectFile(entry.getNewPath());
                             if (newProjFile.isPresent()) {
-                                result = new ModifiedFile(newProjFile.get(), "new");
+                                result = new ModifiedFile(newProjFile.get(), ModificationType.NEW);
                             }
                         }
                         default -> {

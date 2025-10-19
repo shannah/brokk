@@ -87,10 +87,10 @@ public class GitUiUtilTest {
         Files.createFile(tempDir.resolve("logo.pdf"));
 
         List<GitRepo.ModifiedFile> modifiedFiles = List.of(
-                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "Main.java"), "modified"),
-                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "image.png"), "new"),
-                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "README.md"), "modified"),
-                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "logo.pdf"), "new"));
+                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "Main.java"), IGitRepo.ModificationType.MODIFIED),
+                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "image.png"), IGitRepo.ModificationType.NEW),
+                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "README.md"), IGitRepo.ModificationType.MODIFIED),
+                new GitRepo.ModifiedFile(new ProjectFile(tempDir, "logo.pdf"), IGitRepo.ModificationType.NEW));
 
         List<ProjectFile> result = GitUiUtil.filterTextFiles(modifiedFiles);
 
