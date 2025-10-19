@@ -258,7 +258,7 @@ public class SearchAgent {
                 """
                         You are the Search Agent.
                         Your job:
-                          - find and organize code relevant to the user's question or implementation goal,
+                          - find and organize code relevant to the user's question or task,
                           - aggressively curate the Workspace so a Code Agent has all the needed resources to implement next without confusion,
                           - never write code yourself.
 
@@ -374,21 +374,28 @@ public class SearchAgent {
             testsGuidance =
                     """
                     Tests:
-                      - Code Agent will run the tests in the Workspace to validate its changes. These can be full files, if it also needs to edit or understand test implementation details, or simple summaries if they just need to be run for validation.
+                      - Code Agent will run the tests in the Workspace to validate its changes.
+                        These can be full files (if it also needs to edit or understand test implementation details),
+                        or simple summaries if they just need to be run for validation.
                       %s
                     """
                             .stripIndent()
                             .formatted(toolHint);
         }
 
+        var terminalObjective = buildTerminalObjective();
+
         String directive =
                 """
-                        <goal>
+                        <%s>
                         %s
-                        </goal>
+                        </%s>
 
-                        Decide the next tool action(s) to make progress toward answering the question and preparing the Workspace
-                        for follow-on code changes.
+                        <search-objective>
+                        %s
+                        </search-objective>
+
+                        Decide the next tool action(s) to make progress toward the objective in service of the goal.
 
                         Pruning mandate:
                           - Before any new exploration, prune the Workspace.
@@ -400,14 +407,23 @@ public class SearchAgent {
                         Finalization options:
                         %s
 
-                        You can call multiple non-final tools in a single turn. Provide a list of separate tool calls, each with its own name and arguments (add summaries, drop fragments, etc).
-                        Final actions (answer, createTaskList, workspaceComplete, abortSearch) must be the ONLY tool in a turn. If you include a final together with other tools, the final will be ignored for this turn. Do NOT write code.
-
+                        You can call multiple non-final tools in a single turn. Provide a list of separate tool calls,
+                        each with its own name and arguments (add summaries, drop fragments, etc).
+                        Final actions (answer, createTaskList, workspaceComplete, abortSearch) must be the ONLY tool in a turn.
+                        If you include a final together with other tools, the final will be ignored for this turn.
+                        It is NOT your objective to write code.
 
                         %s
                         """
                         .stripIndent()
-                        .formatted(goal, testsGuidance, finalsStr, warning);
+                        .formatted(
+                                terminalObjective.type,
+                                goal,
+                                terminalObjective.type(),
+                                terminalObjective.text(),
+                                testsGuidance,
+                                finalsStr,
+                                warning);
 
         // Beast mode directive
         if (beastMode) {
@@ -485,6 +501,39 @@ public class SearchAgent {
 
         logger.debug("Allowed tool names: {}", names);
         return names;
+    }
+
+    private record TerminalObjective(String type, String text) {}
+
+    private TerminalObjective buildTerminalObjective() {
+        boolean hasAnswer = allowedTerminals.contains(Terminal.ANSWER);
+        boolean hasTaskList = allowedTerminals.contains(Terminal.TASK_LIST);
+        boolean hasWorkspace = allowedTerminals.contains(Terminal.WORKSPACE);
+
+        if (hasAnswer && hasTaskList) {
+            assert !hasWorkspace;
+            return new TerminalObjective(
+                    "query",
+                    """
+                    Deliver either a written answer or a task list:
+                      - Prefer answer(String) when no code changes are needed.
+                      - Prefer createTaskList(List<String>) if code changes will be needed next.
+                    """
+                            .stripIndent());
+        }
+
+        if (hasWorkspace) {
+            assert !hasAnswer && !hasTaskList;
+            return new TerminalObjective(
+                    "task",
+                    """
+                    Deliver a curated Workspace containing everything required for the follow-on Code Agent
+                    to solve the given task.
+                    """
+                            .stripIndent());
+        }
+
+        throw new IllegalStateException();
     }
 
     private enum ToolCategory {
