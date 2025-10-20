@@ -91,7 +91,7 @@ public final class GitUiUtil {
 
         contextManager.submitContextTask(() -> {
             try {
-                var diff = repo.showFileDiff(commitId + "^", commitId, file);
+                var diff = repo.showFileDiff(commitId, commitId + "^", file);
                 if (diff.isEmpty()) {
                     chrome.showNotification(
                             IConsoleIO.NotificationRole.INFO, "No changes found for " + file.getFileName());
@@ -253,8 +253,8 @@ public final class GitUiUtil {
     public static void addFilesChangeToContext(
             ContextManager contextManager,
             Chrome chrome,
-            String firstCommitId,
-            String lastCommitId,
+            String newestCommitId,
+            String oldestCommitId,
             List<ProjectFile> files) {
         contextManager.submitContextTask(() -> {
             try {
@@ -267,7 +267,7 @@ public final class GitUiUtil {
                 var diffs = files.stream()
                         .map(file -> {
                             try {
-                                return repo.showFileDiff(firstCommitId, lastCommitId + "^", file);
+                                return repo.showFileDiff(newestCommitId, oldestCommitId + "^", file);
                             } catch (GitAPIException e) {
                                 logger.warn(e);
                                 return "";
@@ -281,10 +281,10 @@ public final class GitUiUtil {
                             "No changes found for the selected files in the commit range");
                     return;
                 }
-                var firstShort = ((GitRepo) repo).shortHash(firstCommitId);
-                var lastShort = ((GitRepo) repo).shortHash(lastCommitId);
+                var newShort = ((GitRepo) repo).shortHash(newestCommitId);
+                var oldShort = ((GitRepo) repo).shortHash(oldestCommitId);
                 var shortHash =
-                        firstCommitId.equals(lastCommitId) ? firstShort : "%s..%s".formatted(firstShort, lastShort);
+                        newestCommitId.equals(oldestCommitId) ? newShort : "%s..%s".formatted(oldShort, newShort);
 
                 var filesTxt = files.stream().map(ProjectFile::getFileName).collect(Collectors.joining(", "));
                 var description = "Diff of %s [%s]".formatted(filesTxt, shortHash);

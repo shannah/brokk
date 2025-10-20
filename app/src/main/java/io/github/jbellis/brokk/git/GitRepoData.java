@@ -151,20 +151,20 @@ public class GitRepoData {
     }
 
     /** Show diff for a specific file between two commits. */
-    public String showFileDiff(String commitIdA, String commitIdB, ProjectFile file) throws GitAPIException {
+    public String showFileDiff(String newRev, String oldRev, ProjectFile file) throws GitAPIException {
         try (var out = new ByteArrayOutputStream()) {
             var pathFilter = PathFilter.create(repo.toRepoRelativePath(file));
-            if ("HEAD".equals(commitIdA)) {
+            if ("HEAD".equals(newRev)) {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdB))
+                        .setOldTree(prepareTreeParser(oldRev))
                         .setNewTree(null) // Working tree
                         .setPathFilter(pathFilter)
                         .setOutputStream(out)
                         .call();
             } else {
                 git.diff()
-                        .setOldTree(prepareTreeParser(commitIdB))
-                        .setNewTree(prepareTreeParser(commitIdA))
+                        .setOldTree(prepareTreeParser(oldRev))
+                        .setNewTree(prepareTreeParser(newRev))
                         .setPathFilter(pathFilter)
                         .setOutputStream(out)
                         .call();

@@ -1493,8 +1493,8 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /** Show diff for a specific file between two commits. */
     @Override
-    public String showFileDiff(String commitIdA, String commitIdB, ProjectFile file) throws GitAPIException {
-        return data.showFileDiff(commitIdA, commitIdB, file);
+    public String showFileDiff(String newRev, String oldRev, ProjectFile file) throws GitAPIException {
+        return data.showFileDiff(newRev, oldRev, file);
     }
 
     /**
