@@ -103,6 +103,17 @@ public class MultiAnalyzer
     }
 
     @Override
+    public List<CodeUnit> getSubDeclarations(CodeUnit cu) {
+        var lang = Languages.fromExtension(
+                Files.getFileExtension(cu.source().absPath().toString()));
+        var delegate = delegates.get(lang);
+        if (delegate != null) {
+            return delegate.getSubDeclarations(cu);
+        }
+        return List.of();
+    }
+
+    @Override
     public Set<String> getMethodSources(String fqName, boolean includeComments) {
         return findFirst(analyzer -> analyzer.as(SourceCodeProvider.class)
                         .map(scp -> scp.getMethodSources(fqName, includeComments))

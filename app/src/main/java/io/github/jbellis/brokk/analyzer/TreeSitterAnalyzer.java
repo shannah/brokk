@@ -557,6 +557,11 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
     }
 
     @Override
+    public List<CodeUnit> getSubDeclarations(CodeUnit cu) {
+        return childrenOf(cu);
+    }
+
+    @Override
     public List<CodeUnit> searchDefinitionsImpl(
             String originalPattern, @Nullable String fallbackPattern, @Nullable Pattern compiledPattern) {
         // an explicit search for everything should return everything, not just classes

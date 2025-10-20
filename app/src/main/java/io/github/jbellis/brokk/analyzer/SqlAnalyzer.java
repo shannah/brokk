@@ -274,6 +274,11 @@ public class SqlAnalyzer implements IAnalyzer, SkeletonProvider {
     }
 
     @Override
+    public List<CodeUnit> getSubDeclarations(CodeUnit cu) {
+        return List.of();
+    }
+
+    @Override
     public IAnalyzer update(Set<ProjectFile> changedFiles) {
         if (changedFiles.isEmpty()) {
             return this;

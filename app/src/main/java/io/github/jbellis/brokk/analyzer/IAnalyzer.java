@@ -29,6 +29,10 @@ public interface IAnalyzer {
         throw new UnsupportedOperationException();
     }
 
+    default List<CodeUnit> getSubDeclarations(CodeUnit cu) {
+        throw new UnsupportedOperationException();
+    }
+
     /** Returns the set of languages this analyzer understands. */
     default Set<Language> languages() {
         return Set.of();

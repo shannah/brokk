@@ -38,6 +38,11 @@ public class DisabledAnalyzer implements IAnalyzer {
     }
 
     @Override
+    public List<CodeUnit> getSubDeclarations(CodeUnit cu) {
+        return Collections.emptyList();
+    }
+
+    @Override
     public List<String> importStatementsOf(ProjectFile file) {
         return List.of();
     }
