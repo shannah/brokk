@@ -1,5 +1,6 @@
 package io.github.jbellis.brokk.gui.components;
 
+import io.github.jbellis.brokk.Service;
 import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.gui.Chrome;
@@ -25,6 +26,17 @@ import org.jetbrains.annotations.Nullable;
 
 public class TokenUsageBar extends JComponent implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(TokenUsageBar.class);
+
+    public enum WarningLevel {
+        NONE,
+        YELLOW,
+        RED
+    }
+
+    private WarningLevel warningLevel = WarningLevel.NONE;
+
+    @Nullable
+    private Service.ModelConfig modelConfig = null;
 
     // Fallback counters if fragments aren't provided
     private int fallbackCurrentTokens = 0;
@@ -186,8 +198,53 @@ public class TokenUsageBar extends JComponent implements ThemeAware {
         repaint();
     }
 
+    public void setWarningLevel(WarningLevel level, @Nullable Service.ModelConfig config) {
+        this.warningLevel = level;
+        this.modelConfig = config;
+        repaint();
+    }
+
+    @Nullable
+    public Service.ModelConfig getModelConfig() {
+        return modelConfig;
+    }
+
     @Override
     public String getToolTipText(MouseEvent event) {
+        if (warningLevel != WarningLevel.NONE && modelConfig != null) {
+            String modelName = modelConfig.name();
+            if (modelName.contains("-nothink")) {
+                modelName = modelName.replace("-nothink", "");
+            }
+            modelName = StringEscapeUtils.escapeHtml4(modelName);
+
+            int usedTokens = computeUsedTokens();
+            int successRate = ModelBenchmarkData.getSuccessRate(modelConfig, usedTokens);
+
+            String reason = warningLevel == WarningLevel.YELLOW
+                    ? "a lower success rate (&lt;50%)"
+                    : "a very low success rate (&lt;30%)";
+
+            // Indicate if we're extrapolating beyond tested ranges
+            String extrapolationNote = "";
+            if (usedTokens > 131071) {
+                extrapolationNote =
+                        "<br/><br/><i>Note: This success rate is extrapolated beyond the maximum tested range (131K tokens).</i>";
+            } else if (usedTokens < 4096) {
+                extrapolationNote =
+                        "<br/><br/><i>Note: This success rate is extrapolated from the smallest tested range (&lt;4K tokens).</i>";
+            }
+
+            return String.format(
+                    "<html><body style='width: 300px'>"
+                            + "<b>Warning: Potential performance issue</b><br/><br/>"
+                            + "The model <b>%s</b> might perform poorly at this token count due to %s.<br/><br/>"
+                            + "Observed success rate from benchmarks: <b>%d%%</b>"
+                            + "%s"
+                            + "</body></html>",
+                    modelName, reason, successRate, extrapolationNote);
+        }
+
         try {
             int width = getWidth();
             // Ensure segments correspond to current size

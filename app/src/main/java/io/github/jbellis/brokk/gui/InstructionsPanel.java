@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.difftool.utils.ColorUtil;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
+import io.github.jbellis.brokk.gui.components.ModelBenchmarkData;
 import io.github.jbellis.brokk.gui.components.ModelSelector;
 import io.github.jbellis.brokk.gui.components.OverlayPanel;
 import io.github.jbellis.brokk.gui.components.SplitButton;
@@ -111,6 +112,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     public static class ContextAreaContainer extends JPanel {
         private boolean isDragOver = false;
+        private TokenUsageBar.WarningLevel warningLevel = TokenUsageBar.WarningLevel.NONE;
 
         public ContextAreaContainer() {
             super(new BorderLayout());
@@ -121,6 +123,31 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 this.isDragOver = dragOver;
                 repaint();
             }
+        }
+
+        public void setWarningLevel(TokenUsageBar.WarningLevel level) {
+            if (this.warningLevel != level) {
+                this.warningLevel = level;
+                updateBorderColor();
+                repaint();
+            }
+        }
+
+        private void updateBorderColor() {
+            Color borderColor = UIManager.getColor("Component.borderColor");
+            int thickness = 1;
+            if (warningLevel == TokenUsageBar.WarningLevel.RED) {
+                borderColor = new Color(0xFF4444);
+                thickness = 3;
+            } else if (warningLevel == TokenUsageBar.WarningLevel.YELLOW) {
+                borderColor = new Color(0xFFA500);
+                thickness = 3;
+            }
+
+            var lineBorder = BorderFactory.createLineBorder(borderColor, thickness);
+            var titledBorder = BorderFactory.createTitledBorder(lineBorder, "Context");
+            var marginBorder = BorderFactory.createEmptyBorder(8, 8, 8, 8);
+            setBorder(BorderFactory.createCompoundBorder(marginBorder, titledBorder));
         }
 
         @Override
@@ -741,6 +768,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Constrain vertical growth to preferred height so it won't stretch on window resize.
         var titledContainer = new ContextAreaContainer();
         titledContainer.setOpaque(true);
+        // Initialize border with default color (will be updated by setWarningLevel)
+        var lineBorder = BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"));
+        var titledBorder = BorderFactory.createTitledBorder(lineBorder, "Context");
+        var marginBorder = BorderFactory.createEmptyBorder(4, 4, 4, 4);
+        titledContainer.setBorder(BorderFactory.createCompoundBorder(marginBorder, titledBorder));
         var transferHandler = FileDropHandlerFactory.createFileDropHandler(this.chrome);
         titledContainer.setTransferHandler(transferHandler);
         var dropTargetListener = new DropTargetAdapter() {
@@ -792,10 +824,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         };
         titledContainer.setDropTarget(
                 new DropTarget(titledContainer, DnDConstants.ACTION_COPY, dropTargetListener, true));
-        var lineBorder = BorderFactory.createLineBorder(UIManager.getColor("Component.borderColor"));
-        var titledBorder = BorderFactory.createTitledBorder(lineBorder, "Context");
-        var marginBorder = BorderFactory.createEmptyBorder(8, 8, 8, 8);
-        titledContainer.setBorder(BorderFactory.createCompoundBorder(marginBorder, titledBorder));
         titledContainer.add(hoverPanel, BorderLayout.CENTER);
 
         // Add mouse listener for right-click context menu in empty space
@@ -823,7 +851,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             }
         });
 
-        // Insert beneath the command-input area (index 2)
         return titledContainer;
     }
 
@@ -974,7 +1001,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 .submitBackgroundTask("Compute token estimate (Instructions)", () -> {
                     if (model == null || model instanceof Service.UnavailableStreamingModel) {
                         return new TokenUsageBarComputation(
-                                buildTokenUsageTooltip("Unavailable", 128000, "0.00"), 128000, 0);
+                                buildTokenUsageTooltip(
+                                        "Unavailable", 128000, "0.00", TokenUsageBar.WarningLevel.NONE, 100),
+                                128000,
+                                0,
+                                TokenUsageBar.WarningLevel.NONE,
+                                config,
+                                100);
                     }
 
                     var fullText = new StringBuilder();
@@ -996,27 +1029,54 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     }
                     String modelName = config.name();
                     String costStr = calculateCostEstimate(config, approxTokens, service);
-                    String tooltipHtml = buildTokenUsageTooltip(modelName, maxTokens, costStr);
-                    return new TokenUsageBarComputation(tooltipHtml, maxTokens, approxTokens);
+
+                    int successRate = ModelBenchmarkData.getSuccessRate(config, approxTokens);
+                    TokenUsageBar.WarningLevel warningLevel;
+                    if (successRate == -1) {
+                        // Unknown/untested combination: don't warn
+                        warningLevel = TokenUsageBar.WarningLevel.NONE;
+                    } else if (successRate < 30) {
+                        warningLevel = TokenUsageBar.WarningLevel.RED;
+                    } else if (successRate < 50) {
+                        warningLevel = TokenUsageBar.WarningLevel.YELLOW;
+                    } else {
+                        warningLevel = TokenUsageBar.WarningLevel.NONE;
+                    }
+
+                    String tooltipHtml =
+                            buildTokenUsageTooltip(modelName, maxTokens, costStr, warningLevel, successRate);
+                    return new TokenUsageBarComputation(
+                            tooltipHtml, maxTokens, approxTokens, warningLevel, config, successRate);
                 })
                 .thenAccept(stat -> SwingUtilities.invokeLater(() -> {
                     try {
                         if (stat == null) {
                             tokenUsageBar.setVisible(false);
+                            contextAreaContainer.setWarningLevel(TokenUsageBar.WarningLevel.NONE);
                             return;
                         }
                         // Update max and unfilled-portion tooltip; fragment breakdown is supplied via contextChanged
                         tokenUsageBar.setMaxTokens(stat.maxTokens);
                         tokenUsageBar.setUnfilledTooltip(stat.toolTipHtml);
+                        contextAreaContainer.setWarningLevel(stat.warningLevel);
+                        contextAreaContainer.setToolTipText(stat.toolTipHtml);
+                        modelSelector.getComponent().setToolTipText(stat.toolTipHtml);
                         tokenUsageBar.setVisible(true);
                     } catch (Exception ex) {
                         logger.debug("Failed to update token usage bar", ex);
                         tokenUsageBar.setVisible(false);
+                        contextAreaContainer.setWarningLevel(TokenUsageBar.WarningLevel.NONE);
                     }
                 }));
     }
 
-    private static record TokenUsageBarComputation(String toolTipHtml, int maxTokens, int approxTokens) {}
+    private static record TokenUsageBarComputation(
+            String toolTipHtml,
+            int maxTokens,
+            int approxTokens,
+            TokenUsageBar.WarningLevel warningLevel,
+            Service.ModelConfig config,
+            int successRate) {}
     /** Calculate cost estimate mirroring WorkspacePanel for only the model currently selected in InstructionsPanel. */
     private String calculateCostEstimate(Service.ModelConfig config, int inputTokens, Service service) {
         var pricing = service.getModelPricing(config.name());
@@ -1038,8 +1098,24 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     // Tooltip helpers for TokenUsageBar (HTML-wrapped, similar to chip tooltips)
-    private static String buildTokenUsageTooltip(String modelName, int maxTokens, String costPerRequest) {
+    private static String buildTokenUsageTooltip(
+            String modelName,
+            int maxTokens,
+            String costPerRequest,
+            TokenUsageBar.WarningLevel warningLevel,
+            int successRate) {
         StringBuilder body = new StringBuilder();
+
+        if (warningLevel != TokenUsageBar.WarningLevel.NONE) {
+            body.append("<div style='color: ")
+                    .append(warningLevel == TokenUsageBar.WarningLevel.RED ? "#FF4444" : "#FFA500")
+                    .append("; font-weight: bold;'>⚠ Performance Warning</div>");
+            body.append("<div style='margin-top: 4px;'>The model <b>")
+                    .append(htmlEscape(modelName))
+                    .append("</b> may perform poorly at this token count.</div>");
+            body.append("<hr style='border:0;border-top:1px solid #ccc;margin:8px 0;'/>");
+        }
+
         body.append("<div><b>Context</b></div>");
         body.append("<div>Model: ").append(htmlEscape(modelName)).append("</div>");
         body.append("<div>Max input tokens: ")
@@ -1050,6 +1126,22 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     .append(htmlEscape(costPerRequest))
                     .append("</div>");
         }
+
+        body.append("<hr style='border:0;border-top:1px solid #ccc;margin:8px 0;'/>");
+        body.append("<div><b><a href='https://brokk.ai/power-ranking' style='color: #1F6FEB; text-decoration: none;'>")
+                .append("Brokk Power Ranking</a></b></div>");
+        if (successRate == -1) {
+            body.append("<div style='margin-top: 4px;'>Success rate: <b>Unknown</b></div>");
+            body.append("<div style='margin-top: 2px; font-size: 0.9em; color: #666;'>")
+                    .append("Untested model reasoning combination.</div>");
+        } else {
+            body.append("<div style='margin-top: 4px;'>Success rate at this token count: <b>")
+                    .append(successRate)
+                    .append("%</b></div>");
+            body.append("<div style='margin-top: 2px; font-size: 0.9em; color: #666;'>")
+                    .append("Based on benchmark data for model performance across token ranges.</div>");
+        }
+
         return wrapTooltipHtml(body.toString(), 420);
     }
 
