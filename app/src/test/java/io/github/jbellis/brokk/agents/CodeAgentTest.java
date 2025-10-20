@@ -799,4 +799,51 @@ class CodeAgentTest {
                 "BuildOutputPreprocessor.processForLlm should only be called once per build failure "
                         + "(by BuildAgent), but was called " + countingModel.getPreprocessingCallCount() + " times");
     }
+
+    // REQ-1: requestPhase with partial response + error should continue, not exit fatally
+    @Test
+    void testRequestPhase_partialResponseWithTransportError_shouldContinueAndLetParseHandle() {
+        // Create a model that returns partial text (some valid blocks) + error (simulating connection drop)
+        var partialBlockText =
+                """
+                <block>
+                test.txt
+                <<<<<<< SEARCH
+                hello
+                =======
+                goodbye
+                >>>>>>> REPLACE
+                </block>
+                """;
+
+        // Prepare the Llm.StreamingResult with partial text and an error.
+        // Note: when error is non-null, originalResponse must be null (it's a synthetic partial response)
+        var partialResponse = new Llm.NullSafeResponse(
+                partialBlockText, // text
+                null, // reasoningContent
+                List.of(), // toolRequests
+                null); // originalResponse must be null when paired with an error
+        var streamingResult = new Llm.StreamingResult(partialResponse, new RuntimeException("Connection reset"), 0);
+
+        var cs = createBasicConversationState();
+        var es = createEditState(List.of(), 0);
+
+        // Act: Call requestPhase with the partial + error result
+        var result = codeAgent.requestPhase(cs, es, streamingResult, null);
+
+        // Assert: Should continue (not fatal), so that parsePhase can handle the partial
+        assertInstanceOf(
+                CodeAgent.Step.Continue.class,
+                result,
+                "requestPhase should continue when partial text is present, even with error");
+        var continueStep = (CodeAgent.Step.Continue) result;
+
+        // The request and AI message should be appended
+        assertEquals(2, continueStep.cs().taskMessages().size());
+        String aiMessageText = Messages.getText(continueStep.cs().taskMessages().get(1));
+        assertTrue(aiMessageText.contains("goodbye"), "AI message should contain the partial block content");
+
+        // nextRequest should be null after sending (Task 3 semantics)
+        assertNull(continueStep.cs().nextRequest(), "nextRequest should be null after recording");
+    }
 }

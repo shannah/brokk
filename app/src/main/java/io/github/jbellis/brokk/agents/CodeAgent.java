@@ -575,18 +575,28 @@ public class CodeAgent {
      * Appends request + AI message to the conversation or ends on error. After successfully recording the exchange,
      * this method returns a ConversationState where {@code nextRequest} has been nulled out to enforce single-use
      * semantics (see TODO resolution).
+     *
+     * If an error occurred but partial text was captured, proceeds with the partial so parsePhase can parse what
+     * was received and ask the LLM to continue, rather than treating it as a fatal error.
      */
     Step requestPhase(
             ConversationState cs, EditState es, StreamingResult streamingResultFromLlm, @Nullable Metrics metrics) {
         var llmError = streamingResultFromLlm.error();
         if (llmError != null) {
-            String message;
-            TaskResult.StopDetails fatalDetails;
-            message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending task";
-            fatalDetails =
-                    new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, requireNonNull(llmError.getMessage()));
-            io.toolError(message);
-            return new Step.Fatal(fatalDetails);
+            // If there's no usable text, this is a fatal error
+            if (streamingResultFromLlm.isEmpty()) {
+                String message = "LLM returned an error even after retries: " + llmError.getMessage() + ". Ending task";
+                TaskResult.StopDetails fatalDetails = new TaskResult.StopDetails(
+                        TaskResult.StopReason.LLM_ERROR, requireNonNull(llmError.getMessage()));
+                io.toolError(message);
+                return new Step.Fatal(fatalDetails);
+            }
+
+            // Partial text exists despite the error; proceed and let parsePhase handle it
+            logger.warn(
+                    "LLM connection dropped but partial text captured ({} chars); proceeding to parse",
+                    streamingResultFromLlm.text().length());
+            report("LLM connection interrupted; parsing partial response and asking to continue.");
         }
 
         // Append request and AI message to taskMessages
