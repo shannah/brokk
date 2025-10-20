@@ -5,6 +5,8 @@ import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.components.SplitButton;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
+import io.github.jbellis.brokk.gui.dialogs.CreatePullRequestDialog;
+import io.github.jbellis.brokk.git.GitWorkflow;
 import java.util.List;
 import javax.swing.*;
 import org.apache.logging.log4j.LogManager;
@@ -187,6 +189,37 @@ public class BranchSelectorButton extends SplitButton {
                         () -> chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Branches refreshed"));
             });
             menu.add(refresh);
+
+            // Append "Create Pull Request..." action
+            menu.addSeparator();
+            JMenuItem createPr = new JMenuItem("Create Pull Request...");
+            createPr.addActionListener(ev -> {
+                SwingUtilities.invokeLater(() -> {
+                    try {
+                        var repo = project.getRepo();
+                        var branch = repo.getCurrentBranch();
+                        if (branch == null || branch.isBlank()) {
+                            chrome.toolError("No branch is currently checked out. Please checkout a branch first.");
+                            return;
+                        }
+                        if (GitWorkflow.isSyntheticBranchName(branch)) {
+                            chrome.toolError("Cannot create a pull request from a synthetic or virtual branch: " + branch);
+                            return;
+                        }
+                        if (repo instanceof GitRepo gitRepo) {
+                            if (gitRepo.isRemoteBranch(branch) && !gitRepo.isLocalBranch(branch)) {
+                                chrome.toolError("Cannot create a pull request directly from a remote branch: " + branch);
+                                return;
+                            }
+                        }
+                        CreatePullRequestDialog.show(chrome.getFrame(), chrome, cm, branch);
+                    } catch (Exception ex) {
+                        logger.error("Error opening Create Pull Request dialog", ex);
+                        chrome.toolError("Failed to open Create Pull Request dialog: " + ex.getMessage());
+                    }
+                });
+            });
+            menu.add(createPr);
         }
 
         return menu;
