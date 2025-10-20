@@ -112,26 +112,26 @@ public class GitRepoData {
     }
 
     /** Show diff between two commits (or a commit and the working directory if newCommitId == HEAD). */
-    public String showDiff(String newCommitId, String oldCommitId) throws GitAPIException {
+    public String getDiff(String oldRev, String newRev) throws GitAPIException {
         try (var out = new ByteArrayOutputStream()) {
-            logger.debug("Generating diff from {} to {}", oldCommitId, newCommitId);
+            logger.debug("Generating diff from {} to {}", oldRev, newRev);
 
-            var oldTreeIter = prepareTreeParser(oldCommitId);
+            var oldTreeIter = prepareTreeParser(oldRev);
             if (oldTreeIter == null) {
-                logger.warn("Old commit/tree {} not found. Returning empty diff.", oldCommitId);
+                logger.warn("Old commit/tree {} not found. Returning empty diff.", oldRev);
                 return "";
             }
 
-            if ("HEAD".equals(newCommitId)) {
+            if ("HEAD".equals(newRev)) {
                 git.diff()
                         .setOldTree(oldTreeIter)
                         .setNewTree(null) // Working tree
                         .setOutputStream(out)
                         .call();
             } else {
-                var newTreeIter = prepareTreeParser(newCommitId);
+                var newTreeIter = prepareTreeParser(newRev);
                 if (newTreeIter == null) {
-                    logger.warn("New commit/tree {} not found. Returning empty diff.", newCommitId);
+                    logger.warn("New commit/tree {} not found. Returning empty diff.", newRev);
                     return "";
                 }
 
@@ -151,7 +151,7 @@ public class GitRepoData {
     }
 
     /** Show diff for a specific file between two commits. */
-    public String showFileDiff(String newRev, String oldRev, ProjectFile file) throws GitAPIException {
+    public String getDiff(ProjectFile file, String oldRev, String newRev) throws GitAPIException {
         try (var out = new ByteArrayOutputStream()) {
             var pathFilter = PathFilter.create(repo.toRepoRelativePath(file));
             if ("HEAD".equals(newRev)) {

@@ -91,7 +91,7 @@ public final class GitUiUtil {
 
         contextManager.submitContextTask(() -> {
             try {
-                var diff = repo.showFileDiff(commitId, commitId + "^", file);
+                var diff = repo.getDiff(file, commitId + "^", commitId);
                 if (diff.isEmpty()) {
                     chrome.showNotification(
                             IConsoleIO.NotificationRole.INFO, "No changes found for " + file.getFileName());
@@ -186,7 +186,7 @@ public final class GitUiUtil {
                 var oldestCommitId = oldestCommitInSelection.id();
 
                 // Diff is from oldestCommit's parent up to newestCommit.
-                String diff = repo.showDiff(newestCommitId, oldestCommitId + "^");
+                String diff = repo.getDiff(oldestCommitId + "^", newestCommitId);
                 if (diff.isEmpty()) {
                     chrome.showNotification(
                             IConsoleIO.NotificationRole.INFO, "No changes found in the selected commit range");
@@ -267,7 +267,7 @@ public final class GitUiUtil {
                 var diffs = files.stream()
                         .map(file -> {
                             try {
-                                return repo.showFileDiff(newestCommitId, oldestCommitId + "^", file);
+                                return repo.getDiff(file, oldestCommitId + "^", newestCommitId);
                             } catch (GitAPIException e) {
                                 logger.warn(e);
                                 return "";
@@ -630,7 +630,7 @@ public final class GitUiUtil {
 
         cm.submitContextTask(() -> {
             try {
-                var diff = repo.showDiff(compareBranchName, baseBranchName);
+                var diff = repo.getDiff(baseBranchName, compareBranchName);
                 if (diff.isEmpty()) {
                     chrome.showNotification(
                             IConsoleIO.NotificationRole.INFO,
@@ -751,7 +751,7 @@ public final class GitUiUtil {
                     effectiveBaseSha = prBaseSha;
                 }
 
-                String diff = repo.showDiff(prHeadSha, effectiveBaseSha);
+                String diff = repo.getDiff(effectiveBaseSha, prHeadSha);
                 if (diff.isEmpty()) {
                     chrome.showNotification(
                             IConsoleIO.NotificationRole.INFO,

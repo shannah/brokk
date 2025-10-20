@@ -80,7 +80,7 @@ public interface IGitRepo {
         throw new UnsupportedOperationException();
     }
 
-    default String showFileDiff(String newRev, String oldRev, ProjectFile file) throws GitAPIException {
+    default String getDiff(ProjectFile file, String oldRev, String newRev) throws GitAPIException {
         throw new UnsupportedOperationException();
     }
 
@@ -88,12 +88,7 @@ public interface IGitRepo {
         throw new UnsupportedOperationException();
     }
 
-    default String showDiff(String newCommitId, String oldCommitId) throws GitAPIException {
-        throw new UnsupportedOperationException();
-    }
-
-    default List<ModifiedFile> listChangedFilesInCommitRange(String firstCommitId, String lastCommitId)
-            throws GitAPIException {
+    default String getDiff(String oldRev, String newRev) throws GitAPIException {
         throw new UnsupportedOperationException();
     }
 

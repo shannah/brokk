@@ -1433,8 +1433,8 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /** Show diff between two commits (or a commit and the working directory if newCommitId == HEAD). */
     @Override
-    public String showDiff(String newCommitId, String oldCommitId) throws GitAPIException {
-        return data.showDiff(newCommitId, oldCommitId);
+    public String getDiff(String oldRev, String newRev) throws GitAPIException {
+        return data.getDiff(oldRev, newRev);
     }
 
     /** Retrieves the contents of {@code file} at a given commit ID, or returns an empty string if not found. */
@@ -1493,8 +1493,8 @@ public class GitRepo implements Closeable, IGitRepo {
 
     /** Show diff for a specific file between two commits. */
     @Override
-    public String showFileDiff(String newRev, String oldRev, ProjectFile file) throws GitAPIException {
-        return data.showFileDiff(newRev, oldRev, file);
+    public String getDiff(ProjectFile file, String oldRev, String newRev) throws GitAPIException {
+        return data.getDiff(file, oldRev, newRev);
     }
 
     /**
