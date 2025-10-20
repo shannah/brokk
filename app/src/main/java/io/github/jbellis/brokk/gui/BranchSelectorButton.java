@@ -196,21 +196,23 @@ public class BranchSelectorButton extends SplitButton {
             createPr.addActionListener(ev -> {
                 SwingUtilities.invokeLater(() -> {
                     try {
-                        var repo = project.getRepo();
-                        var branch = repo.getCurrentBranch();
+                        IGitRepo r = project.getRepo();
+                        String branch = r.getCurrentBranch();
                         if (branch == null || branch.isBlank()) {
-                            chrome.toolError("No branch is currently checked out. Please checkout a branch first.");
+                            chrome.toolError("Cannot create PR: No branch is currently selected.");
                             return;
                         }
                         if (GitWorkflow.isSyntheticBranchName(branch)) {
-                            chrome.toolError("Cannot create a pull request from a synthetic or virtual branch: " + branch);
+                            chrome.toolError("Select a local branch before creating a PR. Synthetic views are not supported.");
                             return;
                         }
-                        if (repo instanceof GitRepo gitRepo) {
-                            if (gitRepo.isRemoteBranch(branch) && !gitRepo.isLocalBranch(branch)) {
-                                chrome.toolError("Cannot create a pull request directly from a remote branch: " + branch);
-                                return;
-                            }
+                        boolean isRemote = false;
+                        if (r instanceof GitRepo gitRepo) {
+                            isRemote = gitRepo.isRemoteBranch(branch) && !gitRepo.isLocalBranch(branch);
+                        }
+                        if (isRemote) {
+                            chrome.toolError("Select a local branch before creating a PR. Remote branches are not supported.");
+                            return;
                         }
                         CreatePullRequestDialog.show(chrome.getFrame(), chrome, cm, branch);
                     } catch (Exception ex) {
