@@ -35,7 +35,7 @@ public final class GitDistance {
      * @return a sorted list of files with relevance scores. If no seed weights are given,an empty result.
      */
     public static List<IAnalyzer.FileRelevance> getRelatedFiles(
-            GitRepo repo, Map<ProjectFile, Double> seedWeights, int k, boolean reversed) {
+            GitRepo repo, Map<ProjectFile, Double> seedWeights, int k, boolean reversed) throws InterruptedException {
 
         if (seedWeights.isEmpty()) {
             return List.of();
@@ -50,7 +50,7 @@ public final class GitDistance {
 
     @VisibleForTesting
     public static List<IAnalyzer.FileRelevance> getMostImportantFilesScored(GitRepo repo, int k)
-            throws GitAPIException {
+            throws GitAPIException, InterruptedException {
         var commits = repo.listCommitsDetailed(repo.getCurrentBranch(), COMMITS_TO_PROCESS);
         var scores = computeImportanceScores(repo, commits);
         logger.trace("Computed importance scores for getMostImportantFilesScored: {}", scores);
@@ -62,7 +62,8 @@ public final class GitDistance {
                 .toList();
     }
 
-    public static List<ProjectFile> getMostImportantFiles(GitRepo repo, int k) throws GitAPIException {
+    public static List<ProjectFile> getMostImportantFiles(GitRepo repo, int k)
+            throws GitAPIException, InterruptedException {
         return getMostImportantFilesScored(repo, k).stream()
                 .map(IAnalyzer.FileRelevance::file)
                 .toList();
@@ -79,7 +80,8 @@ public final class GitDistance {
      * @param repo the Git repository wrapper.
      * @return the input files sorted by importance (most important first).
      */
-    public static List<ProjectFile> sortByImportance(Collection<ProjectFile> files, IGitRepo repo) {
+    public static List<ProjectFile> sortByImportance(Collection<ProjectFile> files, IGitRepo repo)
+            throws InterruptedException {
         if (!(repo instanceof GitRepo gr)) {
             return List.copyOf(files);
         }
@@ -121,7 +123,7 @@ public final class GitDistance {
      * </ul>
      */
     private static Map<ProjectFile, Double> computeImportanceScores(GitRepo repo, List<CommitInfo> commits)
-            throws GitAPIException {
+            throws GitAPIException, InterruptedException {
         if (commits.isEmpty()) {
             return Map.of();
         }
@@ -155,7 +157,7 @@ public final class GitDistance {
                         }
                     }))
                     .get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (ExecutionException e) {
             throw new RuntimeException("Error computing file importance scores in parallel", e);
         }
 
@@ -169,7 +171,8 @@ public final class GitDistance {
      * avoiding path-recycling ambiguity.
      */
     private static List<IAnalyzer.FileRelevance> computePmiScores(
-            GitRepo repo, Map<ProjectFile, Double> seedWeights, int k, boolean reversed) throws GitAPIException {
+            GitRepo repo, Map<ProjectFile, Double> seedWeights, int k, boolean reversed)
+            throws GitAPIException, InterruptedException {
 
         // The PMI sample: commits that touched the seed files
         var commits = repo.getFileHistories(seedWeights.keySet(), COMMITS_TO_PROCESS);
@@ -218,7 +221,7 @@ public final class GitDistance {
                         }
                     }))
                     .get();
-        } catch (InterruptedException | ExecutionException e) {
+        } catch (ExecutionException e) {
             throw new RuntimeException("Error computing PMI scores in parallel", e);
         }
 
@@ -250,7 +253,7 @@ public final class GitDistance {
                 .toList();
     }
 
-    public static void main(String[] args) throws GitAPIException {
+    public static void main(String[] args) throws GitAPIException, InterruptedException {
         if (args.length < 1 || args[0].isBlank()) {
             System.err.println("Usage: GitDistance <path-to-git-repo>");
             System.exit(1);

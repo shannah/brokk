@@ -185,7 +185,7 @@ public class Context {
     }
 
     /** Returns the files from the git repo that are most relevant to this context, up to the specified limit. */
-    public List<ProjectFile> getMostRelevantFiles(int topK) {
+    public List<ProjectFile> getMostRelevantFiles(int topK) throws InterruptedException {
         var ineligibleSources = fragments.stream()
                 .filter(f -> !f.isEligibleForAutoContext())
                 .flatMap(f -> f.files().stream())
