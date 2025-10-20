@@ -118,19 +118,13 @@ public class SearchAgent {
         }
     }
 
-    private @NotNull TaskResult executeInternal() throws InterruptedException {
+    private TaskResult executeInternal() throws InterruptedException {
         // Seed Workspace with ContextAgent recommendations (same pattern as ArchitectAgent)
         addInitialContextToWorkspace();
 
         // Main loop: propose actions, execute, record, repeat until finalization
         while (true) {
             // Beast mode triggers
-            if (Thread.interrupted()) {
-                io.showNotification(
-                        IConsoleIO.NotificationRole.INFO,
-                        "Search interrupted; attempting to finalize with available information");
-                beastMode = true;
-            }
             var inputLimit = cm.getService().getMaxInputTokens(model);
             var workspaceMessages =
                     new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()));
