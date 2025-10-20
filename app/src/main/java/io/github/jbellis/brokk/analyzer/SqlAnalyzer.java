@@ -161,7 +161,7 @@ public class SqlAnalyzer implements IAnalyzer, SkeletonProvider {
     }
 
     @Override
-    public Set<CodeUnit> getDeclarationsInFile(ProjectFile file) {
+    public Set<CodeUnit> getDeclarations(ProjectFile file) {
         return Set.copyOf(declarationsByFile.getOrDefault(file, Collections.emptyList()));
     }
 
@@ -269,7 +269,7 @@ public class SqlAnalyzer implements IAnalyzer, SkeletonProvider {
     }
 
     @Override
-    public List<CodeUnit> topLevelCodeUnitsOf(ProjectFile file) {
+    public List<CodeUnit> getTopLevelDeclarations(ProjectFile file) {
         return List.copyOf(declarationsByFile.getOrDefault(file, Collections.emptyList()));
     }
 

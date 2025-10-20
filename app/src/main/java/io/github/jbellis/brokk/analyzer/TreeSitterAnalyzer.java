@@ -507,7 +507,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
     }
 
     @Override
-    public List<CodeUnit> topLevelCodeUnitsOf(ProjectFile file) {
+    public List<CodeUnit> getTopLevelDeclarations(ProjectFile file) {
         return fileProperties(file).topLevelCodeUnits();
     }
 
@@ -684,7 +684,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
             return Map.of();
         }
 
-        List<CodeUnit> topCUs = topLevelCodeUnitsOf(file);
+        List<CodeUnit> topCUs = getTopLevelDeclarations(file);
         if (topCUs.isEmpty()) return Map.of();
 
         Map<CodeUnit, String> resultSkeletons = new HashMap<>();
@@ -702,13 +702,13 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
     }
 
     @Override
-    public Set<CodeUnit> getDeclarationsInFile(ProjectFile file) {
+    public Set<CodeUnit> getDeclarations(ProjectFile file) {
         // Only process files relevant to this analyzer's language
         if (!isRelevantFile(file)) {
             return Set.of();
         }
 
-        List<CodeUnit> topCUs = topLevelCodeUnitsOf(file);
+        List<CodeUnit> topCUs = getTopLevelDeclarations(file);
         if (topCUs.isEmpty()) return Set.of();
 
         Set<CodeUnit> allDeclarationsInFile = new HashSet<>();
@@ -3012,7 +3012,7 @@ public abstract class TreeSitterAnalyzer implements IAnalyzer, SkeletonProvider,
         int bestDepth = -1;
 
         // Start from top-level declarations to ensure deterministic traversal order
-        for (var top : topLevelCodeUnitsOf(file)) {
+        for (var top : getTopLevelDeclarations(file)) {
             var res = findDeepestEnclosing(top, range, 0);
             if (res != null && res.depth > bestDepth) {
                 best = res.cu;

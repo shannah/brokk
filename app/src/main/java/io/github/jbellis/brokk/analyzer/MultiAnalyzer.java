@@ -93,11 +93,11 @@ public class MultiAnalyzer
     }
 
     @Override
-    public List<CodeUnit> topLevelCodeUnitsOf(ProjectFile file) {
+    public List<CodeUnit> getTopLevelDeclarations(ProjectFile file) {
         var lang = Languages.fromExtension(Files.getFileExtension(file.absPath().toString()));
         var delegate = delegates.get(lang);
         if (delegate != null) {
-            return delegate.topLevelCodeUnitsOf(file);
+            return delegate.getTopLevelDeclarations(file);
         }
         return List.of();
     }
@@ -160,11 +160,11 @@ public class MultiAnalyzer
     }
 
     @Override
-    public Set<CodeUnit> getDeclarationsInFile(ProjectFile file) {
+    public Set<CodeUnit> getDeclarations(ProjectFile file) {
         var lang = Languages.fromExtension(Files.getFileExtension(file.absPath().toString()));
         var delegate = delegates.get(lang);
         if (delegate != null) {
-            return delegate.getDeclarationsInFile(file);
+            return delegate.getDeclarations(file);
         }
         return Set.of();
     }
