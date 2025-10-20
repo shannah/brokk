@@ -2,11 +2,11 @@ package io.github.jbellis.brokk.gui;
 
 import io.github.jbellis.brokk.IConsoleIO;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.git.GitWorkflow;
 import io.github.jbellis.brokk.git.IGitRepo;
 import io.github.jbellis.brokk.gui.components.SplitButton;
-import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.dialogs.CreatePullRequestDialog;
-import io.github.jbellis.brokk.git.GitWorkflow;
+import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import java.util.List;
 import javax.swing.*;
 import org.apache.logging.log4j.LogManager;
@@ -203,7 +203,8 @@ public class BranchSelectorButton extends SplitButton {
                             return;
                         }
                         if (GitWorkflow.isSyntheticBranchName(branch)) {
-                            chrome.toolError("Select a local branch before creating a PR. Synthetic views are not supported.");
+                            chrome.toolError(
+                                    "Select a local branch before creating a PR. Synthetic views are not supported.");
                             return;
                         }
                         boolean isRemote = false;
@@ -211,7 +212,8 @@ public class BranchSelectorButton extends SplitButton {
                             isRemote = gitRepo.isRemoteBranch(branch) && !gitRepo.isLocalBranch(branch);
                         }
                         if (isRemote) {
-                            chrome.toolError("Select a local branch before creating a PR. Remote branches are not supported.");
+                            chrome.toolError(
+                                    "Select a local branch before creating a PR. Remote branches are not supported.");
                             return;
                         }
                         CreatePullRequestDialog.show(chrome.getFrame(), chrome, cm, branch);
