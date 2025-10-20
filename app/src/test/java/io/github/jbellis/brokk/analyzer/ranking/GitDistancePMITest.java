@@ -8,9 +8,11 @@ import io.github.jbellis.brokk.analyzer.ProjectFile;
 import io.github.jbellis.brokk.git.GitDistance;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.testutil.TestProject;
+import java.io.File;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
+import java.util.Comparator;
 import java.util.Map;
 import org.eclipse.jgit.api.Git;
 import org.junit.jupiter.api.AfterAll;
@@ -205,9 +207,7 @@ public class GitDistancePMITest {
             GitDistanceTestSuite.teardownGitRepository(tempDir);
             if (Files.exists(tempDir)) {
                 try (var walk = Files.walk(tempDir)) {
-                    walk.sorted(java.util.Comparator.reverseOrder())
-                            .map(Path::toFile)
-                            .forEach(java.io.File::delete);
+                    walk.sorted(Comparator.reverseOrder()).map(Path::toFile).forEach(File::delete);
                 }
             }
         }

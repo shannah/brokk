@@ -34,7 +34,10 @@ import io.github.jbellis.brokk.tools.UiTools;
 import io.github.jbellis.brokk.tools.WorkspaceTools;
 import io.github.jbellis.brokk.util.*;
 import io.github.jbellis.brokk.util.UserActionManager.ThrowingRunnable;
+import java.awt.Image;
 import java.io.IOException;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
@@ -44,6 +47,7 @@ import java.util.concurrent.*;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutionException;
 import java.util.concurrent.atomic.AtomicBoolean;
+import java.util.concurrent.atomic.AtomicInteger;
 import java.util.function.Function;
 import java.util.regex.Pattern;
 import java.util.stream.Collectors;
@@ -528,7 +532,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         var cutoff = Instant.now().minus(Duration.ofDays(7));
-        var deletedCount = new java.util.concurrent.atomic.AtomicInteger(0);
+        var deletedCount = new AtomicInteger(0);
 
         logger.trace("Scanning LLM history directory {} for entries modified before {}", historyBaseDir, cutoff);
         try (var stream = Files.list(historyBaseDir)) {
@@ -744,7 +748,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * latest (top) context. - If selection includes HISTORY: clear history, then drop only non-HISTORY fragments. -
      * Else: drop the selected fragments as-is.
      */
-    public void dropWithHistorySemantics(java.util.Collection<? extends ContextFragment> selectedFragments) {
+    public void dropWithHistorySemantics(Collection<? extends ContextFragment> selectedFragments) {
         if (selectedFragments.isEmpty()) {
             if (topContext().isEmpty()) {
                 return;
@@ -1016,7 +1020,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * @param image The java.awt.Image pasted from the clipboard.
      */
     public ContextFragment.AnonymousImageFragment addPastedImageFragment(
-            java.awt.Image image, @Nullable String descriptionOverride) {
+            Image image, @Nullable String descriptionOverride) {
         Future<String> descriptionFuture;
         if (descriptionOverride != null && !descriptionOverride.isBlank()) {
             descriptionFuture = CompletableFuture.completedFuture(descriptionOverride);
@@ -1036,7 +1040,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @param image The java.awt.Image pasted from the clipboard.
      */
-    public void addPastedImageFragment(java.awt.Image image) {
+    public void addPastedImageFragment(Image image) {
         addPastedImageFragment(image, null);
     }
 
@@ -1368,7 +1372,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return;
         }
 
-        var combined = new java.util.ArrayList<TaskList.TaskItem>();
+        var combined = new ArrayList<TaskList.TaskItem>();
         combined.addAll(taskList.tasks());
         combined.addAll(additions);
 
@@ -1616,7 +1620,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * @param pastedImage The java.awt.Image that was pasted.
      * @return A SwingWorker whose `get()` method will return the description string.
      */
-    public SwingWorker<String, Void> submitSummarizePastedImage(java.awt.Image pastedImage) {
+    public SwingWorker<String, Void> submitSummarizePastedImage(Image pastedImage) {
         SwingWorker<String, Void> worker = new SwingWorker<>() {
             @Override
             protected String doInBackground() {
@@ -2501,8 +2505,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     // Convert a throwable to a string with full stack trace
     private String getStackTraceAsString(Throwable throwable) {
-        var sw = new java.io.StringWriter();
-        var pw = new java.io.PrintWriter(sw);
+        var sw = new StringWriter();
+        var pw = new PrintWriter(sw);
         throwable.printStackTrace(pw);
         return sw.toString();
     }
@@ -2598,7 +2602,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     lowBalanceNotified = false;
                     freeTierNotified = false;
                 }
-            } catch (java.io.IOException e) {
+            } catch (IOException e) {
                 logger.error("Failed to check user balance", e);
             }
         });

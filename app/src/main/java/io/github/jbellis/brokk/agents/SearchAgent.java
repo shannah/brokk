@@ -37,6 +37,7 @@ import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Objects;
 import java.util.Set;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
@@ -670,7 +671,7 @@ public class SearchAgent {
             @P("A map of argument names to values for the tool. Can be null or empty if the tool takes no arguments.")
                     @Nullable
                     Map<String, Object> arguments) {
-        Map<String, Object> args = java.util.Objects.requireNonNullElseGet(arguments, HashMap::new);
+        Map<String, Object> args = Objects.requireNonNullElseGet(arguments, HashMap::new);
         var mcpToolOptional =
                 mcpTools.stream().filter(t -> t.toolName().equals(toolName)).findFirst();
 

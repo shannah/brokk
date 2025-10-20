@@ -1,6 +1,8 @@
 package io.github.jbellis.brokk.util;
 
 import io.github.jbellis.brokk.IConsoleIO;
+import java.io.PrintWriter;
+import java.io.StringWriter;
 import java.util.concurrent.Callable;
 import java.util.concurrent.CancellationException;
 import java.util.concurrent.CompletableFuture;
@@ -139,8 +141,8 @@ public class UserActionManager {
     }
 
     private String getStackTraceAsString(Throwable throwable) {
-        var sw = new java.io.StringWriter();
-        var pw = new java.io.PrintWriter(sw);
+        var sw = new StringWriter();
+        var pw = new PrintWriter(sw);
         throwable.printStackTrace(pw);
         return sw.toString();
     }
