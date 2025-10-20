@@ -33,7 +33,8 @@ public class UserActionManager {
 
     public UserActionManager(IConsoleIO io) {
         this.io = io;
-        this.userExecutor = createLoggingExecutor(Executors.newSingleThreadExecutor());
+        var threadFactory = ExecutorServiceUtil.createNamedThreadFactory("UserActionManager");
+        this.userExecutor = createLoggingExecutor(Executors.newSingleThreadExecutor(threadFactory));
     }
 
     public void setIo(IConsoleIO io) {
@@ -55,7 +56,7 @@ public class UserActionManager {
     public void cancelActiveAction() {
         var t = cancelableThread.get();
         if (t != null && t.isAlive()) {
-            logger.debug("Interrupting cancelable user action thread {}", t.getName());
+            logger.debug("Interrupting cancelable user action thread " + t.getName());
             t.interrupt();
         }
     }

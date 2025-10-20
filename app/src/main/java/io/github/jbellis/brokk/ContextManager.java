@@ -71,8 +71,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     // Run main user-driven tasks in background (Code/Ask/Search/Run)
     // Only one of these can run at a time
-    private final LoggingExecutorService userActionExecutor =
-            createLoggingExecutorService(Executors.newSingleThreadExecutor());
     private final UserActionManager userActions;
 
     // Regex to identify test files. Matches the word "test"/"tests" (case-insensitive)
@@ -126,7 +124,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             60L,
             TimeUnit.SECONDS,
             new LinkedBlockingQueue<>(), // Unbounded queue
-            Executors.defaultThreadFactory()));
+            ExecutorServiceUtil.createNamedThreadFactory("ContextTask")));
 
     // Internal background tasks (unrelated to user actions)
     // Lots of threads allowed since AutoContext updates get dropped here
@@ -138,7 +136,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     60L,
                     TimeUnit.SECONDS,
                     new LinkedBlockingQueue<>(), // Unbounded queue to prevent rejection
-                    Executors.defaultThreadFactory()),
+                    ExecutorServiceUtil.createNamedThreadFactory("BackgroundTask")),
             Set.of(InterruptedException.class));
 
     private final ServiceWrapper service;
@@ -1328,12 +1326,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
         analyzerWrapper.close();
         lowMemoryWatcherManager.close();
 
-        var userActionFuture = userActionExecutor.shutdownAndAwait(awaitMillis, "userActionExecutor");
         var contextActionFuture = contextActionExecutor.shutdownAndAwait(awaitMillis, "contextActionExecutor");
         var backgroundFuture = backgroundTasks.shutdownAndAwait(awaitMillis, "backgroundTasks");
         var userActionsFuture = userActions.shutdownAndAwait(awaitMillis);
 
-        return CompletableFuture.allOf(userActionFuture, contextActionFuture, backgroundFuture, userActionsFuture)
+        return CompletableFuture.allOf(contextActionFuture, backgroundFuture, userActionsFuture)
                 .whenComplete((v, t) -> project.close());
     }
 
