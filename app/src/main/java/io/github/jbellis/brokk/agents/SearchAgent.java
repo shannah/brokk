@@ -603,7 +603,7 @@ public class SearchAgent {
         var recommendation = contextAgent.getRecommendations(true);
         if (!recommendation.reasoning().isEmpty()) {
             io.llmOutput(
-                    "\n\nReasoning for contextual insights: " + recommendation.reasoning(), ChatMessageType.CUSTOM);
+                    "\n\nReasoning for contextual insights: \n" + recommendation.reasoning(), ChatMessageType.CUSTOM);
         }
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found", ChatMessageType.CUSTOM);
