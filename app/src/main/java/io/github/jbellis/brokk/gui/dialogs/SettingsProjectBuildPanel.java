@@ -849,16 +849,19 @@ public class SettingsProjectBuildPanel extends JPanel {
     }
 
     private void populateJdkControlsFromProject() {
-        BuildAgent.BuildDetails details = project.awaitBuildDetails();
-        var env = details.environmentVariables();
-        String desired = env.get("JAVA_HOME");
+        project.getBuildDetailsFuture().thenAccept(details -> {
+            SwingUtilities.invokeLater(() -> {
+                var env = details.environmentVariables();
+                String desired = env.get("JAVA_HOME");
 
-        boolean useCustomJdk = desired != null && !desired.isBlank();
-        setJavaHomeCheckbox.setSelected(useCustomJdk);
-        jdkSelector.setEnabled(useCustomJdk);
+                boolean useCustomJdk = desired != null && !desired.isBlank();
+                setJavaHomeCheckbox.setSelected(useCustomJdk);
+                jdkSelector.setEnabled(useCustomJdk);
 
-        // Always populate the selector; it will select 'desired' if provided
-        jdkSelector.loadJdksAsync(desired);
+                // Always populate the selector; it will select 'desired' if provided
+                jdkSelector.loadJdksAsync(desired);
+            });
+        });
     }
 
     private void updateJdkControlsVisibility(@Nullable Language selected) {
