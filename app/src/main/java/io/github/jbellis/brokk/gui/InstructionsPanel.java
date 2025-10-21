@@ -268,9 +268,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.secondaryActionButtonBg = UIManager.getColor("Button.background");
 
         // Create split action button with dropdown
-        actionButton = new ActionSplitButton(
-                () -> isActionRunning(),
-                ACTION_SEARCH); // Default to Search
+        actionButton = new ActionSplitButton(() -> isActionRunning(), ACTION_SEARCH); // Default to Search
 
         actionButton.setOpaque(false);
         actionButton.setContentAreaFilled(false);
@@ -487,16 +485,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         leftPanel.add(modeBadge, gbc);
 
         topBarPanel.add(leftPanel, BorderLayout.WEST);
-        
+
         // Center placeholder — header with branch selector has been moved to the main window (Chrome).
         JPanel centerPanel = new JPanel();
         centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.LINE_AXIS));
         centerPanel.add(Box.createHorizontalGlue());
         topBarPanel.add(centerPanel, BorderLayout.CENTER);
-        
+
         // Right panel with history, mic, and wand button
         JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-        
+
         // Set mic button size
         var micPref = micButton.getPreferredSize();
         int micHeight = micPref.height;
@@ -511,7 +509,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             modeBadge.setBorder(BorderFactory.createEmptyBorder(1, 8, 1, 8)); // small vertical padding, no fixed height
         }
         // Do not force left panel height; allow badge natural size to avoid truncation
-        
+
         this.historyDropdown = createHistoryDropdown();
 
         var wandDim = new Dimension(micHeight, micHeight);
@@ -525,7 +523,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         rightPanel.add(wandButton);
         rightPanel.add(Box.createHorizontalStrut(H_GAP));
         rightPanel.add(micButton);
-        
+
         topBarPanel.add(rightPanel, BorderLayout.EAST);
 
         return topBarPanel;
@@ -1959,9 +1957,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         private static final String MODE_TOOLTIP_LUTZ =
                 "<b>Lutz mode:</b> Performs an \"agentic\" search across your entire project to find code relevant to your prompt and will generate a plan for you by creating a list of tasks.";
 
-        public ActionSplitButton(
-                Supplier<Boolean> isActionRunning,
-                String defaultMode) {
+        public ActionSplitButton(Supplier<Boolean> isActionRunning, String defaultMode) {
             super();
             this.isActionRunning = isActionRunning;
             this.selectedMode = defaultMode;
@@ -2185,19 +2181,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             // Re-read colors from UIManager instead of using cached values
             Color currentDefaultBg = UIManager.getColor("Button.default.background");
             Color currentSecondaryBg = UIManager.getColor("Button.background");
-            
+
             // Set background FIRST so icon processing can read the correct background
             if (this.isActionRunning.get()) {
                 setBackground(currentSecondaryBg);
             } else {
                 setBackground(currentDefaultBg);
             }
-            
+
             // Now update icon - this will trigger high-contrast processing with the new background
             if (this.originalIcon != null) {
                 setIcon(this.originalIcon);
             }
-            
+
             revalidate();
             repaint();
         }
@@ -2338,9 +2334,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 return historyDropdown;
             }
             return findComponentInHierarchy(
-                    InstructionsPanel.this,
-                    comp -> comp instanceof SplitButton,
-                    instructionsArea);
+                    InstructionsPanel.this, comp -> comp instanceof SplitButton, instructionsArea);
         }
 
         private Component findBranchSplitButton() {
