@@ -525,9 +525,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         rightPanel.add(historyDropdown);
         rightPanel.add(Box.createHorizontalStrut(H_GAP));
-        rightPanel.add(micButton);
-        rightPanel.add(Box.createHorizontalStrut(H_GAP));
         rightPanel.add(wandButton);
+        rightPanel.add(Box.createHorizontalStrut(H_GAP));
+        rightPanel.add(micButton);
 
         topBarPanel.add(rightPanel, BorderLayout.EAST);
 
