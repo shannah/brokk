@@ -99,6 +99,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final ModelSelector modelSelector;
     private final TokenUsageBar tokenUsageBar;
     private String storedAction;
+    private SplitButton historyDropdown;
     private final ContextManager contextManager;
     private WorkspaceItemsChipPanel workspaceItemsChipPanel;
     private final JPanel centerPanel;
@@ -511,11 +512,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
         // Do not force left panel height; allow badge natural size to avoid truncation
         
-        var historyDropdown = createHistoryDropdown();
-        historyDropdown.setPreferredSize(new Dimension(120, micHeight));
-        historyDropdown.setMinimumSize(new Dimension(120, micHeight));
-        historyDropdown.setMaximumSize(new Dimension(400, micHeight));
-        historyDropdown.setAlignmentY(Component.CENTER_ALIGNMENT);
+        this.historyDropdown = createHistoryDropdown();
 
         var wandDim = new Dimension(micHeight, micHeight);
         wandButton.setPreferredSize(wandDim);
@@ -1006,17 +1003,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return bottomPanel;
     }
 
-    @SuppressWarnings("unused")
     private SplitButton createHistoryDropdown() {
-        final var placeholder = "History";
         final var noHistory = "(No history items)";
 
         var project = chrome.getProject();
 
-        var dropdown = new SplitButton(placeholder);
-        dropdown.setUnifiedHover(true);
-        dropdown.setToolTipText("Select a previous instruction from history");
-        dropdown.setFocusable(true);
+        var dropdown = new SplitButton("");
+        dropdown.setToolTipText("History");
+        // Icon-only history control
+        SwingUtilities.invokeLater(() -> dropdown.setIcon(Icons.HISTORY));
 
         // Build popup menu on demand, same pattern as branch button
         Supplier<JPopupMenu> historyMenuSupplier = () -> {
@@ -2341,16 +2336,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         private Component findHistoryDropdown() {
+            if (historyDropdown != null) {
+                return historyDropdown;
+            }
             return findComponentInHierarchy(
                     InstructionsPanel.this,
-                    comp -> comp instanceof SplitButton splitButton && "History".equals(splitButton.getText()),
+                    comp -> comp instanceof SplitButton,
                     instructionsArea);
         }
 
         private Component findBranchSplitButton() {
             return findComponentInHierarchy(
                     InstructionsPanel.this,
-                    comp -> comp instanceof SplitButton splitButton && !"History".equals(splitButton.getText()),
+                    comp -> comp instanceof SplitButton && comp != historyDropdown,
                     instructionsArea);
         }
 
