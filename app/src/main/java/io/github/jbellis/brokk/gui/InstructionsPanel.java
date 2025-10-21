@@ -525,7 +525,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         rightPanel.add(wandButton);
         rightPanel.add(Box.createHorizontalStrut(H_GAP));
         rightPanel.add(micButton);
-
+        
         topBarPanel.add(rightPanel, BorderLayout.EAST);
 
         return topBarPanel;
@@ -1008,11 +1008,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var project = chrome.getProject();
 
-        var dropdown = new SplitButton("");
+        var dropdown = new SplitButton("History", true);
         dropdown.setToolTipText("History");
-        // Icon-only history control
-        SwingUtilities.invokeLater(() -> dropdown.setIcon(Icons.HISTORY));
-
+        SwingUtilities.invokeLater(() -> historyDropdown.setIcon(Icons.HISTORY));
         // Build popup menu on demand, same pattern as branch button
         Supplier<JPopupMenu> historyMenuSupplier = () -> {
             var menu = new JPopupMenu();
