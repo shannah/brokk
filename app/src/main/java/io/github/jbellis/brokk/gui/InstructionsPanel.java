@@ -493,15 +493,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         topBarPanel.add(centerPanel, BorderLayout.CENTER);
 
         // Right panel with history, mic, and wand button
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-
-        // Set mic button size
-        var micPref = micButton.getPreferredSize();
-        int micHeight = micPref.height;
-        var micDim = new Dimension(micHeight, micHeight);
-        micButton.setPreferredSize(micDim);
-        micButton.setMinimumSize(micDim);
-        micButton.setMaximumSize(micDim);
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, H_GAP, 0));
 
         // Align the mode badge vertically with toolbar controls without forcing its height (avoid text clipping)
         if (modeBadge != null) {
@@ -512,17 +504,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         this.historyDropdown = createHistoryDropdown();
 
-        var wandDim = new Dimension(micHeight, micHeight);
-        wandButton.setPreferredSize(wandDim);
-        wandButton.setMinimumSize(wandDim);
-        wandButton.setMaximumSize(wandDim);
-        wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
+        // Group the right-side controls into a compact cluster to control intra-button gaps precisely
+        JPanel rightCluster = new JPanel();
+        rightCluster.setOpaque(false);
+        rightCluster.setLayout(new BoxLayout(rightCluster, BoxLayout.X_AXIS));
 
-        rightPanel.add(historyDropdown);
-        rightPanel.add(Box.createHorizontalStrut(H_GAP));
-        rightPanel.add(wandButton);
-        rightPanel.add(Box.createHorizontalStrut(H_GAP));
-        rightPanel.add(micButton);
+        historyDropdown.setAlignmentY(Component.CENTER_ALIGNMENT);
+        wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
+        micButton.setAlignmentY(Component.CENTER_ALIGNMENT);
+
+        rightCluster.add(historyDropdown);
+        rightCluster.add(Box.createHorizontalStrut(H_GAP));
+        rightCluster.add(wandButton);
+        rightCluster.add(Box.createHorizontalStrut(H_GAP));
+        rightCluster.add(micButton);
+
+        // Add the cluster into the right-aligned FlowLayout panel
+        rightPanel.add(rightCluster);
 
         topBarPanel.add(rightPanel, BorderLayout.EAST);
 
