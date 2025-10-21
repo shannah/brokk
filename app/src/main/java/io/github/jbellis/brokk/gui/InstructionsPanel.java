@@ -467,7 +467,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         JPanel topBarPanel = new JPanel(new BorderLayout(H_GAP, 0));
         topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, H_PAD, 2, H_PAD));
 
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, H_GAP, 0));
+        JPanel leftPanel = new JPanel(new GridBagLayout());
 
         // Initialize mode badge
         modeBadge = new JLabel("LUTZ MODE");
@@ -475,9 +475,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         modeBadge.setFont(modeBadge.getFont().deriveFont(Font.BOLD, 10f));
         modeBadge.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
         modeBadge.setHorizontalAlignment(SwingConstants.CENTER);
-        
-        leftPanel.add(modeBadge);
-        
+
+        GridBagConstraints gbc = new GridBagConstraints();
+        gbc.gridx = 0;
+        gbc.gridy = 0;
+        gbc.weightx = 1.0;
+        gbc.weighty = 1.0;
+        gbc.anchor = GridBagConstraints.WEST;
+        gbc.fill = GridBagConstraints.NONE;
+        leftPanel.add(modeBadge, gbc);
+
         topBarPanel.add(leftPanel, BorderLayout.WEST);
         
         // Center placeholder — header with branch selector has been moved to the main window (Chrome).
@@ -496,6 +503,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         micButton.setPreferredSize(micDim);
         micButton.setMinimumSize(micDim);
         micButton.setMaximumSize(micDim);
+
+        // Align the mode badge vertically with toolbar controls without forcing its height (avoid text clipping)
+        if (modeBadge != null) {
+            modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
+            modeBadge.setBorder(BorderFactory.createEmptyBorder(1, 8, 1, 8)); // small vertical padding, no fixed height
+        }
+        // Constrain left panel height to mic height for consistent bar height
+        leftPanel.setMinimumSize(new Dimension(0, micHeight));
+        leftPanel.setPreferredSize(new Dimension(leftPanel.getPreferredSize().width, micHeight));
+        leftPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, micHeight));
         
         var historyDropdown = createHistoryDropdown();
         historyDropdown.setPreferredSize(new Dimension(120, micHeight));
