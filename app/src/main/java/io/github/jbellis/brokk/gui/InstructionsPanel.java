@@ -509,10 +509,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
             modeBadge.setBorder(BorderFactory.createEmptyBorder(1, 8, 1, 8)); // small vertical padding, no fixed height
         }
-        // Constrain left panel height to mic height for consistent bar height
-        leftPanel.setMinimumSize(new Dimension(0, micHeight));
-        leftPanel.setPreferredSize(new Dimension(leftPanel.getPreferredSize().width, micHeight));
-        leftPanel.setMaximumSize(new Dimension(Integer.MAX_VALUE, micHeight));
+        // Do not force left panel height; allow badge natural size to avoid truncation
         
         var historyDropdown = createHistoryDropdown();
         historyDropdown.setPreferredSize(new Dimension(120, micHeight));
