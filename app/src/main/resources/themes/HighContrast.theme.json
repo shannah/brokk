@@ -735,6 +735,9 @@
       "mode_code_bg": "#00FF00",
       "mode_code_fg": "#FFFFFF",
       "mode_code_accent": "#00FF00",
+      "mode_lutz_bg": "#FFD333",
+      "mode_lutz_fg": "#000000",
+      "mode_lutz_accent": "#FFD333",
 
       "badge_border": "#1AEBFF",
       "badge_foreground": "#1AEBFF",

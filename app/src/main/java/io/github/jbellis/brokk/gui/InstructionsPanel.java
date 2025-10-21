@@ -105,8 +105,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final ContextManager contextManager;
     private WorkspaceItemsChipPanel workspaceItemsChipPanel;
     private final JPanel centerPanel;
-    private final ContextAreaContainer contextAreaContainer;
+    private ContextAreaContainer contextAreaContainer;
     private @Nullable JComponent inputLayeredPane;
+    private @Nullable JLabel modeBadge;
 
     public static class ContextAreaContainer extends JPanel {
         private boolean isDragOver = false;
@@ -294,6 +295,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             // Save to both global and project preferences
             MainProject.setGlobalActionMode(mode);
             chrome.getProject().saveActionMode(mode);
+            refreshModeIndicator();
         });
 
         modelSelector = new ModelSelector(chrome);
@@ -344,10 +346,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         JPanel bottomPanel = buildBottomPanel();
         add(bottomPanel, BorderLayout.SOUTH);
 
-        // Initialize the workspace chips area below the command input
-        this.contextAreaContainer = createContextAreaContainer();
-        centerPanel.add(contextAreaContainer, 1);
-
         // Do not set a global default button on the root pane. This prevents plain Enter
         // from submitting when focus is in other UI components (e.g., history/branch lists).
 
@@ -366,6 +364,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Initial compute of the token/cost indicator
         updateTokenCostIndicator();
+
+        // Initialize mode indicator
+        refreshModeIndicator();
     }
 
     public UndoManager getCommandInputUndoManager() {
@@ -470,8 +471,28 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         JPanel topBarPanel = new JPanel(new BorderLayout(H_GAP, 0));
         topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, H_PAD, 2, H_PAD));
 
-        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 0, 0));
+        JPanel leftPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, H_GAP, 0));
 
+        // Initialize mode badge
+        modeBadge = new JLabel("LUTZ MODE");
+        modeBadge.setOpaque(true);
+        modeBadge.setFont(modeBadge.getFont().deriveFont(Font.BOLD, 10f));
+        modeBadge.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
+        modeBadge.setHorizontalAlignment(SwingConstants.CENTER);
+        
+        leftPanel.add(modeBadge);
+        
+        topBarPanel.add(leftPanel, BorderLayout.WEST);
+        
+        // Center placeholder — header with branch selector has been moved to the main window (Chrome).
+        JPanel centerPanel = new JPanel();
+        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.LINE_AXIS));
+        centerPanel.add(Box.createHorizontalGlue());
+        topBarPanel.add(centerPanel, BorderLayout.CENTER);
+        
+        // Right panel with history, mic, and wand button
+        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
+        
         // Set mic button size
         var micPref = micButton.getPreferredSize();
         int micHeight = micPref.height;
@@ -479,20 +500,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         micButton.setPreferredSize(micDim);
         micButton.setMinimumSize(micDim);
         micButton.setMaximumSize(micDim);
-
-        leftPanel.add(micButton);
-
-        topBarPanel.add(leftPanel, BorderLayout.WEST);
-
-        // Center placeholder — header with branch selector has been moved to the main window (Chrome).
-        JPanel centerPanel = new JPanel();
-        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.LINE_AXIS));
-        centerPanel.add(Box.createHorizontalGlue());
-        topBarPanel.add(centerPanel, BorderLayout.CENTER);
-
-        // Right panel with history and wand button
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 0, 0));
-
+        
         var historyDropdown = createHistoryDropdown();
         historyDropdown.setPreferredSize(new Dimension(120, micHeight));
         historyDropdown.setMinimumSize(new Dimension(120, micHeight));
@@ -506,6 +514,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
 
         rightPanel.add(historyDropdown);
+        rightPanel.add(Box.createHorizontalStrut(H_GAP));
+        rightPanel.add(micButton);
         rightPanel.add(Box.createHorizontalStrut(H_GAP));
         rightPanel.add(wandButton);
 
@@ -521,19 +531,17 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         // Command Input Field
         JScrollPane commandScrollPane = new JScrollPane(instructionsArea);
         commandScrollPane.setVerticalScrollBarPolicy(JScrollPane.VERTICAL_SCROLLBAR_AS_NEEDED);
-        commandScrollPane.setPreferredSize(new Dimension(600, 80)); // Use preferred size for layout
-        // Make the scroll area the flexible piece so chips + toolbar remain visible under tight space
+        commandScrollPane.setPreferredSize(new Dimension(600, 80));
         commandScrollPane.setMinimumSize(new Dimension(100, 0));
 
-        // Create layered pane with overlay (no colored stripe)
+        // Create layered pane with overlay
         this.inputLayeredPane = commandInputOverlay.createLayeredPane(commandScrollPane);
-        this.inputLayeredPane.setBorder(new EmptyBorder(0, H_PAD, 0, H_PAD));
 
-        // Add the layered input directly (no mode badge)
         panel.add(this.inputLayeredPane);
 
-        // Reference-file table will be inserted just below the command input (now layeredPane)
-        // by initializeReferenceFileTable()
+        // Context area below the input
+        this.contextAreaContainer = createContextAreaContainer();
+        panel.add(this.contextAreaContainer);
 
         return panel;
     }
@@ -1709,6 +1717,66 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
         // Always return focus to the instructions area to avoid re-triggering with Enter on the button
         requestCommandInputFocus();
+    }
+
+    private void refreshModeIndicator() {
+        String mode = actionButton.getSelectedMode();
+        boolean isDark = UIManager.getBoolean("laf.dark");
+
+        Color badgeBg;
+        Color badgeFg;
+        Color accent;
+        String badgeText;
+
+        try {
+            switch (mode) {
+                case ACTION_CODE -> {
+                    badgeText = "CODE MODE";
+                    badgeBg = ThemeColors.getColor(isDark, ThemeColors.MODE_CODE_BG);
+                    badgeFg = ThemeColors.getColor(isDark, ThemeColors.MODE_CODE_FG);
+                    accent = ThemeColors.getColor(isDark, ThemeColors.MODE_CODE_ACCENT);
+                }
+                case ACTION_ASK -> {
+                    badgeText = "ASK MODE";
+                    badgeBg = ThemeColors.getColor(isDark, ThemeColors.MODE_ANSWER_BG);
+                    badgeFg = ThemeColors.getColor(isDark, ThemeColors.MODE_ANSWER_FG);
+                    accent = ThemeColors.getColor(isDark, ThemeColors.MODE_ANSWER_ACCENT);
+                }
+                case ACTION_SEARCH -> {
+                    badgeText = "LUTZ MODE";
+                    badgeBg = ThemeColors.getColor(isDark, ThemeColors.MODE_LUTZ_BG);
+                    badgeFg = ThemeColors.getColor(isDark, ThemeColors.MODE_LUTZ_FG);
+                    accent = ThemeColors.getColor(isDark, ThemeColors.MODE_LUTZ_ACCENT);
+                }
+                default -> {
+                    badgeText = "LUTZ MODE";
+                    badgeBg = new Color(0xF4C430);
+                    badgeFg = isDark ? Color.WHITE : new Color(0xF57F17);
+                    accent = new Color(0xF4C430);
+                }
+            }
+        } catch (Exception ex) {
+            logger.debug("Theme color lookup failed; using fallback colors", ex);
+            badgeText = "LUTZ MODE";
+            badgeBg = new Color(0xF4C430);
+            badgeFg = isDark ? Color.WHITE : new Color(0xF57F17);
+            accent = new Color(0xF4C430);
+        }
+
+        if (modeBadge != null) {
+            modeBadge.setText(badgeText);
+            modeBadge.setBackground(badgeBg);
+            modeBadge.setForeground(badgeFg);
+            modeBadge.repaint();
+        }
+
+        if (inputLayeredPane != null) {
+            var inner = new EmptyBorder(0, H_PAD, 0, H_PAD);
+            var stripe = new javax.swing.border.MatteBorder(0, 4, 0, 0, accent);
+            inputLayeredPane.setBorder(BorderFactory.createCompoundBorder(stripe, inner));
+            inputLayeredPane.revalidate();
+            inputLayeredPane.repaint();
+        }
     }
 
     public void populateInstructionsArea(String text) {
