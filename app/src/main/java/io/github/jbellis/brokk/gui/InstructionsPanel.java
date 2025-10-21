@@ -239,8 +239,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         setFocusTraversalPolicy(new InstructionsPanelFocusTraversalPolicy());
         setFocusCycleRoot(true);
         setFocusTraversalPolicyProvider(true);
-
         // Initialize components
+        this.historyDropdown = createHistoryDropdown();
         instructionsArea = buildCommandInputField(); // Build first to add listener
         wandButton = new WandButton(
                 contextManager, chrome, instructionsArea, this::getInstructions, this::populateInstructionsArea);
@@ -329,6 +329,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         SwingUtilities.invokeLater(() -> chrome.themeManager.registerPopupMenu(tokenUsageBarPopupMenu));
 
+        this.contextAreaContainer = createContextAreaContainer();
         // Top Bar (History, Configure Models, Stop) (North)
         JPanel topBarPanel = buildTopBarPanel();
         add(topBarPanel, BorderLayout.NORTH);
@@ -474,7 +475,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         modeBadge.setHorizontalAlignment(SwingConstants.CENTER);
         modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
 
-        this.historyDropdown = createHistoryDropdown();
         historyDropdown.setAlignmentY(Component.CENTER_ALIGNMENT);
         wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
         micButton.setAlignmentY(Component.CENTER_ALIGNMENT);
@@ -504,7 +504,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         panel.add(this.inputLayeredPane);
 
         // Context area below the input
-        this.contextAreaContainer = createContextAreaContainer();
         panel.add(this.contextAreaContainer);
 
         return panel;
@@ -964,12 +963,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         final var noHistory = "(No history items)";
 
         var project = chrome.getProject();
-		// this is a dirty hack since the flow layout breaks the split button
+        // this is a dirty hack since the flow layout breaks the split button
         var dropdown = new SplitButton("____", true);
         dropdown.setToolTipText("History");
         SwingUtilities.invokeLater(() -> {
-        	dropdown.setIcon(Icons.HISTORY);
-        	dropdown.setText("");
+            dropdown.setIcon(Icons.HISTORY);
+            dropdown.setText("");
         });
         // Build popup menu on demand, same pattern as branch button
         Supplier<JPopupMenu> historyMenuSupplier = () -> {
@@ -2292,11 +2291,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         private Component findHistoryDropdown() {
-            if (historyDropdown != null) {
-                return historyDropdown;
-            }
-            return findComponentInHierarchy(
-                    InstructionsPanel.this, comp -> comp instanceof SplitButton, instructionsArea);
+            return historyDropdown;
         }
 
         private Component findBranchSplitButton() {
