@@ -53,16 +53,8 @@ public class ToolRegistry {
             logger.warn("Invalid tool request for display: {} - {}", request.name(), e.getMessage());
             logger.debug("Full tool request: {}", request.arguments());
 
-            // Return a formatted error message for display
-            var headline = headlineFor(request.name());
-            return """
-                   ### %s (validation error)
-                   ```
-                   Error: %s
-                   Arguments: %s
-                   ```
-                   """
-                    .formatted(headline, e.getMessage(), request.arguments());
+            // Return empty string - validation details are logged, not shown to user
+            return "";
         }
     }
 
