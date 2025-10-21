@@ -16,6 +16,7 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.FrozenFragment;
 import io.github.jbellis.brokk.git.GitRepo;
+import io.github.jbellis.brokk.git.GitWorkflow;
 import io.github.jbellis.brokk.gui.dependencies.DependenciesDrawerPanel;
 import io.github.jbellis.brokk.gui.dependencies.DependenciesPanel;
 import io.github.jbellis.brokk.gui.dialogs.BlitzForgeProgressDialog;
@@ -838,6 +839,34 @@ public class Chrome
 
                 // Refresh the commit panel to show the new files
                 updateCommitPanel();
+
+                // Open commit dialog with prebaked message for project files
+                SwingUtilities.invokeLater(() -> {
+                    // Get the files that were just staged (including .gitignore if it was added)
+                    var filesToCommit = new ArrayList<ProjectFile>();
+                    filesToCommit.add(new ProjectFile(gitTopLevel, ".gitignore"));
+                    filesToCommit.add(new ProjectFile(gitTopLevel, ".brokk/style.md"));
+                    filesToCommit.add(new ProjectFile(gitTopLevel, ".brokk/review.md"));
+                    filesToCommit.add(new ProjectFile(gitTopLevel, ".brokk/project.properties"));
+
+                    // Open commit dialog with prebaked message
+                    var dialog = new CommitDialog(
+                            frame,
+                            this,
+                            contextManager,
+                            new GitWorkflow(contextManager),
+                            filesToCommit,
+                            "Add Brokk project files", // Pre-filled message
+                            commitResult -> {
+                                showNotification(
+                                        NotificationRole.INFO,
+                                        "Committed " + gitRepo.shortHash(commitResult.commitId()) + ": "
+                                                + commitResult.firstLine());
+                                updateCommitPanel();
+                                updateLogTab();
+                            });
+                    dialog.setVisible(true);
+                });
             } catch (Exception e) {
                 logger.error(e);
                 toolError("Error setting up .gitignore: " + e.getMessage(), "Error");
