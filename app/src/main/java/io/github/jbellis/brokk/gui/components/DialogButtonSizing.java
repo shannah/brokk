@@ -49,8 +49,7 @@ public final class DialogButtonSizing {
     // Track listeners with weak keys so GC can collect containers/windows no longer referenced elsewhere.
     private static final Map<Container, ContainerListener> parentListeners =
             Collections.synchronizedMap(new WeakHashMap<>());
-    private static final Map<Window, WindowListener> dialogListeners =
-            Collections.synchronizedMap(new WeakHashMap<>());
+    private static final Map<Window, WindowListener> dialogListeners = Collections.synchronizedMap(new WeakHashMap<>());
 
     private DialogButtonSizing() {
         // Utility class - no instances
@@ -219,7 +218,9 @@ public final class DialogButtonSizing {
             }
             // Determine height to preserve
             Dimension original = (Dimension) mb.getClientProperty(ORIGINAL_PREF_PROP);
-            int height = original != null ? original.height : (mb.getPreferredSize() != null ? mb.getPreferredSize().height : -1);
+            int height = original != null
+                    ? original.height
+                    : (mb.getPreferredSize() != null ? mb.getPreferredSize().height : -1);
             if (height < 0) {
                 // Fallback height if none available
                 height = mb.getHeight() > 0 ? mb.getHeight() : mb.getPreferredSize().height;
