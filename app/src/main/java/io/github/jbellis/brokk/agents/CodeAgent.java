@@ -240,11 +240,6 @@ public class CodeAgent {
                 stopDetails = fatalApply.stopDetails();
                 break;
             }
-            if (applyOutcome instanceof Step.Retry retryApply) {
-                cs = retryApply.cs();
-                es = retryApply.es();
-                continue; // Restart main loop
-            }
             cs = applyOutcome.cs();
             es = applyOutcome.es();
 
@@ -268,6 +263,12 @@ public class CodeAgent {
                         .map(pf -> new ContextFragment.ProjectPathFragment(pf, contextManager))
                         .collect(Collectors.toList());
                 context = context.addPathFragments(newFrags);
+            }
+
+            if (applyOutcome instanceof Step.Retry retryApply) {
+                cs = retryApply.cs();
+                es = retryApply.es();
+                continue; // Restart main loop
             }
 
             // After a successful apply, consider compacting the turn into a clean, synthetic summary.
