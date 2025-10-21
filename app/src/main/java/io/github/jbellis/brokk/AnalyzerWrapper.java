@@ -47,6 +47,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
     private final LoggingExecutorService analyzerExecutor;
     private volatile @Nullable Thread analyzerExecutorThread;
 
+    @SuppressWarnings("deprecation") // TODO: Update to use multi-listener constructor in Phase 5
     public AnalyzerWrapper(IProject project, @Nullable AnalyzerListener listener) {
         this.project = project;
         this.root = project.getRoot();
