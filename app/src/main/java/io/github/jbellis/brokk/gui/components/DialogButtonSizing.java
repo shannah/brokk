@@ -62,7 +62,6 @@ public final class DialogButtonSizing {
      * @param b the MaterialButton that may need dialog sizing
      */
     public static void registerIfInDialog(MaterialButton b) {
-        if (b == null) return;
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> registerIfInDialog(b));
             return;
@@ -132,7 +131,6 @@ public final class DialogButtonSizing {
      * @param b the MaterialButton to unregister
      */
     public static void unregister(MaterialButton b) {
-        if (b == null) return;
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> unregister(b));
             return;
@@ -169,7 +167,6 @@ public final class DialogButtonSizing {
 
     // Recompute sizing for MaterialButton children directly inside the provided parent container.
     private static void recomputeForContainer(Container parent) {
-        if (parent == null) return;
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> recomputeForContainer(parent));
             return;
@@ -251,7 +248,6 @@ public final class DialogButtonSizing {
 
     // Recompute for all parent containers owned by a given window (dialog)
     private static void recomputeForWindow(Window w) {
-        if (w == null) return;
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> recomputeForWindow(w));
             return;
@@ -288,7 +284,6 @@ public final class DialogButtonSizing {
 
     // Cleanup: restore all buttons under the window and remove listeners for containers that belong to the window.
     private static void cleanupWindow(Window w) {
-        if (w == null) return;
         if (!SwingUtilities.isEventDispatchThread()) {
             SwingUtilities.invokeLater(() -> cleanupWindow(w));
             return;
@@ -344,7 +339,6 @@ public final class DialogButtonSizing {
 
     // Utility to check whether 'ancestor' is an ancestor of 'child' (walk up parents)
     private static boolean isAncestor(Window ancestor, Container child) {
-        if (ancestor == null || child == null) return false;
         Container c = child;
         while (c != null) {
             if (c == ancestor) return true;
