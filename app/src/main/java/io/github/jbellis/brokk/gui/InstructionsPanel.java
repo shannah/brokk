@@ -461,12 +461,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     }
 
     private JPanel buildTopBarPanel() {
-        // Restored History dropdown alongside branch split button.
         // Replaced history dropdown with compact branch split button in top bar
-        JPanel topBarPanel = new JPanel(new BorderLayout(H_GAP, 0));
+        var topBarPanel = new JPanel();
+        topBarPanel.setLayout(new BoxLayout(topBarPanel, BoxLayout.X_AXIS));
         topBarPanel.setBorder(BorderFactory.createEmptyBorder(0, H_PAD, 2, H_PAD));
-
-        JPanel leftPanel = new JPanel(new GridBagLayout());
 
         // Initialize mode badge
         modeBadge = new JLabel("LUTZ MODE");
@@ -474,55 +472,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         modeBadge.setFont(modeBadge.getFont().deriveFont(Font.BOLD, 10f));
         modeBadge.setBorder(BorderFactory.createEmptyBorder(2, 6, 2, 6));
         modeBadge.setHorizontalAlignment(SwingConstants.CENTER);
-
-        GridBagConstraints gbc = new GridBagConstraints();
-        gbc.gridx = 0;
-        gbc.gridy = 0;
-        gbc.weightx = 1.0;
-        gbc.weighty = 1.0;
-        gbc.anchor = GridBagConstraints.WEST;
-        gbc.fill = GridBagConstraints.NONE;
-        leftPanel.add(modeBadge, gbc);
-
-        topBarPanel.add(leftPanel, BorderLayout.WEST);
-
-        // Center placeholder — header with branch selector has been moved to the main window (Chrome).
-        JPanel centerPanel = new JPanel();
-        centerPanel.setLayout(new BoxLayout(centerPanel, BoxLayout.LINE_AXIS));
-        centerPanel.add(Box.createHorizontalGlue());
-        topBarPanel.add(centerPanel, BorderLayout.CENTER);
-
-        // Right panel with history, mic, and wand button
-        JPanel rightPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, H_GAP, 0));
-
-        // Align the mode badge vertically with toolbar controls without forcing its height (avoid text clipping)
-        if (modeBadge != null) {
-            modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
-            modeBadge.setBorder(BorderFactory.createEmptyBorder(1, 8, 1, 8)); // small vertical padding, no fixed height
-        }
-        // Do not force left panel height; allow badge natural size to avoid truncation
+        modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
 
         this.historyDropdown = createHistoryDropdown();
-
-        // Group the right-side controls into a compact cluster to control intra-button gaps precisely
-        JPanel rightCluster = new JPanel();
-        rightCluster.setOpaque(false);
-        rightCluster.setLayout(new BoxLayout(rightCluster, BoxLayout.X_AXIS));
-
         historyDropdown.setAlignmentY(Component.CENTER_ALIGNMENT);
         wandButton.setAlignmentY(Component.CENTER_ALIGNMENT);
         micButton.setAlignmentY(Component.CENTER_ALIGNMENT);
 
-        rightCluster.add(historyDropdown);
-        rightCluster.add(Box.createHorizontalStrut(H_GAP));
-        rightCluster.add(wandButton);
-        rightCluster.add(Box.createHorizontalStrut(H_GAP));
-        rightCluster.add(micButton);
-
-        // Add the cluster into the right-aligned FlowLayout panel
-        rightPanel.add(rightCluster);
-
-        topBarPanel.add(rightPanel, BorderLayout.EAST);
+        topBarPanel.add(modeBadge);
+        topBarPanel.add(Box.createHorizontalGlue());
+        topBarPanel.add(historyDropdown);
+        topBarPanel.add(wandButton);
+        topBarPanel.add(micButton);
 
         return topBarPanel;
     }
@@ -1003,8 +964,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         final var noHistory = "(No history items)";
 
         var project = chrome.getProject();
-
-        var dropdown = new SplitButton("History", true);
+		// this is a dirty hack since the flow layout breaks the split button
+        var dropdown = new SplitButton("____", true);
         dropdown.setToolTipText("History");
         SwingUtilities.invokeLater(() -> {
         	dropdown.setIcon(Icons.HISTORY);
