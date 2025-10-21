@@ -268,17 +268,15 @@ public class ContextAgent {
 
         Thread t2 = Thread.ofVirtual().start(() -> {
             try {
-                results[1] = new RecommendationResult(true, List.of(), "No unanalyzed files", null);
-                // TODO add this back when we are blocking excluded files from getAllFiles
-                //                results[1] = processGroup(
-                //                        GroupType.UNANALYZED,
-                //                        unAnalyzedFiles,
-                //                        Map.of(),
-                //                        workspaceRepresentation,
-                //                        allowSkipPruning,
-                //                        evalBudgetRemaining,
-                //                        pruneBudgetRemaining,
-                //                        existingFiles);
+                results[1] = processGroup(
+                        GroupType.UNANALYZED,
+                        unAnalyzedFiles,
+                        Map.of(),
+                        workspaceRepresentation,
+                        allowSkipPruning,
+                        evalBudgetRemaining,
+                        pruneBudgetRemaining,
+                        existingFiles);
             } catch (Throwable t) {
                 errors[1] = t;
             }
@@ -335,13 +333,11 @@ public class ContextAgent {
 
         // If small, include everything without LLM
         if (allowSkipPruning && initialTokens <= skipPruningBudget) {
+            // Under skip-pruning budget
             LlmRecommendation rec;
             rec = type == GroupType.ANALYZED
-                    ? new LlmRecommendation(
-                            List.of(),
-                            new ArrayList<>(allSummariesForAnalyzed.keySet()),
-                            "Under skip-pruning budget (" + type + ")")
-                    : new LlmRecommendation(groupFiles, List.of(), "Under skip-pruning budget (" + type + ")");
+                    ? new LlmRecommendation(List.of(), new ArrayList<>(allSummariesForAnalyzed.keySet()), "")
+                    : new LlmRecommendation(groupFiles, List.of(), "");
             return createResult(rec, existingFiles);
         }
 
