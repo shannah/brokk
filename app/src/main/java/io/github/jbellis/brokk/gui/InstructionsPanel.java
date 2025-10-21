@@ -1722,6 +1722,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private void refreshModeIndicator() {
         String mode = actionButton.getSelectedMode();
         boolean isDark = UIManager.getBoolean("laf.dark");
+        boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
 
         Color badgeBg;
         Color badgeFg;
@@ -1776,6 +1777,12 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             inputLayeredPane.setBorder(BorderFactory.createCompoundBorder(stripe, inner));
             inputLayeredPane.revalidate();
             inputLayeredPane.repaint();
+        }
+
+        // Set action button foreground: black in high contrast mode, otherwise use contrasting color
+        Color buttonForeground = isHighContrast ? Color.BLACK : ColorUtil.contrastingText(accent);
+        if (!isActionRunning()) {
+            actionButton.setForeground(buttonForeground);
         }
     }
 
@@ -2126,8 +2133,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 // Draw divider line if not in stop mode
                 if (!inStopMode) {
                     int dropdownX = getWidth() - DROPDOWN_WIDTH;
-                    // Force the divider to be white
-                    g2.setColor(Color.WHITE);
+                    boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
+                    g2.setColor(isHighContrast ? Color.BLACK : Color.WHITE);
                     g2.drawLine(dropdownX, 6, dropdownX, getHeight() - 6);
 
                     // Lazy-load and paint dropdown icon centered in the dropdown area
@@ -2140,6 +2147,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     Icon iconToPaint = (dropdownIcon instanceof SwingUtil.ThemedIcon themedIcon)
                             ? themedIcon.delegate()
                             : dropdownIcon;
+                    // Apply high-contrast processing to dropdown icon
+                    iconToPaint = ColorUtil.createHighContrastIcon(iconToPaint, getBackground(), isHighContrast);
                     if (iconToPaint != null) {
                         int iw = iconToPaint.getIconWidth();
                         int ih = iconToPaint.getIconHeight();
