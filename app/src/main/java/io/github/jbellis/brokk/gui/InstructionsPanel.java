@@ -1008,7 +1008,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         var dropdown = new SplitButton("History", true);
         dropdown.setToolTipText("History");
-        SwingUtilities.invokeLater(() -> historyDropdown.setIcon(Icons.HISTORY));
+        SwingUtilities.invokeLater(() -> {
+        	dropdown.setIcon(Icons.HISTORY);
+        	dropdown.setText("");
+        });
         // Build popup menu on demand, same pattern as branch button
         Supplier<JPopupMenu> historyMenuSupplier = () -> {
             var menu = new JPopupMenu();
