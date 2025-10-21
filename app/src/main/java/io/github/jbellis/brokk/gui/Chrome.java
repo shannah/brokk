@@ -860,8 +860,8 @@ public class Chrome
                             commitResult -> {
                                 showNotification(
                                         NotificationRole.INFO,
-                                        "Committed " + gitRepo.shortHash(commitResult.commitId())
-                                                + ": " + commitResult.firstLine());
+                                        "Committed " + gitRepo.shortHash(commitResult.commitId()) + ": "
+                                                + commitResult.firstLine());
                                 updateCommitPanel();
                                 updateLogTab();
                             });
