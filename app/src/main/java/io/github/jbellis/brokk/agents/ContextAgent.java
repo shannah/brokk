@@ -325,8 +325,7 @@ public class ContextAgent {
         // Build initial payload preview for token estimation
         int initialTokens;
         if (type == GroupType.ANALYZED) {
-            var groupSummaries = filterSummariesByFiles(allSummariesForAnalyzed, groupFiles);
-            initialTokens = Messages.getApproximateTokens(groupSummaries.values());
+            initialTokens = Messages.getApproximateTokens(allSummariesForAnalyzed.values());
         } else {
             var contentsMap = readFileContents(groupFiles);
             initialTokens = Messages.getApproximateTokens(contentsMap.values());
@@ -336,11 +335,11 @@ public class ContextAgent {
 
         // If small, include everything without LLM
         if (allowSkipPruning && initialTokens <= skipPruningBudget) {
-            LlmRecommendation rec = (type == GroupType.ANALYZED)
+            LlmRecommendation rec;
+            rec = type == GroupType.ANALYZED
                     ? new LlmRecommendation(
                             List.of(),
-                            new ArrayList<>(filterSummariesByFiles(allSummariesForAnalyzed, groupFiles)
-                                    .keySet()),
+                            new ArrayList<>(allSummariesForAnalyzed.keySet()),
                             "Under skip-pruning budget (" + type + ")")
                     : new LlmRecommendation(groupFiles, List.of(), "Under skip-pruning budget (" + type + ")");
             return createResult(rec, existingFiles);
@@ -393,13 +392,6 @@ public class ContextAgent {
         return createResult(evalRec, existingFiles);
     }
 
-    private Map<CodeUnit, String> filterSummariesByFiles(Map<CodeUnit, String> allSummaries, List<ProjectFile> files) {
-        Set<ProjectFile> fileSet = new HashSet<>(files);
-        return allSummaries.entrySet().stream()
-                .filter(e -> fileSet.contains(e.getKey().source()))
-                .collect(Collectors.toMap(Map.Entry::getKey, Map.Entry::getValue));
-    }
-
     private LlmRecommendation evaluateWithHalving(
             GroupType type,
             List<ProjectFile> files,
@@ -409,8 +401,7 @@ public class ContextAgent {
 
         List<ProjectFile> current = new ArrayList<>(files);
         while (true) {
-            Map<CodeUnit, String> summaries =
-                    (type == GroupType.ANALYZED) ? filterSummariesByFiles(allSummariesForAnalyzed, current) : Map.of();
+            Map<CodeUnit, String> summaries = type == GroupType.ANALYZED ? allSummariesForAnalyzed : Map.of();
 
             Map<ProjectFile, String> contents = (type == GroupType.UNANALYZED) ? readFileContents(current) : Map.of();
 
