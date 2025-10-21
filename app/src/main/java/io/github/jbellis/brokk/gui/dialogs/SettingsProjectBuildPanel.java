@@ -713,9 +713,19 @@ public class SettingsProjectBuildPanel extends JPanel {
 
     private void updateBuildDetailsFieldsFromAgent(BuildAgent.BuildDetails details) {
         SwingUtilities.invokeLater(() -> {
+            // Update this panel's fields
             buildCleanCommandField.setText(details.buildLintCommand());
             allTestsCommandField.setText(details.testAllCommand());
             someTestsCommandField.setText(details.testSomeCommand());
+
+            // Also refresh the CI exclusions list model in the parent SettingsProjectPanel
+            try {
+                var spp = parentDialog.getProjectPanel();
+                spp.updateExcludedDirectories(details.excludedDirectories());
+            } catch (Exception ex) {
+                logger.warn("Failed to update CI exclusions list from agent details: {}", ex.getMessage(), ex);
+            }
+
             logger.trace("UI fields updated with new BuildDetails from agent: {}", details);
         });
     }
