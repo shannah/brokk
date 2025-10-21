@@ -91,9 +91,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
     private static final String PLACEHOLDER_TEXT = "Put your instructions or questions here.";
 
-    private final Color defaultActionButtonBg;
-    private final Color secondaryActionButtonBg;
-
     private final Chrome chrome;
     private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
@@ -108,6 +105,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private ContextAreaContainer contextAreaContainer;
     private @Nullable JComponent inputLayeredPane;
     private @Nullable JLabel modeBadge;
+    private final Color defaultActionButtonBg;
+    private final Color secondaryActionButtonBg;
 
     public static class ContextAreaContainer extends JPanel {
         private boolean isDragOver = false;
@@ -265,14 +264,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         storedAction = loadActionMode();
 
         this.defaultActionButtonBg = UIManager.getColor("Button.default.background");
-        // this is when the button is in the blocking state
         this.secondaryActionButtonBg = UIManager.getColor("Button.background");
 
         // Create split action button with dropdown
         actionButton = new ActionSplitButton(
                 () -> isActionRunning(),
-                this.secondaryActionButtonBg,
-                this.defaultActionButtonBg,
                 ACTION_SEARCH); // Default to Search
 
         actionButton.setOpaque(false);
@@ -1942,8 +1938,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static class ActionSplitButton extends MaterialButton implements ThemeAware {
         private static final long serialVersionUID = 1L;
         private final Supplier<Boolean> isActionRunning;
-        private final Color secondaryActionButtonBg;
-        private final Color defaultActionButtonBg;
         private @Nullable Icon originalIcon;
         private String selectedMode;
         private final List<Consumer<String>> modeChangeListeners = new ArrayList<>();
@@ -1960,13 +1954,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         public ActionSplitButton(
                 Supplier<Boolean> isActionRunning,
-                Color secondaryActionButtonBg,
-                Color defaultActionButtonBg,
                 String defaultMode) {
             super();
             this.isActionRunning = isActionRunning;
-            this.secondaryActionButtonBg = secondaryActionButtonBg;
-            this.defaultActionButtonBg = defaultActionButtonBg;
             this.selectedMode = defaultMode;
             this.originalIcon = null;
             this.dropdownIcon = null;
@@ -2185,10 +2175,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         @Override
         public void applyTheme(GuiTheme guiTheme, boolean wordWrap) {
+            // Re-read colors from UIManager instead of using cached values
+            Color currentDefaultBg = UIManager.getColor("Button.default.background");
+            Color currentSecondaryBg = UIManager.getColor("Button.background");
+            
             if (this.isActionRunning.get()) {
-                setBackground(this.secondaryActionButtonBg);
+                setBackground(currentSecondaryBg);
             } else {
-                setBackground(this.defaultActionButtonBg);
+                setBackground(currentDefaultBg);
             }
             if (this.originalIcon != null) {
                 setIcon(this.originalIcon);
