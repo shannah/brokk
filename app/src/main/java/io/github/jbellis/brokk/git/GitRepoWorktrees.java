@@ -7,13 +7,9 @@ import io.github.jbellis.brokk.SessionRegistry;
 import io.github.jbellis.brokk.git.IGitRepo.WorktreeInfo;
 import io.github.jbellis.brokk.util.Environment;
 import java.io.IOException;
-import java.nio.file.FileVisitResult;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;
 import java.nio.file.Path;
-import java.nio.file.SimpleFileVisitor;
-import java.nio.file.StandardCopyOption;
-import java.nio.file.attribute.BasicFileAttributes;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Set;
@@ -34,12 +30,10 @@ public class GitRepoWorktrees {
 
     private final GitRepo repo;
     private final Repository repository;
-    private final Path projectRoot;
 
     public GitRepoWorktrees(GitRepo repo) {
         this.repo = repo;
         this.repository = repo.getRepository();
-        this.projectRoot = repo.getProjectRoot();
     }
 
     /** Lists worktrees and invalid paths (those that don't exist on disk). */
@@ -276,33 +270,6 @@ public class GitRepoWorktrees {
             Thread.currentThread().interrupt();
             logger.warn("Interrupted while checking for git executable, disabling worktree support", e);
             return false;
-        }
-    }
-
-    // -------------------- Internal helpers --------------------
-    private static class CopyingFileVisitor extends SimpleFileVisitor<Path> {
-        private final Path sourceRoot;
-        private final Path targetRoot;
-
-        CopyingFileVisitor(Path sourceRoot, Path targetRoot) {
-            this.sourceRoot = sourceRoot;
-            this.targetRoot = targetRoot;
-        }
-
-        @Override
-        public FileVisitResult preVisitDirectory(Path dir, BasicFileAttributes attrs) throws IOException {
-            var relative = sourceRoot.relativize(dir);
-            var targetDir = targetRoot.resolve(relative);
-            Files.createDirectories(targetDir);
-            return FileVisitResult.CONTINUE;
-        }
-
-        @Override
-        public FileVisitResult visitFile(Path file, BasicFileAttributes attrs) throws IOException {
-            var relative = sourceRoot.relativize(file);
-            var targetFile = targetRoot.resolve(relative);
-            Files.copy(file, targetFile, StandardCopyOption.REPLACE_EXISTING, StandardCopyOption.COPY_ATTRIBUTES);
-            return FileVisitResult.CONTINUE;
         }
     }
 }
