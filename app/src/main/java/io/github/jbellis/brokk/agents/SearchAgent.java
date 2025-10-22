@@ -117,7 +117,10 @@ public class SearchAgent {
     }
 
     private TaskResult executeInternal() throws InterruptedException {
-        // Seed Workspace with ContextAgent recommendations (same pattern as ArchitectAgent)
+        // Single pruning turn if workspace is not empty
+        performInitialPruningTurn();
+
+        // Expand Workspace with ContextAgent scan
         addInitialContextToWorkspace();
 
         // Main loop: propose actions, execute, record, repeat until finalization
@@ -598,9 +601,71 @@ public class SearchAgent {
         };
     }
 
-    // =======================
-    // Initial context seeding
-    // =======================
+    private void performInitialPruningTurn() throws InterruptedException {
+        // Skip if workspace is empty
+        if (cm.liveContext().isEmpty()) {
+            return;
+        }
+
+        // Build pruning prompt
+        var messages = buildInitialPruningPrompt();
+        var toolSpecs = new ArrayList<>(toolRegistry.getTools(this, List.of("performedInitialReview")));
+        toolSpecs.addAll(toolRegistry.getRegisteredTools(List.of("dropWorkspaceFragments")));
+
+        io.llmOutput("\n**Brokk** performing initial workspace review…", ChatMessageType.AI, true, false);
+        var jLlm = cm.getLlm(new Llm.Options(cm.getService().getScanModel(), "Janitor: " + goal).withEcho());
+        var result = jLlm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.AUTO, this));
+        if (result.error() != null || result.isEmpty()) {
+            return;
+        }
+
+        // Record the turn
+        sessionMessages.add(new UserMessage("Review the current workspace. If relevant, prune irrelevant fragments."));
+        sessionMessages.add(result.aiMessage());
+
+        // Execute tool requests
+        var ai = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
+        for (var req : ai.toolExecutionRequests()) {
+            try {
+                toolRegistry.executeTool(this, req);
+            } catch (Exception e) {
+                logger.warn("Tool execution failed during initial pruning for {}: {}", req.name(), e.getMessage());
+            }
+        }
+    }
+
+    private List<ChatMessage> buildInitialPruningPrompt() {
+        var messages = new ArrayList<ChatMessage>();
+
+        var sys = new SystemMessage(
+                """
+                You are the Janitor Agent cleaning the Workspace. It is critically important to remove irrelevant
+                fragments before proceeding; they are highly distracting to the other Agents.
+
+                Your task:
+                  - Evaluate the current workspace contents.
+                  - Call dropWorkspaceFragments to remove irrelevant fragments.
+                  - ONLY if all fragments are relevant, do nothing (skip the tool call).
+                """);
+        messages.add(sys);
+
+        // Current Workspace contents
+        messages.addAll(CodePrompts.instance.getWorkspaceContentsMessages(cm.liveContext()));
+
+        // Goal and project context
+        messages.add(new UserMessage(
+                """
+                <goal>
+                %s
+                </goal>
+
+                Review the Workspace above. Remove ALL fragments that are not directly useful for accomplishing the goal.
+                If the workspace is already well-curated, you're done!
+                """
+                        .formatted(goal)));
+
+        return messages;
+    }
 
     private void addInitialContextToWorkspace() throws InterruptedException {
         var contextAgent = new ContextAgent(cm, cm.getService().getScanModel(), goal);
@@ -666,6 +731,12 @@ public class SearchAgent {
     // =======================
     // Answer/abort tools
     // =======================
+
+    @Tool("Signal that the initial workspace review is complete and all fragments are relevant.")
+    public String performedInitialReview() {
+        logger.debug("performedInitialReview: workspace is already well-curated");
+        return "Initial review complete; workspace is well-curated.";
+    }
 
     @Tool("Provide a final answer to a purely informational request. Use this when no code changes are required.")
     public String answer(
