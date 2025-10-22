@@ -114,6 +114,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public static class ContextAreaContainer extends JPanel {
         private boolean isDragOver = false;
         private TokenUsageBar.WarningLevel warningLevel = TokenUsageBar.WarningLevel.NONE;
+        private boolean readOnly = false;
 
         public ContextAreaContainer() {
             super(new BorderLayout());
@@ -135,6 +136,11 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         private void updateBorderColor() {
+            String title = readOnly ? "Context (Read-only)" : "Context";
+            applyTitledBorder(title);
+        }
+
+        private void applyTitledBorder(String title) {
             Color borderColor = UIManager.getColor("Component.borderColor");
             int thickness = 1;
             if (warningLevel == TokenUsageBar.WarningLevel.RED) {
@@ -144,11 +150,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 borderColor = new Color(0xFFA500);
                 thickness = 3;
             }
-
             var lineBorder = BorderFactory.createLineBorder(borderColor, thickness);
-            var titledBorder = BorderFactory.createTitledBorder(lineBorder, "Context");
+            var titledBorder = BorderFactory.createTitledBorder(lineBorder, title);
             var marginBorder = BorderFactory.createEmptyBorder(8, 8, 8, 8);
             setBorder(BorderFactory.createCompoundBorder(marginBorder, titledBorder));
+        }
+
+        public void setReadOnly(boolean readOnly) {
+            SwingUtilities.invokeLater(() -> {
+                if (this.readOnly != readOnly) {
+                    this.readOnly = readOnly;
+                    updateBorderColor();
+                    repaint();
+                }
+            });
         }
 
         @Override
@@ -350,9 +365,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Do not set a global default button on the root pane. This prevents plain Enter
         // from submitting when focus is in other UI components (e.g., history/branch lists).
-
-        // Add this panel as a listener to context changes
-        this.contextManager.addContextListener(this);
 
         // --- Autocomplete Setup ---
         instructionCompletionProvider = new InstructionsCompletionProvider();
@@ -617,14 +629,16 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         tokenUsageBar.addMouseListener(new MouseAdapter() {
             @Override
             public void mousePressed(MouseEvent e) {
-                if (e.isPopupTrigger()) {
+                // Block popup when read-only (tokenUsageBar is disabled)
+                if (e.isPopupTrigger() && tokenUsageBar.isEnabled()) {
                     tokenUsageBarPopupMenu.show(tokenUsageBar, e.getX(), e.getY());
                 }
             }
 
             @Override
             public void mouseReleased(MouseEvent e) {
-                if (e.isPopupTrigger()) {
+                // Block popup when read-only (tokenUsageBar is disabled)
+                if (e.isPopupTrigger() && tokenUsageBar.isEnabled()) {
                     tokenUsageBarPopupMenu.show(tokenUsageBar, e.getX(), e.getY());
                 }
             }
@@ -1676,11 +1690,29 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public void contextChanged(Context newCtx) {
         var fragments = newCtx.getAllFragmentsInDisplayOrder();
         logger.debug("Context updated: {} fragments", fragments.size());
-        workspaceItemsChipPanel.setFragments(fragments);
-        // Feed per-fragment data to the token bar
-        tokenUsageBar.setFragments(fragments);
+        // Update chips from the selected context and toggle read-only
+        workspaceItemsChipPanel.setFragmentsForContext(newCtx);
+        boolean readOnly =
+                !java.util.Objects.equals(newCtx, chrome.getContextManager().topContext());
+        workspaceItemsChipPanel.setReadOnly(readOnly);
+        // Feed per-fragment data to the token bar from the selected context and toggle read-only
+        tokenUsageBar.setFragmentsForContext(newCtx);
+        tokenUsageBar.setReadOnly(readOnly);
+        // Update the titled border to reflect read-only state
+        contextAreaContainer.setReadOnly(readOnly);
         // Update compact token/cost indicator on context change
         updateTokenCostIndicator();
+    }
+
+    /**
+     * Sets read-only UI state for the context widgets (chips + token bar). Safe to call from any thread.
+     */
+    public void setContextReadOnly(boolean readOnly) {
+        SwingUtilities.invokeLater(() -> {
+            workspaceItemsChipPanel.setReadOnly(readOnly);
+            tokenUsageBar.setReadOnly(readOnly);
+            contextAreaContainer.setReadOnly(readOnly);
+        });
     }
 
     void enableButtons() {
