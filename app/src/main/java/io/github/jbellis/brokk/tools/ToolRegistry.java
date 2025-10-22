@@ -37,17 +37,26 @@ public class ToolRegistry {
             return "";
         }
 
-        // Resolve target and perform typed conversion via validateTool; let ToolValidationException propagate.
-        var vi = validateTool(toolOwner, request);
-        var argsYaml = toYaml(vi);
-        var headline = headlineFor(request.name());
+        try {
+            // Resolve target and perform typed conversion via validateTool
+            var vi = validateTool(toolOwner, request);
+            var argsYaml = toYaml(vi);
+            var headline = headlineFor(request.name());
 
-        return """
-               ### %s
-               ```yaml
-               %s```
-               """
-                .formatted(headline, argsYaml);
+            return """
+                   ### %s
+                   ```yaml
+                   %s```
+                   """
+                    .formatted(headline, argsYaml);
+        } catch (ToolValidationException e) {
+            // Log validation error but don't crash - this is just for display
+            logger.warn("Invalid tool request for display: {} - {}", request.name(), e.getMessage());
+            logger.debug("Full tool request: {}", request.arguments());
+
+            // Return empty string - validation details are logged, not shown to user
+            return "";
+        }
     }
 
     // Helper to render a simple YAML block from a map of arguments
