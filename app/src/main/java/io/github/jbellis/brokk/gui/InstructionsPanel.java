@@ -89,7 +89,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     public static final String ACTION_SEARCH = "Search";
     public static final String ACTION_RUN = "Run";
 
-    private static final String PLACEHOLDER_TEXT = """
+    private static final String PLACEHOLDER_TEXT =
+            """
             Switching modes:
             - Click the arrow on the big blue button to choose between Lutz, Code, and Ask, then click on the button to run the selected mode.
 
@@ -101,7 +102,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             - Ask: Gives general-purpose answers or guidance grounded in the files that are in your Workspace.
 
             Type your prompt here. (Shift+Enter for a new line)
-            """.stripIndent();
+            """
+                    .stripIndent();
 
     private final Chrome chrome;
     private final JTextArea instructionsArea;
