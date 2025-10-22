@@ -904,8 +904,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private static String stripHtml(String html) {
         String noTags = html.replaceAll("(?s)<[^>]*>", " ");
         // Basic unescape for common entities we use
-        noTags = noTags
-                .replace("&nbsp;", " ")
+        noTags = noTags.replace("&nbsp;", " ")
                 .replace("&amp;", "&")
                 .replace("&lt;", "<")
                 .replace("&gt;", ">");
