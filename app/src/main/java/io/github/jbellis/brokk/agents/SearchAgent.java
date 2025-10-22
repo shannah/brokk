@@ -671,7 +671,7 @@ public class SearchAgent {
         var contextAgent = new ContextAgent(cm, cm.getService().getScanModel(), goal);
         io.llmOutput("\n**Brokk Context Engine** analyzing repository context…", ChatMessageType.AI, true, false);
 
-        var recommendation = contextAgent.getRecommendations(true);
+        var recommendation = contextAgent.getRecommendations();
         if (!recommendation.reasoning().isEmpty()) {
             io.llmOutput(
                     "\n\nReasoning for contextual insights: \n" + recommendation.reasoning(), ChatMessageType.CUSTOM);
