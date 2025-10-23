@@ -23,7 +23,7 @@ import org.jspecify.annotations.NullMarked;
  * 3) setup.py: python_requires or REQUIRED_PYTHON
  * 4) tox.ini: envlist entries
  * 5) .github/workflows/*.yml: python-version entries
- * 6) Heuristic: if any source imports distutils, cap at 3.10
+ * 6) Heuristic: if any source imports distutils, cap at 3.11
  *
  * Returns a version like "3.8", or "3.12" as a fallback.
  */
@@ -66,13 +66,14 @@ public class EnvironmentPython {
     public String getPythonVersion() {
         var specWithSource = getRequiresPythonSpecWithSource();
         var explicitVersionsWithSource = getExplicitVersionsWithSource();
-        boolean cap310 = repoImportsDistutils();
+        boolean cap311 = repoImportsDistutils();
 
         // Candidates (newest first)
-        List<String> candidates = List.of("3.13", "3.12", "3.11", "3.10", "3.9", "3.8", "3.7", "3.6");
-        if (cap310) {
+        // (uv only supports 3.7+)
+        List<String> candidates = List.of("3.13", "3.12", "3.11", "3.10", "3.9", "3.8", "3.7");
+        if (cap311) {
             candidates = candidates.stream()
-                    .filter(v -> !v.startsWith("3.1") || v.equals("3.10"))
+                    .filter(v -> compareVersions(v, "3.12") < 0)
                     .toList();
         }
 
@@ -82,7 +83,7 @@ public class EnvironmentPython {
                     .sorted((a, b) -> compareVersions(b.version(), a.version()))
                     .toList()) {
                 String v = versionWithSource.version();
-                if (cap310 && compareVersions(v, "3.10") > 0) continue;
+                if (cap311 && compareVersions(v, "3.11") > 0) continue;
                 if (pythonExecutableExists(v)) {
                     logger.debug(
                             "Selected Python version {} from CI/tox ({})",
