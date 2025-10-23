@@ -9,23 +9,23 @@ import java.util.HashSet;
 import java.util.Set;
 import org.junit.jupiter.api.Test;
 
-public class JavaImportTest {
+public class ScalaImportTest {
 
     @Test
     public void testOrdinaryImport() throws IOException {
         try (var testProject = InlineTestProjectCreator.code(
                         """
-                import foo.bar.Baz;
-                import Bar;
+                import foo.bar.Baz
+                import Bar
 
-                public class Foo {}
+                class Foo
                 """,
-                        "Foo.java")
+                        "Foo.scala")
                 .build()) {
             var analyzer = createTreeSitterAnalyzer(testProject);
             var file = analyzer.getFileFor("Foo").get();
             var imports = analyzer.importStatementsOf(file);
-            var expected = Set.of("import foo.bar.Baz;", "import Bar;");
+            var expected = Set.of("import foo.bar.Baz", "import Bar");
             assertEquals(expected, new HashSet<>(imports), "Imports should be identical");
         }
     }
@@ -34,16 +34,16 @@ public class JavaImportTest {
     public void testStaticImport() throws IOException {
         try (var testProject = InlineTestProjectCreator.code(
                         """
-                import static foo.bar.Baz.method;
+                import foo.bar.{Baz as Bar}
 
-                public class Foo {}
+                class Foo
                 """,
-                        "Foo.java")
+                        "Foo.scala")
                 .build()) {
             var analyzer = createTreeSitterAnalyzer(testProject);
             var file = analyzer.getFileFor("Foo").get();
             var imports = analyzer.importStatementsOf(file);
-            var expected = Set.of("import static foo.bar.Baz.method;");
+            var expected = Set.of("import foo.bar.{Baz as Bar}");
             assertEquals(expected, new HashSet<>(imports), "Imports should be identical");
         }
     }
@@ -52,16 +52,16 @@ public class JavaImportTest {
     public void testWildcardImport() throws IOException {
         try (var testProject = InlineTestProjectCreator.code(
                         """
-                import foo.bar.*;
+                import foo.bar.*
 
-                public class Foo {}
+                class Foo
                 """,
-                        "Foo.java")
+                        "Foo.scala")
                 .build()) {
             var analyzer = createTreeSitterAnalyzer(testProject);
             var file = analyzer.getFileFor("Foo").get();
             var imports = analyzer.importStatementsOf(file);
-            var expected = Set.of("import foo.bar.*;");
+            var expected = Set.of("import foo.bar.*");
             assertEquals(expected, new HashSet<>(imports), "Imports should be identical");
         }
     }
