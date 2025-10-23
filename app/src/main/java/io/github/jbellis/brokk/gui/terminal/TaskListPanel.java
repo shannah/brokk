@@ -1,6 +1,5 @@
 package io.github.jbellis.brokk.gui.terminal;
 
-import static io.github.jbellis.brokk.gui.Constants.H_GAP;
 import static java.util.Objects.requireNonNull;
 
 import com.google.common.base.Splitter;
@@ -99,8 +98,10 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
     private final MaterialButton goStopButton;
     private final MaterialButton clearCompletedBtn = new MaterialButton();
     private final Chrome chrome;
-    private final Color defaultGoButtonBg;
-    private final Color stopButtonBg;
+    // These mirror InstructionsPanel's action button dimensions to keep Play/Stop button sizing consistent across
+    // panels.
+    private static final int ACTION_BUTTON_WIDTH = 140;
+    private static final int ACTION_BUTTON_MIN_HEIGHT = 36;
     private final Timer runningFadeTimer;
     private final JComponent controls;
     private final JPanel southPanel;
@@ -117,8 +118,6 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         setBorder(BorderFactory.createEmptyBorder(4, 4, 4, 4));
 
         this.chrome = chrome;
-        this.defaultGoButtonBg = UIManager.getColor("Button.default.background");
-        this.stopButtonBg = ThemeColors.getColor(false, ThemeColors.GIT_BADGE_BACKGROUND);
 
         // Center: list with custom renderer
         list.setCellRenderer(new TaskRenderer());
@@ -376,14 +375,16 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
         goStopButton.setContentAreaFilled(false);
         goStopButton.addActionListener(e -> onGoStopButtonPressed());
 
-        int fixedHeight = Math.max(input.getPreferredSize().height, 32);
-        var prefSize = new Dimension(64, fixedHeight);
+        int fixedHeight = Math.max(goStopButton.getPreferredSize().height, ACTION_BUTTON_MIN_HEIGHT);
+        Dimension prefSize = new Dimension(ACTION_BUTTON_WIDTH, fixedHeight);
         goStopButton.setPreferredSize(prefSize);
         goStopButton.setMinimumSize(prefSize);
         goStopButton.setMaximumSize(prefSize);
+        goStopButton.setMargin(new Insets(4, 4, 4, 10));
+        goStopButton.setIconTextGap(0);
         goStopButton.setAlignmentY(Component.CENTER_ALIGNMENT);
 
-        controls.add(Box.createHorizontalStrut(H_GAP));
+        controls.add(Box.createHorizontalStrut(8));
         controls.add(goStopButton);
 
         removeBtn.setIcon(Icons.REMOVE);
@@ -756,12 +757,22 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
             goStopButton.setIcon(Icons.STOP);
             goStopButton.setText(null);
             goStopButton.setToolTipText("Cancel the current operation");
-            goStopButton.setBackground(stopButtonBg);
+            var stopBg = UIManager.getColor("Brokk.action_button_bg_stop");
+            if (stopBg == null) {
+                stopBg = ThemeColors.getColor(false, ThemeColors.GIT_BADGE_BACKGROUND);
+            }
+            goStopButton.setBackground(stopBg);
+            goStopButton.setForeground(Color.WHITE);
             goStopButton.setEnabled(true);
         } else {
             goStopButton.setIcon(Icons.FAST_FORWARD);
             goStopButton.setText(null);
-            goStopButton.setBackground(defaultGoButtonBg);
+            var defaultBg = UIManager.getColor("Brokk.action_button_bg_default");
+            if (defaultBg == null) {
+                defaultBg = UIManager.getColor("Button.default.background");
+            }
+            goStopButton.setBackground(defaultBg);
+            goStopButton.setForeground(Color.WHITE);
             goStopButton.setEnabled(anyTasks && !queueActive);
             if (!anyTasks) {
                 goStopButton.setToolTipText("Add a task to get started");
@@ -1110,7 +1121,7 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
                 controls.add(Box.createHorizontalGlue());
                 comp.setAlignmentY(Component.CENTER_ALIGNMENT);
                 controls.add(comp);
-                controls.add(Box.createHorizontalStrut(H_GAP));
+                controls.add(Box.createHorizontalStrut(8));
                 controls.add(goStopButton);
 
                 controls.revalidate();
@@ -1774,7 +1785,12 @@ public class TaskListPanel extends JPanel implements ThemeAware, IContextManager
             goStopButton.setIcon(Icons.STOP);
             goStopButton.setText(null);
             goStopButton.setToolTipText("Cancel the current operation");
-            goStopButton.setBackground(stopButtonBg);
+            var stopBg = UIManager.getColor("Brokk.action_button_bg_stop");
+            if (stopBg == null) {
+                stopBg = ThemeColors.getColor(false, ThemeColors.GIT_BADGE_BACKGROUND);
+            }
+            goStopButton.setBackground(stopBg);
+            goStopButton.setForeground(Color.WHITE);
             goStopButton.setEnabled(true);
             goStopButton.repaint();
         });
