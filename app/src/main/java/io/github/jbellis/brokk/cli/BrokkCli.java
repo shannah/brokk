@@ -508,7 +508,7 @@ public final class BrokkCli implements Callable<Integer> {
                                     ? "Build verification completed successfully."
                                     : "Build verification failed:\n" + buildError);
                     // we have no `result` since we did not interact with the LLM
-                    System.exit(0);
+                    System.exit(buildError.isEmpty() ? 0 : 1);
                     // make the compiler happy
                     result = null;
                 } else if (lutzLitePrompt != null) {
