@@ -1596,7 +1596,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             CodeAgent agent = new CodeAgent(contextManager1, modelToUse);
             var result = agent.runTask(input, Set.of());
-            chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
             return result;
         });
     }
@@ -1624,7 +1623,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             var result = executeAskCommand(contextManager, modelToUse, input);
 
             // Persist to history regardless of success/failure
-            chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
             return result;
         });
     }
@@ -1647,15 +1645,18 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             throw new IllegalStateException("LLM not found, usually this indicates a network error");
         }
 
-        submitAction(ACTION_SEARCH, query, () -> {
+        submitAction(ACTION_SEARCH, query, scope -> {
             assert !query.isBlank();
 
             var cm = chrome.getContextManager();
             SearchAgent agent = new SearchAgent(
-                    query, cm, modelToUse, EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST));
-            var result = agent.execute();
-            chrome.setSkipNextUpdateOutputPanelOnContextChange(true);
-            return result;
+                    query,
+                    cm,
+                    modelToUse,
+                    EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST),
+                    cm.liveContext(),
+                    scope);
+            return agent.execute();
         });
     }
 

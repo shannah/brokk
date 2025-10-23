@@ -905,7 +905,7 @@ public class HistoryOutputPanel extends JPanel {
         openWindowButton.setMnemonic(KeyEvent.VK_W);
         openWindowButton.setToolTipText("Open the output in a new window");
         openWindowButton.addActionListener(e -> {
-            if (llmStreamArea.isBlocking()) {
+            if (llmStreamArea.taskInProgress()) {
                 openOutputWindowStreaming();
             } else {
                 var context = contextManager.selectedContext();
@@ -1736,19 +1736,6 @@ public class HistoryOutputPanel extends JPanel {
         llmStreamArea.clear();
     }
 
-    /**
-     * Sets the blocking state on the contained MarkdownOutputPanel.
-     *
-     * @param blocked true to prevent clear/reset, false otherwise.
-     */
-    public void setMarkdownOutputPanelBlocking(boolean blocked) {
-        llmStreamArea.setBlocking(blocked);
-        if (!blocked) {
-            activeStreamingWindows.forEach(
-                    window -> window.getMarkdownOutputPanel().setBlocking(false));
-        }
-    }
-
     public void setTaskInProgress(boolean inProgress) {
         llmStreamArea.setTaskInProgress(inProgress);
         activeStreamingWindows.forEach(window -> window.getMarkdownOutputPanel().setTaskInProgress(inProgress));
@@ -1928,7 +1915,7 @@ public class HistoryOutputPanel extends JPanel {
          * @param main The main/last task to display in the live area
          * @param titleHint A hint for the window title (e.g., task summary or spinner message)
          * @param themeName The theme name (dark, light, or high-contrast)
-         * @param isBlockingMode Whether the window shows a streaming (in-progress) output
+         * @param isTaskInProgress Whether the window shows a streaming (in-progress) output
          */
         public OutputWindow(
                 HistoryOutputPanel parentPanel,
@@ -1936,8 +1923,8 @@ public class HistoryOutputPanel extends JPanel {
                 TaskEntry main,
                 @Nullable String titleHint,
                 String themeName,
-                boolean isBlockingMode) {
-            super(determineWindowTitle(titleHint, isBlockingMode)); // Call superclass constructor first
+                boolean isTaskInProgress) {
+            super(determineWindowTitle(titleHint, isTaskInProgress)); // Call superclass constructor first
 
             // Set icon from Chrome.newFrame
             try {
@@ -1958,11 +1945,13 @@ public class HistoryOutputPanel extends JPanel {
             outputPanel.withContextForLookups(parentPanel.contextManager, parentPanel.chrome);
             outputPanel.updateTheme(themeName);
             // Seed main content first, then history
-            outputPanel.setMainThenHistoryAsync(main, history).thenRun(() -> outputPanel.setBlocking(isBlockingMode));
+            outputPanel
+                    .setMainThenHistoryAsync(main, history)
+                    .thenRun(() -> outputPanel.setTaskInProgress(isTaskInProgress));
 
-            // Create toolbar panel with capture button if not in blocking mode
+            // Create toolbar panel with capture button if not task in progress
             JPanel toolbarPanel = null;
-            if (!isBlockingMode) {
+            if (!isTaskInProgress) {
                 toolbarPanel = new JPanel(new FlowLayout(FlowLayout.RIGHT, 5, 0));
                 toolbarPanel.setBorder(BorderFactory.createEmptyBorder(0, 5, 0, 0));
 
@@ -2024,9 +2013,9 @@ public class HistoryOutputPanel extends JPanel {
             setVisible(true);
         }
 
-        private static String determineWindowTitle(@Nullable String titleHint, boolean isBlockingMode) {
+        private static String determineWindowTitle(@Nullable String titleHint, boolean isTaskInProgress) {
             String windowTitle;
-            if (isBlockingMode) {
+            if (isTaskInProgress) {
                 windowTitle = "Output (In progress)";
                 if (titleHint != null && !titleHint.isBlank()) {
                     windowTitle = "Output: " + titleHint;

@@ -52,6 +52,27 @@
   <h2>Start a new conversation to begin coding with Brokk</h2>
   <p>Ask questions, request code reviews, or describe what you'd like to build</p>
 
+  <!-- Keep in sync with io.github.jbellis.brokk.gui.InstructionsPanel.PLACEHOLDER_TEXT -->
+  <div class="instructions-card">
+    <h3>Switching modes:</h3>
+    <ul>
+      <li>Click the arrow on the big blue button to choose between Lutz, Code, and Ask, then click on the button to run the selected mode.</li>
+    </ul>
+
+    <h3>Brokk action modes:</h3>
+    <ul>
+      <li>
+        <p><strong>Lutz:</strong> Lutz is one of the best context engineers around. After a all-day meetup in Amsterdam, we baked his workflow into Brokk.</p>
+        <p>Lutz mode performs an "agentic" search across your entire project, gathers the right context, and generates a plan by creating a list of tasks before coding.</p>
+        <p>It is a great way to kick off work with strong context and a clear plan.</p>
+      </li>
+      <li><strong>Code:</strong> Applies changes directly to the files currently in your Workspace context based on your instructions.</li>
+      <li><strong>Ask:</strong> Gives general-purpose answers or guidance grounded in the files that are in your Workspace.</li>
+    </ul>
+
+    <p class="instructions-note">Type your prompt here. (Shift+Enter for a new line)</p>
+  </div>
+
   <div class="suggestions">
     {#each suggestions as s}
       <div class="suggestion">
@@ -261,5 +282,41 @@
     border-color: var(--git-changed);
     background: color-mix(in srgb, var(--git-changed) 15%, transparent);
     font-weight: 600;
+  }
+
+  /* Instructions card styles - keep in sync with InstructionsPanel watermark */
+  .instructions-card {
+    background: var(--message-background);
+    border: 1px solid var(--border-color-hex);
+    border-radius: 0.8rem;
+    padding: 1rem 1.5rem;
+    color: var(--chat-text);
+    text-align: left;
+    width: 100%;
+    max-width: 600px;
+    margin-bottom: 1rem;
+  }
+
+  .instructions-card h3 {
+    margin: 0.25rem 0;
+    font-size: 1.1rem;
+    color: var(--chat-text);
+  }
+
+  .instructions-card ul {
+    margin: 0.25rem 0 1rem 1.25rem;
+  }
+
+  .instructions-card li {
+    margin: 0.35rem 0;
+  }
+
+  .instructions-card p {
+    margin: 0.25rem 0;
+  }
+
+  .instructions-note {
+    font-size: 0.95rem;
+    opacity: 0.9;
   }
 </style>

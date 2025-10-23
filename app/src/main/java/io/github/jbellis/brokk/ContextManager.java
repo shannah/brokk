@@ -89,6 +89,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public static final String DEFAULT_SESSION_NAME = "New Session";
 
     public static boolean isTestFile(ProjectFile file) {
+
         return TEST_FILE_PATTERN.matcher(file.toString()).matches();
     }
 
@@ -99,7 +100,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private LoggingExecutorService createLoggingExecutorService(
             ExecutorService toWrap, Set<Class<? extends Throwable>> ignoredExceptions) {
         return new LoggingExecutorService(toWrap, th -> {
-            var thread = Thread.currentThread();
             if (ignoredExceptions.stream().anyMatch(cls -> cls.isInstance(th))) {
                 logger.debug("Uncaught exception (ignorable) in executor", th);
                 return;
@@ -111,7 +111,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
 
             logger.error("Uncaught exception in executor", th);
-            String message = "Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
+            var thread = Thread.currentThread();
+            var message = "Uncaught exception in thread %s. This shouldn't happen, please report a bug!\n%s"
                     .formatted(thread.getName(), getStackTraceAsString(th));
             io.showNotification(IConsoleIO.NotificationRole.INFO, message);
         });
@@ -170,10 +171,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
     private boolean freeTierNotified = false;
 
     // BuildAgent task tracking for cancellation
-    private volatile @Nullable CompletableFuture<BuildAgent.BuildDetails> buildAgentFuture;
+    private volatile @Nullable CompletableFuture<BuildDetails> buildAgentFuture;
 
     // Service reload state to prevent concurrent reloads
     private final AtomicBoolean isReloadingService = new AtomicBoolean(false);
+
+    // Publicly exposed flag for the exact TaskScope window
+    private final AtomicBoolean taskScopeInProgress = new AtomicBoolean(false);
 
     @Override
     public ExecutorService getBackgroundTasks() {
@@ -1424,6 +1428,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return userActions.isLlmTaskInProgress();
     }
 
+    /**
+     * Returns true while a TaskScope is active, i.e. between io.setTaskInProgress(true) and io.setTaskInProgress(false).
+     */
+    public boolean isTaskScopeInProgress() {
+        return taskScopeInProgress.get();
+    }
+
     /** Returns current analyzer readiness without blocking. */
     public boolean isAnalyzerReady() {
         return analyzerWrapper.getNonBlocking() != null;
@@ -1683,16 +1694,22 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     private final ConcurrentMap<Callable<?>, String> taskDescriptions = new ConcurrentHashMap<>();
 
-    public SummarizeWorker submitSummarizeTaskForConversation(String input) {
+    public CompletableFuture<String> summarizeTaskForConversation(String input) {
+        var future = new CompletableFuture<String>();
+
         var worker = new SummarizeWorker(this, input, 5) {
             @Override
             protected void done() {
-                io.postSummarize();
+                try {
+                    future.complete(get()); // complete successfully
+                } catch (Exception ex) {
+                    future.completeExceptionally(ex);
+                }
             }
         };
 
         worker.execute();
-        return worker;
+        return future;
     }
 
     /**
@@ -2066,13 +2083,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     /** Begin a new aggregating scope with explicit compress-at-commit semantics and non-text resolution mode. */
     public TaskScope beginTask(String input, boolean compressAtCommit) {
-        // Kick off UI transcript (streaming) immediately and seed MOP with a mode marker as the first message.
-        var messages = List.<ChatMessage>of(new UserMessage(input));
-        var currentTaskFragment = new ContextFragment.TaskFragment(this, messages, input);
-        var history = topContext().getTaskHistory();
-        io.setLlmAndHistoryOutput(history, new TaskEntry(-1, currentTaskFragment, null));
-
-        return new TaskScope(compressAtCommit);
+        TaskScope scope = new TaskScope(compressAtCommit, input);
+        scope.init();
+        return scope;
     }
 
     /**
@@ -2082,43 +2095,30 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * without losing important history.
      */
     public final class TaskScope implements AutoCloseable {
+        private final String input;
         private final boolean compressResults;
         private boolean closed = false;
 
-        private TaskScope(boolean compressResults) {
-            io.blockLlmOutput(true);
+        private TaskScope(boolean compressResults, String input) {
             this.compressResults = compressResults;
+            this.input = input;
         }
 
-        public void append(TaskResult result) {
-            assert !closed : "TaskScope already closed";
+        private void init() {
+            prepareMopForNewStream(liveContext());
+            renameSessionIfDefault(input);
+            io.setTaskInProgress(true);
+            taskScopeInProgress.set(true);
+        }
 
-            // If interrupted before any LLM output, skip
-            if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED
-                    && result.output().messages().stream().noneMatch(m -> m instanceof AiMessage)) {
-                logger.debug("Command cancelled before LLM responded");
-                return;
-            }
+        private void prepareMopForNewStream(Context liveContext) {
+            var history = liveContext.getTaskHistory();
+            var messages = List.<ChatMessage>of(new UserMessage(input));
+            var taskFragment = new ContextFragment.TaskFragment(ContextManager.this, messages, input);
+            io.setLlmAndHistoryOutput(history, new TaskEntry(-1, taskFragment, null));
+        }
 
-            // If there is literally nothing to record (no messages and no context/file changes), skip
-            if (result.output().messages().isEmpty()
-                    && result.context().freeze().equals(topContext())) {
-                logger.debug("Empty TaskResult");
-                return;
-            }
-
-            var action = result.actionDescription();
-            logger.debug("Adding session result to history. Action: '{}', Reason: {}", action, result.stopDetails());
-
-            Future<String> actionFuture = submitSummarizeTaskForConversation(action);
-            pushContext(currentLiveCtx -> {
-                var updated = result.context();
-                TaskEntry entry = updated.createTaskEntry(result);
-                TaskEntry finalEntry = compressResults ? compressHistory(entry) : entry;
-                return updated.addHistoryEntry(finalEntry, result.output(), actionFuture);
-            });
-
-            // Auto-rename session if it still has the default name
+        private void renameSessionIfDefault(String action) {
             var sessionManager = project.getSessionManager();
             var sessions = sessionManager.listSessions();
             var currentSession = sessions.stream()
@@ -2127,6 +2127,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
             if (currentSession.isPresent()
                     && DEFAULT_SESSION_NAME.equals(currentSession.get().name())) {
+                var actionFuture = summarizeTaskForConversation(action);
                 renameSessionAsync(currentSessionId, actionFuture).thenRun(() -> {
                     if (io instanceof Chrome) {
                         project.sessionsListChanged();
@@ -2135,11 +2136,69 @@ public class ContextManager implements IContextManager, AutoCloseable {
             }
         }
 
+        /**
+         * Appends a TaskResult to the context history and returns updated local context.
+         *
+         * @param result The TaskResult to append.
+         */
+        public Context append(TaskResult result) {
+            assert !closed : "TaskScope already closed";
+
+            // If interrupted before any LLM output, skip
+            if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED
+                    && result.output().messages().stream().noneMatch(m -> m instanceof AiMessage)) {
+                logger.debug("Command cancelled before LLM responded");
+                return result.context();
+            }
+
+            // If there is literally nothing to record (no messages and no context/file changes), skip
+            if (result.output().messages().isEmpty()
+                    && result.context().freeze().equals(topContext())) {
+                logger.debug("Empty TaskResult");
+                return result.context();
+            }
+
+            var action = result.actionDescription();
+            logger.debug("Adding session result to history. Action: '{}', Reason: {}", action, result.stopDetails());
+
+            var actionFuture = summarizeTaskForConversation(action).thenApply(r -> {
+                io.postSummarize();
+                return r;
+            });
+
+            // Auto-rename session if it still has the default name
+            renameSessionIfDefault(action);
+
+            // push context
+            final Context[] updatedContext = new Context[1];
+            pushContext(currentLiveCtx -> {
+                var updated = result.context();
+                TaskEntry entry = updated.createTaskEntry(result);
+                TaskEntry finalEntry = compressResults ? compressHistory(entry) : entry;
+                updatedContext[0] = updated.addHistoryEntry(finalEntry, result.output(), actionFuture);
+                return updatedContext[0];
+            });
+
+            // reset MOP after history entry is appended to get the most recent taskhistory
+            SwingUtilities.invokeLater(() -> {
+                // after the last append there is no need to reset the MOP (close is called earlier)
+                if (!closed) {
+                    prepareMopForNewStream(updatedContext[0]);
+                }
+            });
+
+            return updatedContext[0];
+        }
+
         @Override
         public void close() {
             if (closed) return;
             closed = true;
-            io.blockLlmOutput(false);
+            SwingUtilities.invokeLater(() -> {
+                // deferred cleanup
+                taskScopeInProgress.set(false);
+                io.setTaskInProgress(false);
+            });
         }
     }
 
@@ -2524,7 +2583,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         // we deliberately don't infer style guide or build details here -- if they already exist, great;
         // otherwise we leave them empty
         var mp = project.getMainProject();
-        if (mp.loadBuildDetails().equals(BuildAgent.BuildDetails.EMPTY)) {
+        if (mp.loadBuildDetails().equals(BuildDetails.EMPTY)) {
             mp.setBuildDetails(buildDetails);
         }
 

@@ -83,33 +83,12 @@ public class Chrome
     // Used as the default text for the background tasks label
     private final String BGTASK_EMPTY = "No background tasks";
 
-    // is a setContext updating the MOP?
-    private boolean skipNextUpdateOutputPanelOnContextChange = false;
-
     // Track active preview windows for reuse
     private final Map<String, JFrame> activePreviewWindows = new ConcurrentHashMap<>();
     private @Nullable Rectangle dependenciesDialogBounds = null;
 
     // Track preview windows by ProjectFile for refresh on file changes
     private final Map<ProjectFile, JFrame> projectFileToPreviewWindow = new ConcurrentHashMap<>();
-
-    /**
-     * Gets whether updates to the output panel are skipped on context changes.
-     *
-     * @return true if updates are skipped, false otherwise
-     */
-    public boolean isSkipNextUpdateOutputPanelOnContextChange() {
-        return skipNextUpdateOutputPanelOnContextChange;
-    }
-
-    /**
-     * Sets whether updates to the output panel should be skipped on context changes.
-     *
-     * @param skipNextUpdateOutputPanelOnContextChangeFoo true to skip updates, false otherwise
-     */
-    public void setSkipNextUpdateOutputPanelOnContextChange(boolean skipNextUpdateOutputPanelOnContextChangeFoo) {
-        this.skipNextUpdateOutputPanelOnContextChange = skipNextUpdateOutputPanelOnContextChangeFoo;
-    }
 
     // Dependencies:
     final ContextManager contextManager;
@@ -899,14 +878,8 @@ public class Chrome
     public void setContext(Context ctx) {
         assert !ctx.containsDynamicFragments();
 
-        logger.debug("Loading context.  active={}, new={}", activeContext, ctx);
-        // If skipUpdateOutputPanelOnContextChange is true it is not updating the MOP => end of runSessions should not
-        // scroll MOP away
-
-        final boolean updateOutput = (!activeContext.equals(ctx) && !isSkipNextUpdateOutputPanelOnContextChange());
-        setSkipNextUpdateOutputPanelOnContextChange(false);
+        final boolean updateOutput = (!activeContext.equals(ctx) && !contextManager.isTaskScopeInProgress());
         activeContext = ctx;
-
         SwingUtilities.invokeLater(() -> {
             workspacePanel.populateContextTable(ctx);
             // Determine if the current context (ctx) is the latest one in the history
@@ -919,6 +892,9 @@ public class Chrome
             instructionsPanel.setContextReadOnly(!isEditable);
             // Also update instructions panel (token bar/chips) to reflect the selected context and read-only state
             instructionsPanel.contextChanged(ctx);
+
+            // only update the MOP when no task is in progress
+            // otherwise the TaskScope.append() will take care of it
             if (updateOutput) {
                 var taskHistory = ctx.getTaskHistory();
                 if (taskHistory.isEmpty()) {
@@ -929,6 +905,7 @@ public class Chrome
                     historyOutputPanel.setLlmAndHistoryOutput(historyTasks, mainTask);
                 }
             }
+
             updateCaptureButtons();
         });
     }
@@ -3035,17 +3012,12 @@ public class Chrome
     }
 
     /**
-     * Sets the blocking state on the MarkdownOutputPanel to prevent clearing/resetting during operations.
-     *
-     * @param blocked true to prevent clear/reset operations, false to allow them
+     * Sets the taskInProgress state on the MarkdownOutputPanel
      */
     @Override
-    public void blockLlmOutput(boolean blocked) {
-        // Ensure that prev setText calls are processed before blocking => we need the invokeLater
+    public void setTaskInProgress(boolean taskInProgress) {
         SwingUtilities.invokeLater(() -> {
-            historyOutputPanel.setMarkdownOutputPanelBlocking(blocked);
-            // Also propagate task progress state to the WebView so the frontend can react
-            historyOutputPanel.setTaskInProgress(blocked);
+            historyOutputPanel.setTaskInProgress(taskInProgress);
         });
     }
 
