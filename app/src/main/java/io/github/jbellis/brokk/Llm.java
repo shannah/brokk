@@ -466,9 +466,15 @@ public class Llm {
         }
     }
 
-    public static class EmptyResponseError extends LangChain4jException {
-        public EmptyResponseError() {
+    public static class EmptyResponseException extends LangChain4jException {
+        public EmptyResponseException() {
             super("Empty response from LLM");
+        }
+    }
+
+    public static class MissingToolCallsException extends LangChain4jException {
+        public MissingToolCallsException(int attemptsMade) {
+            super("ToolChoice.REQUIRED could not be satisfied after " + attemptsMade + " attempt(s)");
         }
     }
 
@@ -510,18 +516,30 @@ public class Llm {
         // Also needed for our emulation if it returns a response without a tool call
         var tools = toolContext.toolSpecifications();
         var toolChoice = toolContext.toolChoice();
+        int totalAttemptsMade = result.retries() + 1;
         while (result.error == null
                 && !tools.isEmpty()
                 && (cr != null && cr.toolRequests.isEmpty())
-                && toolChoice == ToolChoice.REQUIRED) {
+                && toolChoice == ToolChoice.REQUIRED
+                && totalAttemptsMade < MAX_ATTEMPTS) {
             io.showNotification(IConsoleIO.NotificationRole.INFO, "Enforcing tool selection");
 
             var extraMessages = new ArrayList<>(messages);
             extraMessages.add(requireNonNull(cr.originalResponse).aiMessage());
             extraMessages.add(new UserMessage("At least one tool execution request is REQUIRED. Please call a tool."));
 
-            result = sendMessageWithRetry(extraMessages, toolContext, MAX_ATTEMPTS);
+            result = sendMessageWithRetry(extraMessages, toolContext, MAX_ATTEMPTS - totalAttemptsMade);
+            totalAttemptsMade += (result.retries() + 1);
             cr = result.chatResponse();
+        }
+
+        // If we exhausted attempts and still don't have tool calls when REQUIRED, fail
+        if (totalAttemptsMade >= MAX_ATTEMPTS
+                && result.error == null
+                && !tools.isEmpty()
+                && (cr != null && cr.toolRequests.isEmpty())
+                && toolChoice == ToolChoice.REQUIRED) {
+            return new StreamingResult(cr, new MissingToolCallsException(totalAttemptsMade), result.retries());
         }
 
         return result;
@@ -611,7 +629,7 @@ public class Llm {
 
         // If we get here, we failed all attempts
         if (lastError == null) {
-            return new StreamingResult(null, new EmptyResponseError(), attempt - 1);
+            return new StreamingResult(null, new EmptyResponseException(), attempt - 1);
         }
         return new StreamingResult(null, lastError, attempt - 1);
     }
