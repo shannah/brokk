@@ -487,7 +487,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * This replaces the temporary uiListener created in AnalyzerWrapper (Phase 2), moving file watching
      * responsibility to ContextManager where it belongs.
      */
-    private IWatchService.Listener createFileWatchListener() {
+    IWatchService.Listener createFileWatchListener() {
         Path gitRepoRoot = project.hasGit() ? project.getRepo().getGitTopLevel() : null;
         FileWatcherHelper helper = new FileWatcherHelper(project.getRoot(), gitRepoRoot);
 
@@ -526,7 +526,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * Handles git metadata changes (.git directory modifications).
      * This includes branch switches, commits, pulls, etc.
      */
-    private void handleGitMetadataChange() {
+    void handleGitMetadataChange() {
         try {
             var branch = project.getRepo().getCurrentBranch();
             logger.debug("Git metadata changed, current branch: {}", branch);
@@ -549,7 +549,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @return Set of ProjectFiles in the current context
      */
-    private Set<ProjectFile> getContextFiles() {
+    Set<ProjectFile> getContextFiles() {
         return liveContext()
                 .allFragments()
                 .filter(f -> f instanceof ContextFragment.PathFragment)
@@ -568,7 +568,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
      *
      * @param changedFiles Set of files that changed (may be empty for backward compatibility)
      */
-    private void handleTrackedFileChange(Set<ProjectFile> changedFiles) {
+    void handleTrackedFileChange(Set<ProjectFile> changedFiles) {
         submitBackgroundTask("Update for FS changes", () -> {
             // Invalidate caches
             project.getRepo().invalidateCaches();

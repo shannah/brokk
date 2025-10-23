@@ -115,17 +115,8 @@ class ContextManagerFileWatchingTest {
     @Test
     void testGetContextFiles_EmptyContext() {
         // Test that getContextFiles returns empty set for empty context
-        // Using reflection to access private method
-        try {
-            var method = ContextManager.class.getDeclaredMethod("getContextFiles");
-            method.setAccessible(true);
-            @SuppressWarnings("unchecked")
-            Set<ProjectFile> contextFiles = (Set<ProjectFile>) method.invoke(contextManager);
-
-            assertTrue(contextFiles.isEmpty(), "Empty context should have no files");
-        } catch (Exception e) {
-            fail("Failed to invoke getContextFiles: " + e.getMessage());
-        }
+        Set<ProjectFile> contextFiles = contextManager.getContextFiles();
+        assertTrue(contextFiles.isEmpty(), "Empty context should have no files");
     }
 
     @Test
@@ -139,11 +130,8 @@ class ContextManagerFileWatchingTest {
 
         contextManager.pushContext(ctx -> ctx.addPathFragments(List.of(fragment1, fragment2)));
 
-        // Get context files using reflection
-        var method = ContextManager.class.getDeclaredMethod("getContextFiles");
-        method.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Set<ProjectFile> contextFiles = (Set<ProjectFile>) method.invoke(contextManager);
+        // Get context files directly
+        Set<ProjectFile> contextFiles = contextManager.getContextFiles();
 
         assertEquals(2, contextFiles.size(), "Should have 2 files in context");
         assertTrue(contextFiles.contains(file1), "Should contain Main.java");
@@ -154,19 +142,13 @@ class ContextManagerFileWatchingTest {
     void testHandleGitMetadataChange_CallsUpdateGitRepo() throws Exception {
         // This test verifies that handleGitMetadataChange triggers the correct UI updates
 
-        // We need to create a ContextManager with GUI mode to trigger file watching
-        // For this test, we'll use reflection to call the method directly
-
-        var method = ContextManager.class.getDeclaredMethod("handleGitMetadataChange");
-        method.setAccessible(true);
-
-        // Set the test IO
+        // Set the test IO using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
 
-        // Call handleGitMetadataChange
-        method.invoke(contextManager);
+        // Call handleGitMetadataChange directly
+        contextManager.handleGitMetadataChange();
 
         // Wait for async task to complete
         assertTrue(testIO.gitRepoUpdateLatch.await(5, TimeUnit.SECONDS), "updateGitRepo should be called");
@@ -177,10 +159,7 @@ class ContextManagerFileWatchingTest {
     void testHandleTrackedFileChange_NoContextFiles() throws Exception {
         // When changed files don't overlap with context, workspace should not be updated
 
-        var method = ContextManager.class.getDeclaredMethod("handleTrackedFileChange", Set.class);
-        method.setAccessible(true);
-
-        // Set the test IO
+        // Set the test IO using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
@@ -189,8 +168,8 @@ class ContextManagerFileWatchingTest {
         ProjectFile changedFile = new ProjectFile(projectRoot, Path.of("README.md"));
         Set<ProjectFile> changedFiles = Set.of(changedFile);
 
-        // Call handleTrackedFileChange
-        method.invoke(contextManager, changedFiles);
+        // Call handleTrackedFileChange directly
+        contextManager.handleTrackedFileChange(changedFiles);
 
         // Wait for commit panel update (should happen)
         assertTrue(testIO.commitPanelUpdateLatch.await(5, TimeUnit.SECONDS), "updateCommitPanel should be called");
@@ -212,10 +191,7 @@ class ContextManagerFileWatchingTest {
         var fragment1 = new ContextFragment.ProjectPathFragment(file1, contextManager);
         contextManager.pushContext(ctx -> ctx.addPathFragments(List.of(fragment1)));
 
-        var method = ContextManager.class.getDeclaredMethod("handleTrackedFileChange", Set.class);
-        method.setAccessible(true);
-
-        // Set the test IO
+        // Set the test IO using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
@@ -223,8 +199,8 @@ class ContextManagerFileWatchingTest {
         // Change the file that's in context
         Set<ProjectFile> changedFiles = Set.of(file1);
 
-        // Call handleTrackedFileChange
-        method.invoke(contextManager, changedFiles);
+        // Call handleTrackedFileChange directly
+        contextManager.handleTrackedFileChange(changedFiles);
 
         // Wait for commit panel update
         assertTrue(testIO.commitPanelUpdateLatch.await(5, TimeUnit.SECONDS), "updateCommitPanel should be called");
@@ -237,17 +213,14 @@ class ContextManagerFileWatchingTest {
     void testHandleTrackedFileChange_EmptySet_BackwardCompatibility() throws Exception {
         // Empty changedFiles set should assume context changed (backward compatibility)
 
-        var method = ContextManager.class.getDeclaredMethod("handleTrackedFileChange", Set.class);
-        method.setAccessible(true);
-
-        // Set the test IO
+        // Set the test IO using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
 
-        // Call with empty set
+        // Call with empty set directly
         Set<ProjectFile> emptySet = Set.of();
-        method.invoke(contextManager, emptySet);
+        contextManager.handleTrackedFileChange(emptySet);
 
         // Should still update commit panel
         assertTrue(
@@ -258,17 +231,14 @@ class ContextManagerFileWatchingTest {
     @Test
     void testFileWatchListener_ClassifyChanges() throws Exception {
         // Test that the file watch listener properly classifies changes
-        // This requires creating the listener via reflection
 
-        var createListenerMethod = ContextManager.class.getDeclaredMethod("createFileWatchListener");
-        createListenerMethod.setAccessible(true);
-
-        // Set the test IO first
+        // Set the test IO first using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
 
-        IWatchService.Listener listener = (IWatchService.Listener) createListenerMethod.invoke(contextManager);
+        // Create listener directly
+        IWatchService.Listener listener = contextManager.createFileWatchListener();
         assertNotNull(listener, "createFileWatchListener should return a listener");
 
         // Create an event batch with git metadata changes
@@ -291,15 +261,13 @@ class ContextManagerFileWatchingTest {
     void testFileWatchListener_TrackedFileChange() throws Exception {
         // Test that tracked file changes are properly handled
 
-        var createListenerMethod = ContextManager.class.getDeclaredMethod("createFileWatchListener");
-        createListenerMethod.setAccessible(true);
-
-        // Set the test IO
+        // Set the test IO using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
 
-        IWatchService.Listener listener = (IWatchService.Listener) createListenerMethod.invoke(contextManager);
+        // Create listener directly
+        IWatchService.Listener listener = contextManager.createFileWatchListener();
 
         // Create an event batch with tracked file changes
         EventBatch batch = new EventBatch();
@@ -318,15 +286,13 @@ class ContextManagerFileWatchingTest {
     void testFileWatchListener_BothGitAndTrackedChanges() throws Exception {
         // Test batch with both git metadata and tracked file changes
 
-        var createListenerMethod = ContextManager.class.getDeclaredMethod("createFileWatchListener");
-        createListenerMethod.setAccessible(true);
-
-        // Set the test IO
+        // Set the test IO using reflection (io field must remain private)
         var ioField = ContextManager.class.getDeclaredField("io");
         ioField.setAccessible(true);
         ioField.set(contextManager, testIO);
 
-        IWatchService.Listener listener = (IWatchService.Listener) createListenerMethod.invoke(contextManager);
+        // Create listener directly
+        IWatchService.Listener listener = contextManager.createFileWatchListener();
 
         // Create an event batch with both types of changes
         EventBatch batch = new EventBatch();
@@ -356,11 +322,8 @@ class ContextManagerFileWatchingTest {
         var fragment = new ContextFragment.ProjectPathFragment(contextFile, contextManager);
         contextManager.pushContext(ctx -> ctx.addPathFragments(List.of(fragment)));
 
-        // Get context files to verify
-        var getContextFilesMethod = ContextManager.class.getDeclaredMethod("getContextFiles");
-        getContextFilesMethod.setAccessible(true);
-        @SuppressWarnings("unchecked")
-        Set<ProjectFile> contextFiles = (Set<ProjectFile>) getContextFilesMethod.invoke(contextManager);
+        // Get context files to verify directly
+        Set<ProjectFile> contextFiles = contextManager.getContextFiles();
 
         assertTrue(contextFiles.contains(contextFile), "Context should contain Main.java");
         assertFalse(contextFiles.contains(nonContextFile), "Context should not contain Test.java");
