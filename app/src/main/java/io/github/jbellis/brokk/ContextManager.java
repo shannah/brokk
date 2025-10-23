@@ -482,8 +482,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     }
 
                     // re-freeze context w/ new analyzer
-                    processExternalFileChangesIfNeeded();
-                    io.updateWorkspace();
+                    // ignore "load external changes" done by the build agent itself
+                    // the build agent pauses the analyzer, which is our indicator
+                    if (!analyzerWrapper.isPause()) {
+                        processExternalFileChangesIfNeeded();
+                        io.updateWorkspace();
+                    }
 
                     if (externalRequest && io instanceof Chrome chrome) {
                         chrome.notifyActionComplete("Analyzer rebuild completed");
