@@ -357,7 +357,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.userActions.setIo(this.io);
 
         var analyzerListener = createAnalyzerListener();
-        this.analyzerWrapper = new AnalyzerWrapper(project, analyzerListener);
+        var fileWatchListener = createFileWatchListener();
+        this.analyzerWrapper = new AnalyzerWrapper(project, analyzerListener, fileWatchListener);
 
         // Load saved context history or create a new one
         var contextTask =
@@ -406,49 +407,21 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
             @Override
             public void onRepoChange() {
-                logger.debug("AnalyzerListener.onRepoChange fired");
-                try {
-                    var branch = project.getRepo().getCurrentBranch();
-                    logger.debug("AnalyzerListener.onRepoChange current branch: {}", branch);
-                } catch (Exception e) {
-                    logger.debug("AnalyzerListener.onRepoChange: unable to get current branch", e);
-                }
-                project.getRepo().invalidateCaches();
-                io.updateGitRepo();
-
-                // Notify analyzer callbacks
-                for (var callback : analyzerCallbacks) {
-                    submitBackgroundTask("Update for Git changes", callback::onRepoChange);
-                }
+                // NOTE: In Phase 4, this callback is no longer used in GUI mode.
+                // ContextManager.fileWatchListener now handles git changes directly via handleGitMetadataChange().
+                // This method is kept for backward compatibility only (e.g., if createUiNotificationListener is used).
+                logger.debug("AnalyzerListener.onRepoChange fired (backward compatibility path)");
+                handleGitMetadataChange();
             }
 
             @Override
             public void onTrackedFileChange() {
-                submitBackgroundTask("Update for FS changes", () -> {
-                    // we don't need the full onRepoChange but we do need these parts
-                    project.getRepo().invalidateCaches();
-                    project.invalidateAllFiles();
-                    io.updateCommitPanel();
-
-                    // update Workspace
-                    // we can't rely on pushContext's change detection because here we care about the contents and not
-                    // the
-                    // fragment identity
-                    if (processExternalFileChangesIfNeeded()) {
-                        // analyzer refresh will call this too, but it will be delayed
-                        io.updateWorkspace();
-                    }
-
-                    // ProjectTree
-                    for (var fsListener : fileSystemEventListeners) {
-                        fsListener.onTrackedFilesChanged();
-                    }
-                });
-
-                // Notify analyzer callbacks
-                for (var callback : analyzerCallbacks) {
-                    submitBackgroundTask("Update for FS changes", callback::onTrackedFileChange);
-                }
+                // NOTE: In Phase 4, this callback is no longer used in GUI mode.
+                // ContextManager.fileWatchListener now handles tracked file changes directly via
+                // handleTrackedFileChange().
+                // This method is kept for backward compatibility only (e.g., if createUiNotificationListener is used).
+                logger.debug("AnalyzerListener.onTrackedFileChange fired (backward compatibility path)");
+                handleTrackedFileChange(Set.of()); // Empty set since we don't have specific files from this path
             }
 
             @Override
@@ -505,6 +478,134 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 }
             }
         };
+    }
+
+    /**
+     * Creates a file watch listener that receives raw file system events directly from ProjectWatchService.
+     * This listener handles git metadata changes, tracked file changes, and preview window refreshes.
+     * <p>
+     * This replaces the temporary uiListener created in AnalyzerWrapper (Phase 2), moving file watching
+     * responsibility to ContextManager where it belongs.
+     */
+    private IWatchService.Listener createFileWatchListener() {
+        Path gitRepoRoot = project.hasGit() ? project.getRepo().getGitTopLevel() : null;
+        FileWatcherHelper helper = new FileWatcherHelper(project.getRoot(), gitRepoRoot);
+
+        return new IWatchService.Listener() {
+            @Override
+            public void onFilesChanged(IWatchService.EventBatch batch) {
+                logger.trace("ContextManager file watch listener received events batch: {}", batch);
+
+                // Classify the changes using helper
+                var trackedFiles = project.getRepo().getTrackedFiles();
+                var classification = helper.classifyChanges(batch, trackedFiles);
+
+                // 1) Handle git metadata changes
+                if (classification.gitMetadataChanged) {
+                    logger.debug("Git metadata changes detected by ContextManager");
+                    handleGitMetadataChange();
+                }
+
+                // 2) Handle tracked file changes
+                if (classification.trackedFilesChanged) {
+                    logger.debug(
+                            "Tracked file changes detected by ContextManager ({} files)",
+                            classification.changedTrackedFiles.size());
+                    handleTrackedFileChange(classification.changedTrackedFiles);
+                }
+            }
+
+            @Override
+            public void onNoFilesChangedDuringPollInterval() {
+                // No action needed for "no changes"
+            }
+        };
+    }
+
+    /**
+     * Handles git metadata changes (.git directory modifications).
+     * This includes branch switches, commits, pulls, etc.
+     */
+    private void handleGitMetadataChange() {
+        try {
+            var branch = project.getRepo().getCurrentBranch();
+            logger.debug("Git metadata changed, current branch: {}", branch);
+        } catch (Exception e) {
+            logger.debug("Unable to get current branch after git change", e);
+        }
+
+        project.getRepo().invalidateCaches();
+        io.updateGitRepo();
+
+        // Notify analyzer callbacks
+        for (var callback : analyzerCallbacks) {
+            submitBackgroundTask("Update for Git changes", callback::onRepoChange);
+        }
+    }
+
+    /**
+     * Gets the set of ProjectFiles currently in the context.
+     * This includes files from PathFragments (ProjectPathFragment, GitFileFragment, ExternalPathFragment).
+     *
+     * @return Set of ProjectFiles in the current context
+     */
+    private Set<ProjectFile> getContextFiles() {
+        return liveContext()
+                .allFragments()
+                .filter(f -> f instanceof ContextFragment.PathFragment)
+                .map(f -> (ContextFragment.PathFragment) f)
+                .map(ContextFragment.PathFragment::file)
+                .filter(bf -> bf instanceof ProjectFile)
+                .map(bf -> (ProjectFile) bf)
+                .collect(Collectors.toSet());
+    }
+
+    /**
+     * Handles tracked file changes (modifications to files tracked by git).
+     * This refreshes UI components that display file contents.
+     * <p>
+     * Phase 6 optimization: Checks if changed files are in context before refreshing workspace.
+     *
+     * @param changedFiles Set of files that changed (may be empty for backward compatibility)
+     */
+    private void handleTrackedFileChange(Set<ProjectFile> changedFiles) {
+        submitBackgroundTask("Update for FS changes", () -> {
+            // Invalidate caches
+            project.getRepo().invalidateCaches();
+            project.invalidateAllFiles();
+            io.updateCommitPanel();
+
+            // Phase 6 optimization: Only check for context file changes if we have specific changed files
+            boolean contextFilesChanged = false;
+            if (!changedFiles.isEmpty()) {
+                Set<ProjectFile> contextFiles = getContextFiles();
+                contextFilesChanged = changedFiles.stream().anyMatch(contextFiles::contains);
+                logger.debug(
+                        "Tracked files changed: {} total, {} in context",
+                        changedFiles.size(),
+                        contextFilesChanged ? "some" : "none");
+            } else {
+                // Backward compatibility path or overflow - assume context may have changed
+                contextFilesChanged = true;
+            }
+
+            // Update workspace only if context files were affected
+            if (contextFilesChanged && processExternalFileChangesIfNeeded()) {
+                // analyzer refresh will call this too, but it will be delayed
+                io.updateWorkspace();
+                logger.debug("Workspace updated due to context file changes");
+            }
+
+            // Notify ProjectTree to refresh
+            for (var fsListener : fileSystemEventListeners) {
+                fsListener.onTrackedFilesChanged();
+            }
+        });
+
+        // Notify analyzer callbacks - they determine their own filtering
+        for (var callback : analyzerCallbacks) {
+            submitBackgroundTask("Update for FS changes", callback::onTrackedFileChange);
+        }
     }
 
     /** Submits a background task to clean up old LLM session history directories. */
@@ -2424,7 +2525,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         // no AnalyzerListener, instead we will block for it to be ready
-        this.analyzerWrapper = new AnalyzerWrapper(project, null);
+        // Headless mode doesn't need file watching, so pass null for both listeners
+        this.analyzerWrapper = new AnalyzerWrapper(project, null, null);
         try {
             analyzerWrapper.get();
         } catch (InterruptedException e) {
