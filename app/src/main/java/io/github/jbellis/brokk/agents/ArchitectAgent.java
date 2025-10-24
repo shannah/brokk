@@ -277,10 +277,11 @@ public class ArchitectAgent {
      *
      * <p>Returns the search result if it fails, otherwise returns the Architect result.
      */
-    public TaskResult executeWithSearch(ContextManager.TaskScope scope) {
+    public TaskResult executeWithSearch() {
         // Run Search first using the scan model (fast, token-friendly)
         var scanModel = cm.getService().getScanModel();
-        var searchAgent = new SearchAgent(goal, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+        var searchAgent =
+                new SearchAgent(goal, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), context, scope);
         io.llmOutput("Search Agent engaged: " + goal, ChatMessageType.CUSTOM);
         var searchResult = searchAgent.execute();
         // Synchronize local context with search results before continuing
