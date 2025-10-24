@@ -172,43 +172,17 @@ public class MergeAgent {
         }
 
         // First pass: annotate ALL files up front (parallel)
-        logger.debug(
-                "Starting annotation of {} files with content conflicts.",
-                conflicts.stream()
-                        .filter(MergeAgent.FileConflict::isContentConflict)
-                        .count());
-        var annotatedConflicts = ConcurrentHashMap.<ConflictAnnotator.ConflictFileCommits>newKeySet();
-        var unionOurCommits = ConcurrentHashMap.<String>newKeySet();
-        var unionTheirCommits = ConcurrentHashMap.<String>newKeySet();
-
-        conflicts.parallelStream().forEach(cf -> {
-            assert cf.isContentConflict() : "Non-content conflicts should already be resolved";
-
-            var conflictAnnotator = new ConflictAnnotator(repo, conflict);
-            var pf = requireNonNull(cf.ourFile());
-            logger.debug("Annotating file: {}", pf.getRelPath());
-
-            var annotated = conflictAnnotator.annotate(cf);
-
-            // Write annotated contents to our working path
-            try {
-                pf.write(annotated.contents());
-            } catch (IOException e) {
-                logger.error("Failed to write annotated contents for {}: {}", pf, e.toString(), e);
-                return;
-            }
-
-            annotatedConflicts.add(annotated);
-            unionOurCommits.addAll(annotated.ourCommits());
-            unionTheirCommits.addAll(annotated.theirCommits());
-        });
+        var annotations = annotate(repo);
 
         // Separate zero-conflict files from those needing AI processing
         var partitioned =
-                annotatedConflicts.stream().collect(Collectors.partitioningBy(ac -> ac.conflictLineCount() == 0));
+                annotations.conflicts().stream().collect(Collectors.partitioningBy(ac -> ac.conflictLineCount() == 0));
         var noConflictLines = castNonNull(partitioned.get(true));
         var hasConflictLines = castNonNull(partitioned.get(false));
-        logger.debug("{}/{} files with conflicts", hasConflictLines.size(), annotatedConflicts.size());
+        logger.debug(
+                "{}/{} files with conflicts",
+                hasConflictLines.size(),
+                annotations.conflicts().size());
 
         // Stage files with no conflict markers immediately
         if (!noConflictLines.isEmpty()) {
@@ -228,7 +202,7 @@ public class MergeAgent {
         }
 
         // Compute changed files set for reporting (all annotated files)
-        var changedFiles = annotatedConflicts.stream()
+        var changedFiles = annotations.conflicts().stream()
                 .map(ConflictAnnotator.ConflictFileCommits::file)
                 .collect(Collectors.toSet());
         logger.debug("Total changed files for reporting: {}", changedFiles.size());
@@ -241,13 +215,13 @@ public class MergeAgent {
         // Kick off background explanations for our/their relevant commits discovered via blame.
         logger.debug(
                 "Submitting background tasks for commit explanations. Ours: {} commits, Theirs: {} commits.",
-                unionOurCommits.size(),
-                unionTheirCommits.size());
+                annotations.ourCommits().size(),
+                annotations.theirCommits().size());
         Future<String> oursFuture = cm.submitBackgroundTask("Explain relevant OUR commits", () -> {
-            return buildCommitExplanations("Our relevant commits", unionOurCommits);
+            return buildCommitExplanations("Our relevant commits", annotations.ourCommits());
         });
         Future<String> theirsFuture = cm.submitBackgroundTask("Explain relevant THEIR commits", () -> {
-            return buildCommitExplanations("Their relevant commits", unionTheirCommits);
+            return buildCommitExplanations("Their relevant commits", annotations.theirCommits());
         });
 
         // BlitzForge only works on ProjectFile inputs so map back to the ConflictFileCommits with this
@@ -285,15 +259,15 @@ public class MergeAgent {
 
             var blitz = new BlitzForge(cm, cm.getService(), bfConfig, bfListener);
 
-            var result = blitz.executeParallel(acByFile.keySet(), file -> {
+            var blitzResult = blitz.executeParallel(acByFile.keySet(), file -> {
                 var ac = requireNonNull(acByFile.get(file));
                 return executeMergeForFile(file, ac, repo, bfListener.getConsoleIO(file));
             });
             logger.debug(
                     "BlitzForge parallel merge completed with stop reason: {}",
-                    result.stopDetails().reason());
+                    blitzResult.stopDetails().reason());
 
-            if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
+            if (blitzResult.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
                 return interruptedResult("Merge cancelled by user.");
             }
         } else {
@@ -349,9 +323,9 @@ public class MergeAgent {
             logger.info("Verification passed and no CodeAgent failures; merge completed successfully.");
             var msg = "Merge completed successfully. Processed %d conflicted files. Verification passed."
                     .formatted(hasConflictLines.size());
-            logger.debug("MergeAgent.execute() completed successfully. Returning success result.");
+            logger.debug("MergeAgent.execute() completed successfully. Returning success annotations.");
 
-            // Build a resulting context representing annotatedConflicts' files added to current topContext
+            // Build a resulting context representing conflicts' files added to current topContext
             var top = cm.topContext();
             var existingEditableFiles = top.fileFragments()
                     .filter(cf -> cf.getType().isEditable())
@@ -406,12 +380,48 @@ public class MergeAgent {
 
         var agent = new ArchitectAgent(contextManager, planningModel, codeModel, agentInstructions, scope);
         logger.debug("ArchitectAgent created. Executing with search.");
-        var result = agent.executeWithSearch();
+        var architectResult = agent.executeWithSearch();
         logger.debug(
-                "ArchitectAgent execution completed. Returning result with stop reason: {}",
-                result.stopDetails().reason());
-        return result;
+                "ArchitectAgent execution completed. Returning annotations with stop reason: {}",
+                architectResult.stopDetails().reason());
+        return architectResult;
     }
+
+    private AnnotationResult annotate(GitRepo repo) {
+        logger.debug(
+                "Starting annotation of {} files with content conflicts.",
+                conflicts.stream().filter(FileConflict::isContentConflict).count());
+        var annotatedConflicts = ConcurrentHashMap.<ConflictAnnotator.ConflictFileCommits>newKeySet();
+        var unionOurCommits = ConcurrentHashMap.<String>newKeySet();
+        var unionTheirCommits = ConcurrentHashMap.<String>newKeySet();
+
+        conflicts.parallelStream().forEach(cf -> {
+            assert cf.isContentConflict() : "Non-content conflicts should already be resolved";
+
+            var conflictAnnotator = new ConflictAnnotator(repo, conflict);
+            var pf = requireNonNull(cf.ourFile());
+            logger.debug("Annotating file: {}", pf.getRelPath());
+
+            var annotated = conflictAnnotator.annotate(cf);
+
+            // Write annotated contents to our working path
+            try {
+                pf.write(annotated.contents());
+            } catch (IOException e) {
+                logger.error("Failed to write annotated contents for {}: {}", pf, e.toString(), e);
+                return;
+            }
+
+            annotatedConflicts.add(annotated);
+            unionOurCommits.addAll(annotated.ourCommits());
+            unionTheirCommits.addAll(annotated.theirCommits());
+        });
+
+        return new AnnotationResult(annotatedConflicts, unionOurCommits, unionTheirCommits);
+    }
+
+    private record AnnotationResult(
+            Set<ConflictAnnotator.ConflictFileCommits> conflicts, Set<String> ourCommits, Set<String> theirCommits) {}
 
     private static void validateOtherIsNotMergeCommitForNonMergeMode(
             GitRepo repo, MergeMode mode, String otherCommitId) {

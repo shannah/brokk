@@ -419,7 +419,8 @@ public class BuildAgent {
                     cm.getProject().getRoot(),
                     summaries,
                     details.buildLintCommand());
-            return interpolateCommandWithPythonVersion(details.buildLintCommand(), cm.getProject().getRoot());
+            return interpolateCommandWithPythonVersion(
+                    details.buildLintCommand(), cm.getProject().getRoot());
         }
 
         return getBuildLintSomeCommand(cm, details, workspaceTestFiles);
