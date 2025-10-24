@@ -3,9 +3,6 @@ package io.github.jbellis.brokk.agents;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.agent.tool.ToolExecutionRequest;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import io.github.jbellis.brokk.ContextManager;
@@ -17,7 +14,7 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.git.GitRepo;
 import io.github.jbellis.brokk.git.IGitRepo.ModifiedFile;
-import io.github.jbellis.brokk.tools.WorkspaceTools;
+import io.github.jbellis.brokk.tools.GitTools;
 import io.github.jbellis.brokk.util.AdaptiveExecutor;
 import java.io.IOException;
 import java.util.ArrayList;
@@ -312,6 +309,7 @@ public class MergeAgent {
         // obscures rather than clarifies the actual problem. So don't do that.
 
         // Kick off Architect in the background to attempt to fix build failures and code-agent errors.
+        // NB: each MOF adds its merge instructions to the global cm Context
         logger.info("Verification failed or CodeAgent reported failures. Handoff to ArchitectAgent.");
         var contextManager = (ContextManager) cm;
         var codeAgentText = "";
@@ -330,7 +328,7 @@ public class MergeAgent {
                         I attempted to merge changes from %s into our branch (mode: %s). My goal was:
                         %s
 
-                        I have added summaries of the changes involved to the Workspace.
+                        I have added brief commit summaries and the per-file merge instructions to the Workspace.
 
                         %s
 
@@ -410,36 +408,18 @@ public class MergeAgent {
     private String buildCommitExplanations(String title, Set<String> commitIds) throws InterruptedException {
         if (commitIds.isEmpty()) return "";
         var sections = new ArrayList<String>();
+
         for (var id : commitIds) {
             var shortId = ((GitRepo) cm.getProject().getRepo()).shortHash(id);
-            String explanation = MergeOneFile.explainCommitCached(cm, id);
-            sections.add("## " + shortId + "\n\n" + explanation);
+            String summary = GitTools.explainCommitCached(cm, id, false);
+            sections.add("## " + shortId + "\n\n" + summary);
         }
         return "# " + title + "\n\n" + String.join("\n\n", sections);
     }
 
-    /** Add a summary as a text fragment to the Workspace via the workspace tool. */
     private void addTextToWorkspace(String title, String text) {
-        try {
-            var fragment = new ContextFragment.StringFragment(cm, text, title, SyntaxConstants.SYNTAX_STYLE_NONE);
-            cm.addVirtualFragment(fragment);
-            var mapper = new ObjectMapper();
-            var args = mapper.writeValueAsString(Map.of("description", title, "content", text));
-            var req = ToolExecutionRequest.builder()
-                    .name("addTextToWorkspace")
-                    .arguments(args)
-                    .build();
-            var localTr = cm.getToolRegistry()
-                    .builder()
-                    .register(new WorkspaceTools((ContextManager) cm))
-                    .build();
-            var ter = localTr.executeTool(req);
-            logger.debug("addTextToWorkspace: {} {} ", ter.status(), ter.resultText());
-        } catch (JsonProcessingException e) {
-            logger.warn("Failed to serialize addTextToWorkspace args: {}", e.toString());
-        } catch (Exception e) {
-            logger.warn("Failed to add text to workspace: {}", e.toString());
-        }
+        var fragment = new ContextFragment.StringFragment(cm, text, title, SyntaxConstants.SYNTAX_STYLE_NONE);
+        cm.addVirtualFragment(fragment);
     }
 
     /** Metadata describing non-textual aspects of a conflict detected from the git index and trees. */
@@ -633,9 +613,8 @@ public class MergeAgent {
             ProjectFile file, ConflictAnnotator.ConflictFileCommits ac, IConsoleIO console) {
         logger.debug("Executing merge for file: {}", file.getRelPath());
 
-        var planner = new MergeOneFile(cm, planningModel, codeModel, mode, baseCommitId, otherCommitId, ac, console);
-
-        var outcome = planner.merge();
+        var mof = new MergeOneFile(cm, planningModel, codeModel, mode, baseCommitId, otherCommitId, ac, console);
+        var outcome = mof.merge();
         logger.debug("MergeOneFile for {} completed with status: {}", file.getRelPath(), outcome.status());
 
         boolean edited =

@@ -26,6 +26,7 @@ import io.github.jbellis.brokk.gui.dialogs.SettingsDialog;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.prompts.SummarizerPrompts;
 import io.github.jbellis.brokk.tasks.TaskList;
+import io.github.jbellis.brokk.tools.GitTools;
 import io.github.jbellis.brokk.tools.SearchTools;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.tools.UiTools;
@@ -237,8 +238,11 @@ public class ContextManager implements IContextManager, AutoCloseable {
         this.exceptionReporter = new ExceptionReporter(this.service::get);
 
         // set up global tools
-        this.toolRegistry =
-                ToolRegistry.empty().builder().register(new SearchTools(this)).build();
+        this.toolRegistry = ToolRegistry.empty()
+                .builder()
+                .register(new SearchTools(this))
+                .register(new GitTools(this))
+                .build();
 
         // dummy ConsoleIO until Chrome is constructed; necessary because Chrome starts submitting background tasks
         // immediately during construction, which means our own reference to it will still be null

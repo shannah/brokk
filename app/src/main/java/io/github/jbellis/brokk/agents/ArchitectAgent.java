@@ -373,12 +373,13 @@ public class ArchitectAgent {
                 toolSpecs.addAll(tr.getTools(allowed));
             } else {
                 // Default tool population logic
-                var allowed = new ArrayList<>(List.of(
-                        "addFilesToWorkspace",
-                        "addFileSummariesToWorkspace",
-                        "addUrlContentsToWorkspace",
-                        "appendNote",
-                        "dropWorkspaceFragments"));
+                var allowed = new ArrayList<String>();
+                allowed.add("addFilesToWorkspace");
+                allowed.add("addFileSummariesToWorkspace");
+                allowed.add("addUrlContentsToWorkspace");
+                allowed.add("appendNote");
+                allowed.add("dropWorkspaceFragments");
+                allowed.add("explainCommit");
 
                 if (io instanceof Chrome) {
                     allowed.add("askHuman");
