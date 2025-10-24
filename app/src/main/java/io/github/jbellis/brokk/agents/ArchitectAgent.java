@@ -364,7 +364,7 @@ public class ArchitectAgent {
                 allowed.add("abortProject");
                 allowed.add("dropWorkspaceFragments");
                 allowed.add("addFileSummariesToWorkspace");
-                allowed.add("addTextToWorkspace");
+                allowed.add("appendNote");
                 allowed.add("addFilesToWorkspace");
                 if (io instanceof Chrome) {
                     allowed.add("askHuman");
@@ -377,7 +377,7 @@ public class ArchitectAgent {
                         "addFilesToWorkspace",
                         "addFileSummariesToWorkspace",
                         "addUrlContentsToWorkspace",
-                        "addTextToWorkspace",
+                        "appendNote",
                         "dropWorkspaceFragments"));
 
                 if (io instanceof Chrome) {
@@ -590,7 +590,7 @@ public class ArchitectAgent {
     private int getPriorityRank(String toolName) {
         return switch (toolName) {
             case "dropWorkspaceFragments" -> 1;
-            case "addTextToWorkspace", "askHuman" -> 2;
+            case "appendNote", "askHuman" -> 2;
             case "addFilesToWorkspace" -> 3;
             case "addFileSummariesToWorkspace" -> 4;
             case "addUrlContentsToWorkspace" -> 5;

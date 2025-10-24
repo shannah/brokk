@@ -660,7 +660,7 @@ public class SearchAgent {
         // Prioritize workspace pruning and adding summaries before deeper exploration.
         return switch (toolName) {
             case "dropWorkspaceFragments" -> 1;
-            case "addTextToWorkspace", "appendNote" -> 2;
+            case "appendNote" -> 2;
             case "askHuman" -> 2;
             case "addClassSummariesToWorkspace", "addFileSummariesToWorkspace", "addMethodsToWorkspace" -> 3;
             case "addFilesToWorkspace", "addClassesToWorkspace", "addSymbolUsagesToWorkspace" -> 4;
