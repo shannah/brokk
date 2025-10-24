@@ -32,6 +32,7 @@ import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.GlobalUiSettings;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
@@ -257,6 +258,9 @@ public class HistoryOutputPanel extends JPanel {
         setClearButtonEnabled(false);
         setCaptureButtonEnabled(false);
         setOpenWindowButtonEnabled(false);
+
+        // Respect current Advanced Mode on construction
+        setAdvancedMode(GlobalUiSettings.isAdvancedMode());
     }
 
     private void buildSessionSwitchPanel() {
@@ -2074,6 +2078,28 @@ public class HistoryOutputPanel extends JPanel {
             compressButton.setEnabled(true);
             updateUndoRedoButtonStates();
         });
+    }
+
+    /**
+     * Applies Advanced Mode visibility to session management UI.
+     * When advanced is false (easy mode), hides:
+     * - the "Open the output in a new window" button
+     */
+    public void setAdvancedMode(boolean advanced) {
+        Runnable r = () -> {
+            // Open in new window button (Output panel)
+            openWindowButton.setVisible(advanced);
+            var btnParent = openWindowButton.getParent();
+            if (btnParent != null) {
+                btnParent.revalidate();
+                btnParent.repaint();
+            }
+        };
+        if (SwingUtilities.isEventDispatchThread()) {
+            r.run();
+        } else {
+            SwingUtilities.invokeLater(r);
+        }
     }
 
     /** A renderer that shows the action text and a diff summary (when available) under it. */
