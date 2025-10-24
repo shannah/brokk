@@ -138,13 +138,8 @@ public class MergeAgent {
 
             // Re-inspect repo state; non-text ops may change the set of conflicts
             var refreshedOpt = ConflictInspector.inspectFromProject(cm.getProject());
-            conflict = refreshedOpt.orElseGet(() -> new MergeConflict(
-                    mode,
-                    conflict.ourCommitId,
-                    otherCommitId,
-                    baseCommitId,
-                    Set.of(),
-                    Map.of()));
+            conflict = refreshedOpt.orElseGet(() ->
+                    new MergeConflict(mode, conflict.ourCommitId, otherCommitId, baseCommitId, Set.of(), Map.of()));
         }
 
         // First pass: annotate ALL files up front (parallel)
@@ -282,7 +277,7 @@ public class MergeAgent {
         // to verification
         var testFiles = testFilesReferencedInOursAndTheirs();
         logger.debug("Test files referenced in changes: {}", testFiles);
-        var buildContext = new Context(cm, "").addPathFragments(cm.toPathFragments(testFiles))
+        var buildContext = new Context(cm, "").addPathFragments(cm.toPathFragments(testFiles));
 
         // Run verification step if configured
         logger.debug("Running verification step.");
@@ -299,30 +294,16 @@ public class MergeAgent {
         }
 
         if (buildFailureText.isBlank() && codeAgentFailures.isEmpty()) {
-            logger.info("Verification passed and no CodeAgent failures; merge completed successfully.");
             var msg = "Merge completed successfully. Processed %d conflicted files. Verification passed."
                     .formatted(hasConflictLines.size());
-            logger.debug("MergeAgent.execute() completed successfully. Returning success annotations.");
+            logger.debug("msg");
 
-            // Build a resulting context representing conflicts' files added to current topContext
-            var top = cm.topContext();
-            var existingEditableFiles = top.fileFragments()
-                    .filter(cf -> cf.getType().isEditable())
-                    .flatMap(cf -> cf.files().stream())
-                    .collect(Collectors.toSet());
-
-            var fragmentsToAdd = changedFiles.stream()
-                    .filter(pf -> !existingEditableFiles.contains(pf))
-                    .map(pf -> new ContextFragment.ProjectPathFragment(pf, cm))
-                    .toList();
-
-            Context resultingCtx = fragmentsToAdd.isEmpty() ? top : top.addPathFragments(fragmentsToAdd);
-
+            var ctx = new Context(cm, "Resolved conflicts").addPathFragments(cm.toPathFragments(changedFiles));
             return new TaskResult(
                     cm,
                     "Merge",
                     List.of(new AiMessage(msg)),
-                    resultingCtx,
+                    ctx,
                     new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
         }
 
