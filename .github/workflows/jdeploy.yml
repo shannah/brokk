@@ -6,6 +6,7 @@ name: jDeploy CI with Gradle
 on:
   push:
     branches: [ 'master-snapshot', 'jdeploy-test' ]
+  workflow_dispatch:
 
 jobs:
   build:
