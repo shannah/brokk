@@ -63,6 +63,7 @@ public class MergeAgent {
     // use the top-level enum to avoid type conflicts with other classes in the package.
 
     protected final IContextManager cm;
+    protected final GitRepo repo;
     protected MergeConflict conflict;
 
     // Convenience fields derived from conflict
@@ -91,6 +92,7 @@ public class MergeAgent {
             ContextManager.TaskScope scope,
             String mergeInstructions) {
         this.cm = cm;
+        this.repo = (GitRepo) cm.getProject().getRepo();
         this.planningModel = planningModel;
         this.codeModel = codeModel;
         this.conflict = conflict;
@@ -116,8 +118,7 @@ public class MergeAgent {
         logger.debug("MergeAgent.execute() started for mode: {}, otherCommitId: {}", mode, otherCommitId);
         codeAgentFailures.clear();
 
-        var repo = (GitRepo) cm.getProject().getRepo();
-        validateOtherIsNotMergeCommitForNonMergeMode(repo, mode, otherCommitId);
+        validateOtherIsNotMergeCommitForNonMergeMode();
 
         // Notify start of annotation
         cm.getIo()
@@ -129,7 +130,7 @@ public class MergeAgent {
         // TODO wire up NonTextResolutionMode
         if (true) {
             try {
-                resolveNonTextConflicts(this.conflict, repo);
+                resolveNonTextConflicts(this.conflict);
             } catch (InterruptedException ie) {
                 Thread.currentThread().interrupt();
                 return interruptedResult("Merge cancelled by user.");
@@ -172,7 +173,7 @@ public class MergeAgent {
         }
 
         // First pass: annotate ALL files up front (parallel)
-        var annotations = annotate(repo);
+        var annotations = annotate();
 
         // Separate zero-conflict files from those needing AI processing
         var partitioned =
@@ -235,7 +236,7 @@ public class MergeAgent {
             logger.debug(
                     "Only one file ({}) remains with conflict markers. Resolving in foreground.",
                     onlyFile.getRelPath());
-            executeMergeForFile(onlyFile, ac, repo, cm.getIo());
+            executeMergeForFile(onlyFile, ac, cm.getIo());
 
             if (Thread.currentThread().isInterrupted()) {
                 logger.debug("MergeAgent.execute() interrupted during single file foreground merge.");
@@ -261,7 +262,7 @@ public class MergeAgent {
 
             var blitzResult = blitz.executeParallel(acByFile.keySet(), file -> {
                 var ac = requireNonNull(acByFile.get(file));
-                return executeMergeForFile(file, ac, repo, bfListener.getConsoleIO(file));
+                return executeMergeForFile(file, ac, bfListener.getConsoleIO(file));
             });
             logger.debug(
                     "BlitzForge parallel merge completed with stop reason: {}",
@@ -275,7 +276,7 @@ public class MergeAgent {
                     "No files remain with conflict markers after annotation and non-text resolution. Skipping BlitzForge.");
         }
 
-        // Publish commit explanations (if available)
+        // Publish commit explanations
         try {
             var oursExpl = oursFuture.get();
             if (!oursExpl.isBlank()) {
@@ -304,7 +305,7 @@ public class MergeAgent {
 
         // Ensure test files that participated in or were referenced by the merge are available in the Workspace prior
         // to verification
-        var testFilesFromChanges = testFilesReferencedInOursAndTheirs(repo);
+        var testFilesFromChanges = testFilesReferencedInOursAndTheirs();
         if (!testFilesFromChanges.isEmpty()) {
             logger.debug(
                     "Adding test file(s) to the Workspace before verification: {}",
@@ -387,7 +388,7 @@ public class MergeAgent {
         return architectResult;
     }
 
-    private AnnotationResult annotate(GitRepo repo) {
+    private AnnotationResult annotate() {
         logger.debug(
                 "Starting annotation of {} files with content conflicts.",
                 conflicts.stream().filter(FileConflict::isContentConflict).count());
@@ -423,8 +424,7 @@ public class MergeAgent {
     private record AnnotationResult(
             Set<ConflictAnnotator.ConflictFileCommits> conflicts, Set<String> ourCommits, Set<String> theirCommits) {}
 
-    private static void validateOtherIsNotMergeCommitForNonMergeMode(
-            GitRepo repo, MergeMode mode, String otherCommitId) {
+    private void validateOtherIsNotMergeCommitForNonMergeMode() {
         if (mode == MergeMode.MERGE || mode == MergeMode.SQUASH) return;
         try (var rw = new RevWalk(repo.getGit().getRepository())) {
             var oid = repo.getGit().getRepository().resolve(otherCommitId);
@@ -564,7 +564,7 @@ public class MergeAgent {
      * Resolve non-text conflicts (delete/modify, rename/modify, file<->dir, add/add-binary, mode bits) using the
      * NonTextHeuristicResolver. Groups related paths to avoid conflicting ops, applies ops, and emits a receipt.
      */
-    private void resolveNonTextConflicts(MergeConflict mc, GitRepo repo) throws InterruptedException {
+    private void resolveNonTextConflicts(MergeConflict mc) throws InterruptedException {
         logger.debug(
                 "Entering resolveNonTextConflicts. Total conflicts: {}",
                 mc.files().size());
@@ -681,7 +681,7 @@ public class MergeAgent {
      * planner invocation, repo add, and failure capture.
      */
     private BlitzForge.FileResult executeMergeForFile(
-            ProjectFile file, ConflictAnnotator.ConflictFileCommits ac, GitRepo repo, IConsoleIO console) {
+            ProjectFile file, ConflictAnnotator.ConflictFileCommits ac, IConsoleIO console) {
         logger.debug("Executing merge for file: {}", file.getRelPath());
 
         var planner = new MergeOneFile(cm, planningModel, codeModel, mode, baseCommitId, otherCommitId, ac, console);
@@ -724,7 +724,7 @@ public class MergeAgent {
 
     // Collect test files changed on either side (ours/theirs), even if they didn't conflict.
     // Prefer comparing each side to the merge base when available; otherwise fall back to the side's first-parent diff.
-    private Set<ProjectFile> testFilesReferencedInOursAndTheirs(GitRepo repo) throws GitAPIException {
+    private Set<ProjectFile> testFilesReferencedInOursAndTheirs() throws GitAPIException {
         List<ProjectFile> oursChanged;
         List<ProjectFile> theirsChanged;
 
@@ -736,8 +736,8 @@ public class MergeAgent {
                     .map(ModifiedFile::file)
                     .collect(Collectors.toList());
         } else {
-            oursChanged = changedFilesFromParent(repo, conflict.ourCommitId());
-            theirsChanged = changedFilesFromParent(repo, otherCommitId);
+            oursChanged = changedFilesFromParent(conflict.ourCommitId());
+            theirsChanged = changedFilesFromParent(otherCommitId);
         }
 
         return Stream.concat(oursChanged.stream(), theirsChanged.stream())
@@ -746,7 +746,7 @@ public class MergeAgent {
     }
 
     // Best-effort: compute files changed in a single commit by diffing it against its first parent.
-    private List<ProjectFile> changedFilesFromParent(GitRepo repo, String commitId) throws GitAPIException {
+    private List<ProjectFile> changedFilesFromParent(String commitId) throws GitAPIException {
         try (var rw = new RevWalk(repo.getGit().getRepository())) {
             var repoImpl = repo.getGit().getRepository();
             var oid = repoImpl.resolve(commitId);
