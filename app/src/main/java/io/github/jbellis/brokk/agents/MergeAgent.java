@@ -280,19 +280,15 @@ public class MergeAgent {
 
         // Ensure test files that participated in or were referenced by the merge are available in the Workspace prior
         // to verification
-        var testFilesFromChanges = testFilesReferencedInOursAndTheirs();
-        if (!testFilesFromChanges.isEmpty()) {
-            logger.debug(
-                    "Adding test file(s) to the Workspace before verification: {}",
-                    testFilesFromChanges.stream().map(ProjectFile::getRelPath).collect(Collectors.toList()));
-            cm.addFiles(testFilesFromChanges);
-        }
+        var testFiles = testFilesReferencedInOursAndTheirs();
+        logger.debug("Test files referenced in changes: {}", testFiles);
+        var buildContext = new Context(cm, "").addPathFragments(cm.toPathFragments(testFiles))
 
         // Run verification step if configured
         logger.debug("Running verification step.");
         String buildFailureText;
         try {
-            buildFailureText = BuildAgent.runVerification(cm);
+            buildFailureText = BuildAgent.runVerification(buildContext).getBuildError();
         } catch (InterruptedException e1) {
             Thread.currentThread().interrupt();
             buildFailureText = ""; // unused
