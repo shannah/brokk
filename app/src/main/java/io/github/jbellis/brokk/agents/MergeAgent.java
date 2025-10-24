@@ -136,40 +136,15 @@ public class MergeAgent {
                 return interruptedResult("Merge cancelled by user.");
             }
 
-            // IMPORTANT: re-inspect repo state; non-text ops may change the set of conflicts
+            // Re-inspect repo state; non-text ops may change the set of conflicts
             var refreshedOpt = ConflictInspector.inspectFromProject(cm.getProject());
-            if (refreshedOpt.isEmpty()) {
-                logger.warn(
-                        "ConflictInspector.inspectFromProject returned empty Optional after non-text resolution; continuing with previous conflict snapshot.");
-            } else {
-                var refreshed = refreshedOpt.get();
-                if (refreshed.files().isEmpty()) {
-                    // nothing left to resolve; still run verification as usual
-                    logger.info("All non-text conflicts resolved; no content conflicts remain.");
-                    var buildFailureText = runVerificationIfConfigured();
-                    if (buildFailureText.isBlank()) {
-                        logger.debug("Non-text conflicts resolved and verification passed. Exiting MergeAgent.");
-                        return new TaskResult(
-                                cm,
-                                "Merge",
-                                List.of(new AiMessage("Non-text conflicts resolved; verification passed.")),
-                                cm.topContext(),
-                                new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
-                    }
-                    logger.debug(
-                            "Non-text conflicts resolved, but verification failed. Proceeding to ArchitectAgent handoff.");
-                    // fall through to ArchitectAgent handoff path already present below
-                } else {
-                    // Swap our conflict snapshot to the refreshed one
-                    logger.debug(
-                            "Non-text resolution resulted in {} remaining content conflicts. Updating conflict snapshot.",
-                            refreshed.files().size());
-                    this.conflict = refreshed;
-                    this.baseCommitId = this.conflict.baseCommitId();
-                    this.otherCommitId = this.conflict.otherCommitId();
-                    this.conflicts = this.conflict.files();
-                }
-            }
+            conflict = refreshedOpt.orElseGet(() -> new MergeConflict(
+                    mode,
+                    conflict.ourCommitId,
+                    otherCommitId,
+                    baseCommitId,
+                    Set.of(),
+                    Map.of()));
         }
 
         // First pass: annotate ALL files up front (parallel)
@@ -315,11 +290,18 @@ public class MergeAgent {
 
         // Run verification step if configured
         logger.debug("Running verification step.");
-        var buildFailureText = runVerificationIfConfigured();
+        String buildFailureText;
+        try {
+            buildFailureText = BuildAgent.runVerification(cm);
+        } catch (InterruptedException e1) {
+            Thread.currentThread().interrupt();
+            buildFailureText = ""; // unused
+        }
         if (Thread.currentThread().isInterrupted()) {
             logger.debug("MergeAgent.execute() interrupted during verification.");
             return interruptedResult("Merge cancelled by user.");
         }
+
         if (buildFailureText.isBlank() && codeAgentFailures.isEmpty()) {
             logger.info("Verification passed and no CodeAgent failures; merge completed successfully.");
             var msg = "Merge completed successfully. Processed %d conflicted files. Verification passed."
@@ -457,16 +439,6 @@ public class MergeAgent {
             sections.add("## " + shortId + "\n\n" + explanation);
         }
         return "# " + title + "\n\n" + String.join("\n\n", sections);
-    }
-
-    /** Run verification build if configured; returns empty string on success, otherwise failure text. */
-    private String runVerificationIfConfigured() {
-        try {
-            return BuildAgent.runVerification(cm);
-        } catch (InterruptedException e) {
-            Thread.currentThread().interrupt();
-            return "Verification command was interrupted.";
-        }
     }
 
     /** Add a summary as a text fragment to the Workspace via the workspace tool. */
