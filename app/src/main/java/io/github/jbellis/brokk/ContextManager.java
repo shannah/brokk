@@ -2109,16 +2109,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         private void init() {
-            prepareMopForNewStream(liveContext());
+            prepareMopForNewStream(liveContext(), input);
             renameSessionIfDefault(input);
             io.setTaskInProgress(true);
             taskScopeInProgress.set(true);
         }
 
-        private void prepareMopForNewStream(Context liveContext) {
+        private void prepareMopForNewStream(Context liveContext, @Nullable String action) {
             var history = liveContext.getTaskHistory();
-            var messages = List.<ChatMessage>of(new UserMessage(input));
-            var taskFragment = new ContextFragment.TaskFragment(ContextManager.this, messages, input);
+            var messages = action == null ? List.<ChatMessage>of() : List.<ChatMessage>of(new UserMessage(action));
+            var taskFragment =
+                    new ContextFragment.TaskFragment(ContextManager.this, messages, action != null ? action : input);
             io.setLlmAndHistoryOutput(history, new TaskEntry(-1, taskFragment, null));
         }
 
@@ -2187,7 +2188,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             SwingUtilities.invokeLater(() -> {
                 // after the last append there is no need to reset the MOP (close is called earlier)
                 if (!closed) {
-                    prepareMopForNewStream(updatedContext[0]);
+                    prepareMopForNewStream(updatedContext[0], null);
                 }
             });
 

@@ -145,13 +145,13 @@ public class ArchitectAgent {
 
         logger.debug("callCodeAgent invoked with instructions: {}, deferBuild={}", instructions, deferBuild);
 
-        io.llmOutput("Code Agent engaged: " + instructions, ChatMessageType.CUSTOM, true, false);
+        io.llmOutput("**Code Agent** engaged: " + instructions, ChatMessageType.AI, true, false);
         var agent = new CodeAgent(cm, codeModel);
         var opts = new HashSet<CodeAgent.Option>();
         if (deferBuild) {
             opts.add(CodeAgent.Option.DEFER_BUILD);
         }
-        var result = agent.runTaskInternal(context, List.of(), instructions, opts);
+        var result = agent.runTask(context, List.of(), instructions, opts);
         var stopDetails = result.stopDetails();
         var reason = stopDetails.reason();
         // Update local context with the CodeAgent's resulting context
@@ -194,7 +194,7 @@ public class ArchitectAgent {
         if (messages.isEmpty()) {
             return;
         }
-        context = scope.append(resultWithMessages(StopReason.SUCCESS));
+        context = scope.append(resultWithMessages(StopReason.SUCCESS, "Architect planned for: " + goal));
     }
 
     @Tool(
@@ -232,7 +232,7 @@ public class ArchitectAgent {
         LAST_SEARCH_RESULT.remove();
 
         // Instantiate and run SearchAgent
-        io.llmOutput("Search Agent engaged: " + query, ChatMessageType.CUSTOM);
+        io.llmOutput("**Search Agent** engaged: " + query, ChatMessageType.AI);
         var searchAgent = new SearchAgent(query, cm, planningModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
         var result = searchAgent.execute();
         // Update local context from SearchAgent result
@@ -282,7 +282,7 @@ public class ArchitectAgent {
         var scanModel = cm.getService().getScanModel();
         var searchAgent =
                 new SearchAgent(goal, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), context, scope);
-        io.llmOutput("Search Agent engaged: " + goal, ChatMessageType.CUSTOM);
+        io.llmOutput("**Search Agent** engaged: " + goal, ChatMessageType.AI);
         var searchResult = searchAgent.execute();
         // Synchronize local context with search results before continuing
         context = scope.append(searchResult);
@@ -317,7 +317,7 @@ public class ArchitectAgent {
         var modelsService = cm.getService();
 
         while (true) {
-            io.llmOutput("\n**Brokk** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
+            io.llmOutput("\n**Brokk Architect** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
 
             // Determine active models and their minimum input token limit
             var models = new ArrayList<StreamingChatModel>();
@@ -579,12 +579,22 @@ public class ArchitectAgent {
 
     private @NotNull TaskResult codeAgentSuccessResult() {
         // we've already added the code agent's result to history and we don't have anything extra to add to that here
-        return new TaskResult(cm, "Architect: " + goal, List.of(), context, new StopDetails(StopReason.SUCCESS));
+        return new TaskResult(
+                cm,
+                "Architect finished work for: " + goal,
+                io.getLlmRawMessages(),
+                context,
+                new StopDetails(StopReason.SUCCESS));
+    }
+
+    private TaskResult resultWithMessages(StopReason reason, String message) {
+        // include the messages we exchanged with the LLM for any planning steps since we ran a sub-agent
+        return new TaskResult(cm, message, io.getLlmRawMessages(), context, new StopDetails(reason));
     }
 
     private TaskResult resultWithMessages(StopReason reason) {
         // include the messages we exchanged with the LLM for any planning steps since we ran a sub-agent
-        return new TaskResult(cm, "Architect: " + goal, io.getLlmRawMessages(), context, new StopDetails(reason));
+        return resultWithMessages(reason, "Architect: " + goal);
     }
 
     /** Helper method to get priority rank for tool names. Lower number means higher priority. */

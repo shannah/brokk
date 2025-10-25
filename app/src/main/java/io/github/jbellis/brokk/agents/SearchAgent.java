@@ -154,7 +154,8 @@ public class SearchAgent {
 
         // Record initial context gathering as a history entry if scope is available
         if (scope != null) {
-            var contextAgentResult = createResult("Brokk Context Engine", "Brokk Context Engine");
+            var goal = "Find the right context for the task";
+            var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
             context = scope.append(contextAgentResult);
         }
 
@@ -203,7 +204,7 @@ public class SearchAgent {
             var toolSpecs = tr.getTools(allAllowed);
 
             // Decide next action(s)
-            io.llmOutput("\n**Brokk** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
+            io.llmOutput("\n**Brokk Search** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
             var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, tr));
             if (result.error() != null || result.isEmpty()) {
                 var details =
@@ -297,7 +298,8 @@ public class SearchAgent {
                     } else if (executedWorkspaceResearch && contextChanged) {
                         logger.info("Deferring finalization; workspace changed during this turn.");
                     } else {
-                        return createResult("Search: " + goal, goal);
+                        io.llmOutput("\n\n**Brokk Search** Context is complete.\n", ChatMessageType.AI, true, false);
+                        return createResult("Brokk Search: " + goal, goal);
                     }
                 }
             }
@@ -774,7 +776,7 @@ public class SearchAgent {
             addToWorkspace(recommendation);
             io.llmOutput(
                     "\n\n**Brokk Context Engine** complete — contextual insights added to Workspace.\n",
-                    ChatMessageType.CUSTOM);
+                    ChatMessageType.AI);
         }
     }
 
