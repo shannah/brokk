@@ -2088,7 +2088,29 @@ public class ContextManager implements IContextManager, AutoCloseable {
     /** Begin a new aggregating scope with explicit compress-at-commit semantics and non-text resolution mode. */
     public TaskScope beginTask(String input, boolean compressAtCommit) {
         TaskScope scope = new TaskScope(compressAtCommit, input);
-        scope.init();
+
+        // prepare MOP
+        var history = liveContext().getTaskHistory();
+        var messages = List.<ChatMessage>of(new UserMessage(input));
+        var taskFragment = new ContextFragment.TaskFragment(this, messages, input);
+        io.setLlmAndHistoryOutput(history, new TaskEntry(-1, taskFragment, null));
+
+        // rename the session if needed
+        var sessionManager = project.getSessionManager();
+        var sessions = sessionManager.listSessions();
+        var currentSession =
+                sessions.stream().filter(s -> s.id().equals(currentSessionId)).findFirst();
+
+        if (currentSession.isPresent()
+                && DEFAULT_SESSION_NAME.equals(currentSession.get().name())) {
+            var actionFuture = summarizeTaskForConversation(input);
+            renameSessionAsync(currentSessionId, actionFuture).thenRun(() -> {
+                if (io instanceof Chrome) {
+                    project.sessionsListChanged();
+                }
+            });
+        }
+
         return scope;
     }
 
@@ -2099,46 +2121,13 @@ public class ContextManager implements IContextManager, AutoCloseable {
      * without losing important history.
      */
     public final class TaskScope implements AutoCloseable {
-        private final String input;
         private final boolean compressResults;
         private boolean closed = false;
 
         private TaskScope(boolean compressResults, String input) {
             this.compressResults = compressResults;
-            this.input = input;
-        }
-
-        private void init() {
-            prepareMopForNewStream(liveContext(), input);
-            renameSessionIfDefault(input);
             io.setTaskInProgress(true);
             taskScopeInProgress.set(true);
-        }
-
-        private void prepareMopForNewStream(Context liveContext, @Nullable String action) {
-            var history = liveContext.getTaskHistory();
-            var messages = action == null ? List.<ChatMessage>of() : List.<ChatMessage>of(new UserMessage(action));
-            var taskFragment =
-                    new ContextFragment.TaskFragment(ContextManager.this, messages, action != null ? action : input);
-            io.setLlmAndHistoryOutput(history, new TaskEntry(-1, taskFragment, null));
-        }
-
-        private void renameSessionIfDefault(String action) {
-            var sessionManager = project.getSessionManager();
-            var sessions = sessionManager.listSessions();
-            var currentSession = sessions.stream()
-                    .filter(s -> s.id().equals(currentSessionId))
-                    .findFirst();
-
-            if (currentSession.isPresent()
-                    && DEFAULT_SESSION_NAME.equals(currentSession.get().name())) {
-                var actionFuture = summarizeTaskForConversation(action);
-                renameSessionAsync(currentSessionId, actionFuture).thenRun(() -> {
-                    if (io instanceof Chrome) {
-                        project.sessionsListChanged();
-                    }
-                });
-            }
         }
 
         /**
@@ -2171,9 +2160,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 return r;
             });
 
-            // Auto-rename session if it still has the default name
-            renameSessionIfDefault(action);
-
             // push context
             final Context[] updatedContext = new Context[1];
             pushContext(currentLiveCtx -> {
@@ -2184,13 +2170,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 return updatedContext[0];
             });
 
-            // reset MOP after history entry is appended to get the most recent taskhistory
-            SwingUtilities.invokeLater(() -> {
-                // after the last append there is no need to reset the MOP (close is called earlier)
-                if (!closed) {
-                    prepareMopForNewStream(updatedContext[0], null);
-                }
-            });
+            // prepare MOP to display new history with the next streamed message
+            // needed because after the last append (before close) the MOP should not update
+            io.prepareOutputForNextStream(updatedContext[0].getTaskHistory());
 
             return updatedContext[0];
         }

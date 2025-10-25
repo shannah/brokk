@@ -1493,6 +1493,11 @@ public class Chrome
     }
 
     @Override
+    public void prepareOutputForNextStream(List<TaskEntry> history) {
+        SwingUtilities.invokeLater(() -> historyOutputPanel.prepareOutputForNextStream(history));
+    }
+
+    @Override
     public void toolError(String msg, String title) {
         logger.warn("%s: %s".formatted(msg, title));
         SwingUtilities.invokeLater(() -> systemNotify(msg, title, JOptionPane.ERROR_MESSAGE));
