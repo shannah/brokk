@@ -1689,7 +1689,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             case ACTION_ARCHITECT -> "Architect Mode — planning and applying code changes...";
             case ACTION_CODE -> "Applying Code Mode — editing files in your Workspace...";
             case ACTION_SEARCH -> "Running Lutz Mode — agentic search and plan generation...";
-            case ACTION_ASK -> "Answering from Workspace — composing response with your project context...";
+            case ACTION_ASK -> "Answering from existing Context only...";
             default -> "Executing " + action + "...";
         };
     }
