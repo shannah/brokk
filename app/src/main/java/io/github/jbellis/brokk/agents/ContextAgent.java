@@ -208,11 +208,7 @@ public class ContextAgent {
         }
 
         // Group by analyzed (summarizable via SkeletonProvider) vs un-analyzed (need full content)
-        Map<CodeUnit, String> allSummaries = candidates.parallelStream()
-                .flatMap(c -> analyzer.getTopLevelDeclarations(c).stream())
-                .collect(Collectors.toMap(cu -> cu, cu -> analyzer.getSubDeclarations(cu).stream()
-                        .map(CodeUnit::shortName)
-                        .collect(Collectors.joining(", "))));
+        var allSummaries = Context.buildRelatedIdentifiers(analyzer, candidates);
         Set<ProjectFile> analyzedFileSet =
                 allSummaries.keySet().stream().map(CodeUnit::source).collect(Collectors.toSet());
         List<ProjectFile> analyzedFiles =

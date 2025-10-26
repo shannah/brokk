@@ -108,6 +108,21 @@ public class Context {
         this(newContextId(), contextManager, fragments, taskHistory, parsedOutput, action);
     }
 
+    public Map<CodeUnit, String> buildRelatedIdentifiers(int k) throws InterruptedException {
+        var candidates = getMostRelevantFiles(k).stream().sorted().toList();
+        return buildRelatedIdentifiers(contextManager.getAnalyzer(), candidates);
+    }
+
+    public static Map<CodeUnit, String> buildRelatedIdentifiers(IAnalyzer analyzer, List<ProjectFile> candidates) {
+        return candidates.parallelStream()
+                .flatMap(c -> analyzer.getTopLevelDeclarations(c).stream())
+                .collect(Collectors.toMap(cu -> cu, cu -> analyzer.getSubDeclarations(cu).stream()
+                        .map(CodeUnit::shortName)
+                        .distinct()
+                        .sorted()
+                        .collect(Collectors.joining(", "))));
+    }
+
     /** Per-fragment diff entry between two contexts. */
     public record DiffEntry(
             ContextFragment fragment, String diff, int linesAdded, int linesDeleted, String oldContent) {}
