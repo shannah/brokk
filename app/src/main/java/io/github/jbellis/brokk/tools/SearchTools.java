@@ -375,6 +375,7 @@ public class SearchTools {
             """
                     Search git commit messages using a Java regular expression.
                     Returns matching commits with their message and list of changed files.
+                    If the list of files is extremely long, it will be summarized with respect to your explanation.
                     """)
     public String searchGitCommitMessages(
             @P("Java-style regex pattern to search for within commit messages.") String pattern,
