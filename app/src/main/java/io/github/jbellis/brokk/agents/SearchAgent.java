@@ -147,7 +147,9 @@ public class SearchAgent {
         var tr = cm.getToolRegistry().builder().register(wst).register(this).build();
 
         // Single pruning turn if workspace is not empty
+        wst.setContext(context);
         performInitialPruningTurn(tr);
+        context = wst.getContext();
 
         // Expand Workspace with ContextAgent scan
         addInitialContextToWorkspace();
