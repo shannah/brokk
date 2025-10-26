@@ -11,6 +11,7 @@ import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.exception.ContextTooLargeException;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
 import io.github.jbellis.brokk.AnalyzerUtil;
@@ -823,9 +824,6 @@ public class ContextAgent {
         var tokenUsage = result.tokenUsage();
         if (result.error() != null) {
             var error = result.error();
-            if (isContextError(error)) {
-                throw new ContextTooLargeException();
-            }
             logger.warn("Error from LLM during context recommendation: {}. Returning empty", error.getMessage());
             return LlmRecommendation.EMPTY;
         }
@@ -864,8 +862,6 @@ public class ContextAgent {
                 .filter(ProjectFile::exists)
                 .collect(Collectors.toSet());
     }
-
-    private static class ContextTooLargeException extends Exception {}
 
     // --- Discarded context helper ---
 
