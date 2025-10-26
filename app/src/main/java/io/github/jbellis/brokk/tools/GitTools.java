@@ -23,7 +23,8 @@ import org.jetbrains.annotations.Nullable;
 public class GitTools {
 
     private static final Logger logger = LogManager.getLogger(GitTools.class);
-    private static final int EXPLAIN_COMMIT_FILE_LIMIT = 50;
+    private static final int EXPLAIN_COMMIT_FILE_LIMIT = 10;
+    private static final int EXPLAIN_COMMIT_LINES_PER_FILE = 1_000;
 
     // Caching for commit explanations (best-effort using DiskLruCache per project)
     // A ConcurrentHashMap could be used for in-memory caching across runs for a single session
@@ -85,18 +86,20 @@ public class GitTools {
         Llm llm = cm.getLlm(modelToUse, (detailed ? "Explain commit " : "Summarize commit ") + shortHash);
         Llm.StreamingResult response;
 
+        // Detailed summaries are "as long as it needs to be;" concise are limited to ~100 words
         if (detailed) {
             var preprocessedDiff = Messages.getApproximateTokens(diff) > 100_000
-                    ? CommitPrompts.instance.preprocessUnifiedDiff(diff, EXPLAIN_COMMIT_FILE_LIMIT)
+                    ? CommitPrompts.instance.preprocessUnifiedDiff(
+                            diff, EXPLAIN_COMMIT_FILE_LIMIT, EXPLAIN_COMMIT_LINES_PER_FILE)
                     : diff;
             var messages = MergePrompts.instance.collectMessages(preprocessedDiff, revision, revision);
             response = llm.sendRequest(messages);
         } else {
-            // Concise summary with preprocessing to keep token usage under control on large diffs
             var preprocessedDiff = Messages.getApproximateTokens(diff) > 100_000
-                    ? CommitPrompts.instance.preprocessUnifiedDiff(diff, EXPLAIN_COMMIT_FILE_LIMIT)
+                    ? CommitPrompts.instance.preprocessUnifiedDiff(
+                            diff, EXPLAIN_COMMIT_FILE_LIMIT, EXPLAIN_COMMIT_LINES_PER_FILE)
                     : diff;
-            var messages = SummarizerPrompts.instance.collectMessages(preprocessedDiff, 100); // ~100 words
+            var messages = SummarizerPrompts.instance.collectMessages(preprocessedDiff, 100);
             response = llm.sendRequest(messages);
         }
 
