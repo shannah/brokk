@@ -2348,17 +2348,8 @@ public class Chrome
         // Restore drawer states from global settings
         restoreDrawersFromGlobalSettings();
 
-        // Restore Workspace collapsed/expanded state: prefer per-project, fallback to global default
-        try {
-            Boolean projCollapsed = readProjectWorkspaceCollapsed();
-            boolean collapsed = (projCollapsed != null) ? projCollapsed : readGlobalWorkspaceCollapsed();
-            // Only apply if different from current to avoid redundant relayout
-            if (collapsed != this.workspaceCollapsed) {
-                setWorkspaceCollapsed(collapsed);
-            }
-        } catch (Exception ignored) {
-            // Defensive: do not let preference errors interrupt UI construction
-        }
+        // Always start with workspace collapsed on every session
+        setWorkspaceCollapsed(true);
     }
 
     /**
@@ -3529,12 +3520,11 @@ public class Chrome
     }
 
     /**
-     * Collapse/expand the Workspace area.
+     * Collapse the Workspace area. Expand requests are ignored; the workspace remains permanently hidden.
      *
-     * <p>New behavior: - When collapsed, completely remove the Workspace+Instructions split from the bottom stack and
-     * show only the Instructions/Drawer as the bottom component. The Output↔Bottom divider remains visible. - When
-     * expanded, restore the original Workspace+Instructions split as the bottom component and restore the previous
-     * divider location for the top split (Workspace↔Instructions).
+     * <p>When collapsed, the Workspace+Instructions split is removed from the bottom stack and only the
+     * Instructions/Drawer is shown as the bottom component. The Output↔Bottom divider remains visible.
+     * Once collapsed, the workspace cannot be expanded. Any call to expand (collapsed=false) is a no-op.
      */
     public void setWorkspaceCollapsed(boolean collapsed) {
         Runnable r = () -> {
@@ -3589,59 +3579,19 @@ public class Chrome
                         () -> applyMainDividerForExactBottomHeight(Math.max(0, pinnedInstructionsHeightPx)));
 
                 this.workspaceCollapsed = true;
-            } else {
-                // Ensure the workspace split bottom points to the instructions area (rightTabbedContainer), then
-                // restore it
-                // as bottom
+
+                // Refresh layout/paint
+                mainVerticalSplitPane.revalidate();
+                mainVerticalSplitPane.repaint();
+
+                // Persist collapsed/expanded state (per-project + global)
                 try {
-                    topSplitPane.setBottomComponent(rightTabbedContainer);
-                } catch (Exception ex) {
-                    // If it's already set due to prior operations, ignore but record for diagnostics
-                    logger.debug("topSplitPane.setBottomComponent() failed (likely already set)", ex);
+                    saveWorkspaceCollapsedSetting(this.workspaceCollapsed);
+                } catch (Exception ignored) {
+                    // Non-fatal persistence failure
                 }
-                mainVerticalSplitPane.setBottomComponent(topSplitPane);
-
-                // Revalidate the top split, then restore Workspace and bottom height exactly
-                topSplitPane.revalidate();
-                SwingUtilities.invokeLater(() -> {
-                    // Choose saved proportion; fall back to DEFAULT if missing
-                    double p = (savedTopSplitProportion > 0.0 && savedTopSplitProportion < 1.0)
-                            ? savedTopSplitProportion
-                            : DEFAULT_WORKSPACE_INSTRUCTIONS_SPLIT;
-                    // Clamp proportion
-                    p = Math.max(0.05, Math.min(0.95, p));
-
-                    // Compute the target bottom height so that Instructions stays at pinnedInstructionsHeightPx
-                    // For a vertical JSplitPane: bottomHeight = (1 - p) * T - dividerSize  =>  T = (pinned +
-                    // dividerSize) / (1 - p)
-                    int dividerSizeTS = topSplitPane.getDividerSize();
-                    int pinned = Math.max(0, pinnedInstructionsHeightPx);
-                    int desiredBottom = (int) Math.round((pinned + dividerSizeTS) / Math.max(0.05, (1.0 - p)));
-
-                    // Set the main Output↔Bottom divider so bottom == desiredBottom (clamped)
-                    applyMainDividerForExactBottomHeight(desiredBottom);
-
-                    // Finally set the top split divider by proportion to restore Workspace share
-                    try {
-                        topSplitPane.setDividerLocation(p);
-                    } catch (Exception ex) {
-                        logger.debug("Failed to set topSplitPane divider by proportion; will rely on layout", ex);
-                    }
-                });
-
-                this.workspaceCollapsed = false;
             }
-
-            // Refresh layout/paint
-            mainVerticalSplitPane.revalidate();
-            mainVerticalSplitPane.repaint();
-
-            // Persist collapsed/expanded state (per-project + global)
-            try {
-                saveWorkspaceCollapsedSetting(this.workspaceCollapsed);
-            } catch (Exception ignored) {
-                // Non-fatal persistence failure
-            }
+            // else: ignore expand requests; workspace stays collapsed permanently
         };
 
         if (SwingUtilities.isEventDispatchThread()) {
