@@ -31,6 +31,7 @@ import io.github.jbellis.brokk.gui.util.FileDropHandlerFactory;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.gui.util.KeyboardShortcutUtil;
 import io.github.jbellis.brokk.gui.wand.WandAction;
+import io.github.jbellis.brokk.metrics.SearchMetrics;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.util.GlobalUiSettings;
 import io.github.jbellis.brokk.util.Messages;
@@ -1673,12 +1674,23 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             var cm = chrome.getContextManager();
             SearchAgent agent = new SearchAgent(
+                    cm.liveContext(),
                     query,
-                    cm,
                     modelToUse,
                     EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST),
-                    cm.liveContext(),
+                    SearchMetrics.noOp(),
                     scope);
+            try {
+                agent.scanInitialContext();
+            } catch (InterruptedException e) {
+                Thread.currentThread().interrupt();
+                return new TaskResult(
+                        cm,
+                        "Search: " + query,
+                        cm.getIo().getLlmRawMessages(),
+                        cm.liveContext(),
+                        new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
+            }
             return agent.execute();
         });
     }

@@ -24,6 +24,7 @@ import io.github.jbellis.brokk.TaskResult.StopDetails;
 import io.github.jbellis.brokk.TaskResult.StopReason;
 import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.gui.Chrome;
+import io.github.jbellis.brokk.metrics.SearchMetrics;
 import io.github.jbellis.brokk.prompts.ArchitectPrompts;
 import io.github.jbellis.brokk.prompts.CodePrompts;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
@@ -225,14 +226,16 @@ public class ArchitectAgent {
             "Invoke the Search Agent to find information relevant to the given query. The Workspace is visible to the Search Agent. Searching is much slower than adding content to the Workspace directly if you know what you are looking for, but the Agent can find things that you don't know the exact name of. ")
     public String callSearchAgent(
             @P("The search query or question for the SearchAgent. Query in English (not just keywords)") String query)
-            throws FatalLlmException {
+            throws FatalLlmException, InterruptedException {
         addPlanningToHistory();
         logger.debug("callSearchAgent invoked with query: {}", query);
         LAST_SEARCH_RESULT.remove();
 
         // Instantiate and run SearchAgent
         io.llmOutput("**Search Agent** engaged: " + query, ChatMessageType.AI);
-        var searchAgent = new SearchAgent(query, cm, planningModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE));
+        var searchAgent = new SearchAgent(
+                context, query, planningModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), SearchMetrics.noOp(), scope);
+        searchAgent.scanInitialContext();
         var result = searchAgent.execute();
         // Update local context from SearchAgent result
         context = scope.append(result);
@@ -276,11 +279,12 @@ public class ArchitectAgent {
      *
      * <p>Returns the search result if it fails, otherwise returns the Architect result.
      */
-    public TaskResult executeWithSearch() {
+    public TaskResult executeWithSearch() throws InterruptedException {
         // Run Search first using the scan model (fast, token-friendly)
         var scanModel = cm.getService().getScanModel();
-        var searchAgent =
-                new SearchAgent(goal, cm, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), context, scope);
+        var searchAgent = new SearchAgent(
+                context, goal, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), SearchMetrics.noOp(), this.scope);
+        searchAgent.scanInitialContext();
         io.llmOutput("**Search Agent** engaged: " + goal, ChatMessageType.AI);
         var searchResult = searchAgent.execute();
         // Synchronize local context with search results before continuing
