@@ -379,7 +379,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         // Wrap activity panel in a tabbed pane with single "Activity" tab
         var activityTabs = new JTabbedPane(JTabbedPane.TOP);
         activityTabs.addTab("Activity", activityPanel);
-        activityTabs.setMinimumSize(new Dimension(230, 0));
+        activityTabs.setMinimumSize(new Dimension(250, 0));
         activityTabs.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
 
         // Create center container with both tab panels
@@ -620,7 +620,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         historyTable.setTableHeader(null);
 
         // Set up custom renderers for history table columns
-        historyTable.getColumnModel().getColumn(0).setCellRenderer(new ActivityTableRenderers.IconCellRenderer());
+        historyTable.getColumnModel().getColumn(0).setCellRenderer(new IndentedIconRenderer());
         historyTable.getColumnModel().getColumn(1).setCellRenderer(new DiffAwareActionRenderer());
 
         // Add selection listener to preview context (ignore group header rows)
@@ -684,9 +684,10 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         });
 
         // Adjust column widths - set emoji column width and hide the context object column
-        historyTable.getColumnModel().getColumn(0).setPreferredWidth(30);
-        historyTable.getColumnModel().getColumn(0).setMinWidth(30);
-        historyTable.getColumnModel().getColumn(0).setMaxWidth(30);
+        // Increase to 44 to accommodate one indent level (~15px) + possibly 24px themed icon, ensuring no clipping.
+        historyTable.getColumnModel().getColumn(0).setPreferredWidth(38);
+        historyTable.getColumnModel().getColumn(0).setMinWidth(38);
+        historyTable.getColumnModel().getColumn(0).setMaxWidth(38);
         historyTable.getColumnModel().getColumn(1).setPreferredWidth(150);
         historyTable.getColumnModel().getColumn(2).setMinWidth(0);
         historyTable.getColumnModel().getColumn(2).setMaxWidth(0);
@@ -743,7 +744,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         // Calculate preferred width for the history panel
         // Table width (30 + 150) + scrollbar (~20) + padding = ~210
         // Button width (100 + 100 + 5) + padding = ~215
-        int preferredWidth = 230; // Give a bit more room
+        int preferredWidth = 250; // Give a bit more room
         var preferredSize = new Dimension(preferredWidth, panel.getPreferredSize().height);
         panel.setPreferredSize(preferredSize);
         panel.setMinimumSize(preferredSize);
@@ -2392,6 +2393,41 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             r.run();
         } else {
             SwingUtilities.invokeLater(r);
+        }
+    }
+
+    /** Icon renderer that mirrors the Action column's indentation for nested rows. */
+    private class IndentedIconRenderer extends ActivityTableRenderers.IconCellRenderer {
+        @Override
+        public Component getTableCellRendererComponent(
+                JTable table, @Nullable Object value, boolean isSelected, boolean hasFocus, int row, int column) {
+            // Retrieve the action value from column 1; derive indent level from ActionText if present
+            Object actionVal = table.getModel().getValueAt(row, 1);
+            Object actionForCheck = (actionVal instanceof ActionText at) ? at.text() : actionVal;
+
+            // Detect group header rows from column 2
+            Object contextCol2 = table.getModel().getValueAt(row, 2);
+            boolean isHeader = (contextCol2 instanceof GroupRow);
+
+            // Preserve separator and header behavior by delegating to the base renderer unchanged
+            if (ActivityTableRenderers.isSeparatorAction(actionForCheck) || isHeader) {
+                return super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+            }
+
+            int indentLevel = (actionVal instanceof ActionText at) ? Math.max(0, at.indentLevel()) : 0;
+            Component comp = super.getTableCellRendererComponent(table, value, isSelected, hasFocus, row, column);
+
+            // Apply inset: top-level rows get a base margin; nested rows align exactly with action indent
+            if (comp instanceof JComponent jc) {
+                int perLevelInset = indentLevel * Constants.H_GAP * 4;
+                int inset = (indentLevel == 0) ? (Constants.H_GAP * 2) : perLevelInset;
+                jc.setBorder(new EmptyBorder(0, inset, 0, 0));
+            }
+            // Align icon left only for non-header, non-separator rows
+            if (comp instanceof JLabel lbl) {
+                lbl.setHorizontalAlignment(JLabel.LEFT);
+            }
+            return comp;
         }
     }
 
