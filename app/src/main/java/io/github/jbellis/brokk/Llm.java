@@ -1452,10 +1452,13 @@ public class Llm {
         }
 
         public AiMessage aiMessage() {
-            // Substitute space for empty -- works around crazy-ass Anthropic bug where they don't allow empty text
-            // but sometimes return empty themselves as part of a tool call response.
-            // See https://github.com/BrokkAi/brokk/pull/1556
-            var messageText = (text == null || text.isEmpty()) ? " " : text;
+            var messageText = text == null ? "" : text;
+            if (messageText.isBlank() && !toolRequests.isEmpty()) {
+                // Works around crazy-ass Anthropic bug where they don't allow empty text
+                // but sometimes return empty themselves as part of a tool call response.
+                // See https://github.com/BrokkAi/brokk/pull/1556
+                messageText = "Tool calls";
+            }
             return new AiMessage(messageText, reasoningContent, toolRequests);
         }
     }
