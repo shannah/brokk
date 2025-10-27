@@ -46,7 +46,6 @@ import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;
 import java.awt.geom.Path2D;
 import java.io.IOException;
-import java.lang.reflect.*;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -2734,57 +2733,13 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                 pathDisplay = de.fragment().shortDescription();
             }
 
-            // Try to create the StringSource type used by BrokkDiffPanel via reflection to avoid tight coupling
-            // to a specific nested type name (some builds may have different nesting). If that fails, fall back to
-            // attempting to call addComparison with simple String overloads via reflection.
-            boolean added = false;
-            try {
-                // Attempt to instantiate BrokkDiffPanel$StringSource if present
-                Class<?> stringSourceClass =
-                        Class.forName("io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel$StringSource");
-                Constructor<?> ctor = stringSourceClass.getConstructor(String.class, String.class, String.class);
-                Object left = ctor.newInstance(de.oldContent(), "Previous", pathDisplay);
-                Object right = ctor.newInstance(de.fragment().text(), "Current", pathDisplay);
-                Method addComp = builder.getClass().getMethod("addComparison", stringSourceClass, stringSourceClass);
-                addComp.invoke(builder, left, right);
-                added = true;
-            } catch (ClassNotFoundException
-                    | NoSuchMethodException
-                    | IllegalAccessException
-                    | InstantiationException
-                    | InvocationTargetException ex) {
-                // ignore and try fallback approaches below
-            }
-
-            if (!added) {
-                try {
-                    // Try to find an addComparison method that accepts (String, String) or (String, String, String)
-                    for (Method m : builder.getClass().getMethods()) {
-                        if (!m.getName().equals("addComparison")) continue;
-                        int pc = m.getParameterCount();
-                        try {
-                            if (pc == 2) {
-                                m.invoke(builder, de.oldContent(), de.fragment().text());
-                                added = true;
-                                break;
-                            } else if (pc == 3) {
-                                m.invoke(builder, de.oldContent(), de.fragment().text(), pathDisplay);
-                                added = true;
-                                break;
-                            }
-                        } catch (IllegalAccessException | InvocationTargetException ignore) {
-                            // try next candidate
-                        }
-                    }
-                } catch (Exception ex) {
-                    // fall through to logging below
-                }
-            }
-
-            if (!added) {
-                logger.warn(
-                        "Failed to add diff comparison for path {}: no compatible addComparison found", pathDisplay);
-            }
+            // Use the typed API matching buildAggregatedChangesPanel: BufferSource.StringSource +
+            // addComparison(BufferSource, BufferSource)
+            String leftContent = de.oldContent() == null ? "" : de.oldContent();
+            String rightContent = safeFragmentText(de);
+            BufferSource left = new BufferSource.StringSource(leftContent, "Previous", pathDisplay, null);
+            BufferSource right = new BufferSource.StringSource(rightContent, "Current", pathDisplay, null);
+            builder.addComparison(left, right);
         }
 
         if (!GlobalUiSettings.isDiffUnifiedView()) GlobalUiSettings.saveDiffUnifiedView(true);
