@@ -20,6 +20,7 @@ import io.github.jbellis.brokk.context.Context;
 import io.github.jbellis.brokk.context.ContextFragment;
 import io.github.jbellis.brokk.context.ContextHistory;
 import io.github.jbellis.brokk.difftool.ui.BrokkDiffPanel;
+import io.github.jbellis.brokk.difftool.ui.BufferSource;
 import io.github.jbellis.brokk.difftool.utils.ColorUtil;
 import io.github.jbellis.brokk.gui.components.MaterialButton;
 import io.github.jbellis.brokk.gui.components.SpinnerIconUtil;
@@ -27,6 +28,8 @@ import io.github.jbellis.brokk.gui.components.SplitButton;
 import io.github.jbellis.brokk.gui.dialogs.SessionsDialog;
 import io.github.jbellis.brokk.gui.mop.MarkdownOutputPanel;
 import io.github.jbellis.brokk.gui.mop.ThemeColors;
+import io.github.jbellis.brokk.gui.theme.GuiTheme;
+import io.github.jbellis.brokk.gui.theme.ThemeAware;
 import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
@@ -66,7 +69,9 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ConcurrentLinkedQueue;
 import java.util.concurrent.CopyOnWriteArrayList;
 import javax.swing.*;
+import javax.swing.border.CompoundBorder;
 import javax.swing.border.EmptyBorder;
+import javax.swing.border.LineBorder;
 import javax.swing.border.TitledBorder;
 import javax.swing.plaf.LayerUI;
 import javax.swing.table.DefaultTableCellRenderer;
@@ -75,7 +80,7 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
-public class HistoryOutputPanel extends JPanel {
+public class HistoryOutputPanel extends JPanel implements ThemeAware {
     private static final Logger logger = LogManager.getLogger(HistoryOutputPanel.class);
 
     private final Chrome chrome;
@@ -107,6 +112,19 @@ public class HistoryOutputPanel extends JPanel {
     // Output components
     private final MarkdownOutputPanel llmStreamArea;
     private final JScrollPane llmScrollPane;
+
+    // Output tabs
+    @Nullable
+    private JTabbedPane outputTabs;
+
+    @Nullable
+    private JPanel changesTabPlaceholder;
+
+    @Nullable
+    private JPanel outputTabContent;
+
+    @Nullable
+    private JComponent aggregatedChangesPanel;
 
     @Nullable
     private JTextArea captureDescriptionArea;
@@ -187,6 +205,9 @@ public class HistoryOutputPanel extends JPanel {
     // Session AI response counts and in-flight loaders
     private final Map<UUID, Integer> sessionAiResponseCounts = new ConcurrentHashMap<>();
     private final Set<UUID> sessionCountLoading = ConcurrentHashMap.newKeySet();
+
+    @Nullable
+    private CumulativeChanges lastCumulativeChanges;
 
     /**
      * Constructs a new HistoryOutputPane.
@@ -463,17 +484,14 @@ public class HistoryOutputPanel extends JPanel {
     }
 
     private JPanel buildCombinedOutputInstructionsPanel(JScrollPane llmScrollPane, MaterialButton copyButton) {
+        assert SwingUtilities.isEventDispatchThread() : "buildCombinedOutputInstructionsPanel must be called on EDT";
+
         // Build capture output panel (copyButton is passed in)
         var capturePanel = buildCaptureOutputPanel(copyButton);
 
-        // Output panel with LLM stream
+        // Build the content for the Output tab (existing UI)
         var outputPanel = new JPanel(new BorderLayout());
-        outputPanel.setBorder(BorderFactory.createTitledBorder(
-                BorderFactory.createEtchedBorder(),
-                "Output",
-                TitledBorder.DEFAULT_JUSTIFICATION,
-                TitledBorder.DEFAULT_POSITION,
-                new Font(Font.DIALOG, Font.BOLD, 12)));
+        outputPanel.setBorder(BorderFactory.createEtchedBorder());
 
         // Add session name label just under the titled border
         sessionNameLabel.setOpaque(false);
@@ -485,9 +503,25 @@ public class HistoryOutputPanel extends JPanel {
         outputPanel.add(llmScrollPane, BorderLayout.CENTER);
         outputPanel.add(capturePanel, BorderLayout.SOUTH); // Add capture panel below LLM output
 
+        // Save as the output tab content wrapper
+        this.outputTabContent = outputPanel;
+
+        // Placeholder for the Changes tab
+        var placeholder = new JPanel(new BorderLayout());
+        var placeholderLabel = new JLabel("Changes will appear here", SwingConstants.CENTER);
+        placeholderLabel.setBorder(new EmptyBorder(20, 0, 20, 0));
+        placeholder.add(placeholderLabel, BorderLayout.CENTER);
+        this.changesTabPlaceholder = placeholder;
+
+        // Create the tabbed pane and add both tabs
+        var tabs = new JTabbedPane();
+        tabs.addTab("Output", outputPanel);
+        tabs.addTab("Changes", placeholder);
+        this.outputTabs = tabs;
+
         // Container for the combined section
         var centerContainer = new JPanel(new BorderLayout());
-        centerContainer.add(outputPanel, BorderLayout.CENTER);
+        centerContainer.add(tabs, BorderLayout.CENTER);
         centerContainer.setMinimumSize(new Dimension(480, 0)); // Minimum width for combined area
 
         return centerContainer;
@@ -1030,6 +1064,48 @@ public class HistoryOutputPanel extends JPanel {
             var resetEdges = contextManager.getContextHistory().getResetEdges();
             arrowLayerUI.setResetEdges(resetEdges);
             updateUndoRedoButtonStates();
+
+            // Put the Changes tab into a loading state before aggregation
+            var tabs = outputTabs;
+            if (tabs != null) {
+                int idx = -1;
+                if (changesTabPlaceholder != null) {
+                    idx = tabs.indexOfComponent(changesTabPlaceholder);
+                }
+                if (idx < 0 && tabs.getTabCount() >= 2) {
+                    idx = 1; // Fallback: assume second tab is "Changes"
+                }
+                if (idx >= 0) {
+                    try {
+                        tabs.setTitleAt(idx, "Changes (...)");
+                        tabs.setToolTipTextAt(idx, "Computing cumulative changes...");
+                    } catch (IndexOutOfBoundsException ignore) {
+                        // Tab might have changed; ignore safely
+                    }
+                }
+
+                // Replace content with a spinner while loading
+                if (changesTabPlaceholder != null) {
+                    var container = changesTabPlaceholder;
+                    container.removeAll();
+                    container.setLayout(new BorderLayout());
+
+                    var spinnerLabel = new JLabel("Computing cumulative changes...", SwingConstants.CENTER);
+                    var spinnerIcon = SpinnerIconUtil.getSpinner(chrome, true);
+                    if (spinnerIcon != null) {
+                        spinnerLabel.setIcon(spinnerIcon);
+                        spinnerLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+                        spinnerLabel.setVerticalTextPosition(SwingConstants.BOTTOM);
+                    }
+
+                    container.add(spinnerLabel, BorderLayout.CENTER);
+                    container.revalidate();
+                    container.repaint();
+                }
+            }
+
+            // Recompute cumulative changes summary for the Changes tab in the background
+            refreshCumulativeChangesAsync();
         });
     }
 
@@ -1800,6 +1876,11 @@ public class HistoryOutputPanel extends JPanel {
         return s.replace("&", "&amp;").replace("<", "&lt;").replace(">", "&gt;");
     }
 
+    private static String toHex(Color c) {
+        if (c == null) return "#000000";
+        return String.format("#%02x%02x%02x", c.getRed(), c.getGreen(), c.getBlue());
+    }
+
     private void removeNotificationCard() {
         Runnable r = () -> {
             refreshLatestNotificationCard();
@@ -1924,6 +2005,55 @@ public class HistoryOutputPanel extends JPanel {
     public void showSessionSwitchSpinner() {
         SwingUtilities.invokeLater(() -> {
             historyModel.setRowCount(0);
+
+            // Dispose and clear any existing aggregated Changes panel
+            if (aggregatedChangesPanel instanceof BrokkDiffPanel diffPanel) {
+                try {
+                    diffPanel.dispose();
+                } catch (Throwable t) {
+                    logger.debug(
+                            "Ignoring error disposing previous aggregated BrokkDiffPanel during session switch", t);
+                }
+            }
+            aggregatedChangesPanel = null;
+
+            // Update the Changes tab to a loading state and show a spinner placeholder
+            if (outputTabs != null) {
+                int idx = -1;
+                if (changesTabPlaceholder != null) {
+                    idx = outputTabs.indexOfComponent(changesTabPlaceholder);
+                }
+                if (idx < 0 && outputTabs.getTabCount() >= 2) {
+                    idx = 1; // Fallback: assume second tab is "Changes"
+                }
+                if (idx >= 0) {
+                    try {
+                        outputTabs.setTitleAt(idx, "(...)");
+                        outputTabs.setToolTipTextAt(idx, "Computing cumulative changes...");
+                    } catch (IndexOutOfBoundsException ignore) {
+                        // Safe-guard: tab lineup may have changed
+                    }
+                }
+            }
+
+            if (changesTabPlaceholder != null) {
+                var container = changesTabPlaceholder;
+                container.removeAll();
+                container.setLayout(new BorderLayout());
+
+                var spinnerLabel = new JLabel("Computing cumulative changes...", SwingConstants.CENTER);
+                var spinnerIcon = SpinnerIconUtil.getSpinner(chrome, true);
+                if (spinnerIcon != null) {
+                    spinnerLabel.setIcon(spinnerIcon);
+                    spinnerLabel.setHorizontalTextPosition(SwingConstants.CENTER);
+                    spinnerLabel.setVerticalTextPosition(SwingConstants.BOTTOM);
+                }
+
+                container.add(spinnerLabel, BorderLayout.CENTER);
+                container.revalidate();
+                container.repaint();
+            }
+
             JPanel ssp = sessionSwitchPanel;
             if (ssp == null) {
                 buildSessionSwitchPanel();
@@ -1944,6 +2074,8 @@ public class HistoryOutputPanel extends JPanel {
                 sessionSwitchPanel.revalidate();
                 sessionSwitchPanel.repaint();
             }
+            // Trigger a fresh aggregation for the newly selected session
+            refreshCumulativeChangesAsync();
         });
     }
 
@@ -2322,6 +2454,86 @@ public class HistoryOutputPanel extends JPanel {
         }
     }
 
+    @Override
+    public void applyTheme(GuiTheme guiTheme) {
+        assert SwingUtilities.isEventDispatchThread() : "applyTheme must be called on EDT";
+        // Propagate theme to child output area
+        llmStreamArea.applyTheme(guiTheme);
+        // Propagate to aggregated Changes panel (BrokkDiffPanel implements ThemeAware)
+        if (aggregatedChangesPanel instanceof ThemeAware ta) {
+            ta.applyTheme(guiTheme);
+        }
+
+        // Recompute the Changes tab title colors to match the new theme if we have a computed summary
+        if (outputTabs != null && lastCumulativeChanges != null) {
+            int idx = -1;
+            if (changesTabPlaceholder != null) {
+                idx = outputTabs.indexOfComponent(changesTabPlaceholder);
+            }
+            if (idx < 0 && outputTabs.getTabCount() >= 2) {
+                idx = 1; // Fallback: assume second tab is "Changes"
+            }
+            if (idx >= 0) {
+                var res = lastCumulativeChanges;
+                try {
+                    if (res.filesChanged() == 0) {
+                        outputTabs.setTitleAt(idx, "Changes (0)");
+                        outputTabs.setToolTipTextAt(idx, "No changes in this session.");
+                    } else {
+                        boolean isDark = chrome.getTheme().isDarkTheme();
+                        Color plusColor = ThemeColors.getColor(isDark, "diff_added_fg");
+                        Color minusColor = ThemeColors.getColor(isDark, "diff_deleted_fg");
+                        String htmlTitle = String.format(
+                                "<html>Changes (%d, <span style='color:%s'>+%d</span>/<span style='color:%s'>-%d</span>)</html>",
+                                res.filesChanged(),
+                                toHex(plusColor),
+                                res.totalAdded(),
+                                toHex(minusColor),
+                                res.totalDeleted());
+                        outputTabs.setTitleAt(idx, htmlTitle);
+                        String tooltip = "Cumulative changes: "
+                                + res.filesChanged()
+                                + " files, +" + res.totalAdded()
+                                + "/-" + res.totalDeleted();
+                        outputTabs.setToolTipTextAt(idx, tooltip);
+                    }
+                } catch (IndexOutOfBoundsException ignore) {
+                    // Tab lineup changed; safe to ignore
+                }
+            }
+        }
+
+        SwingUtilities.updateComponentTreeUI(this);
+        revalidate();
+        repaint();
+    }
+
+    /**
+     * Releases owned resources. Must be called on the EDT.
+     */
+    public void dispose() {
+        assert SwingUtilities.isEventDispatchThread() : "dispose must be called on EDT";
+        // Dispose aggregated changes panel if present
+        if (aggregatedChangesPanel instanceof BrokkDiffPanel diffPanel) {
+            try {
+                diffPanel.dispose();
+            } catch (Throwable t) {
+                logger.debug(
+                        "Ignoring error disposing aggregated BrokkDiffPanel during HistoryOutputPanel.dispose()", t);
+            } finally {
+                aggregatedChangesPanel = null;
+            }
+        } else {
+            aggregatedChangesPanel = null;
+        }
+        // Dispose the web-based markdown output panel
+        try {
+            llmStreamArea.dispose();
+        } catch (Throwable t) {
+            logger.debug("Ignoring error disposing MarkdownOutputPanel during HistoryOutputPanel.dispose()", t);
+        }
+    }
+
     /** A renderer that shows the action text and a diff summary (when available) under it. */
     private class DiffAwareActionRenderer extends DefaultTableCellRenderer {
         private final ActivityTableRenderers.ActionCellRenderer fallback =
@@ -2575,9 +2787,267 @@ public class HistoryOutputPanel extends JPanel {
             }
         }
 
+        if (!GlobalUiSettings.isDiffUnifiedView()) GlobalUiSettings.saveDiffUnifiedView(true);
         var panel = builder.build();
         panel.showInFrame("Diff: " + ctx.getAction());
     }
+
+    // Compute the net changes across the entire session history in the background,
+    // reusing cached diffs where possible. Updates the "Changes" tab title and content on the EDT.
+    // Net changes = earliest version -> latest version for each file (matches the unified diff visual).
+    private CompletableFuture<CumulativeChanges> refreshCumulativeChangesAsync() {
+        return contextManager
+                .submitBackgroundTask("Aggregate session changes", () -> {
+                    var contexts = contextManager.getContextHistoryList();
+                    var prevMapSnapshot = new HashMap<>(previousContextMap);
+
+                    Map<String, PerFileChange> perFileMap = new HashMap<>();
+
+                    for (var ctx : contexts) {
+                        var prev = prevMapSnapshot.get(ctx.id());
+                        if (prev == null) {
+                            continue;
+                        }
+
+                        var diffs = diffCache.get(ctx.id());
+                        if (diffs == null) {
+                            // Compute once and cache for reuse elsewhere
+                            diffs = ctx.getDiff(prev);
+                            diffCache.put(ctx.id(), diffs);
+                        }
+
+                        for (var de : diffs) {
+                            String key;
+                            try {
+                                var files = de.fragment().files();
+                                if (!files.isEmpty()) {
+                                    var pf = files.iterator().next();
+                                    key = pf.getRelPath().toString();
+                                } else {
+                                    key = de.fragment().shortDescription();
+                                }
+                            } catch (Throwable t) {
+                                key = de.fragment().shortDescription();
+                            }
+
+                            // Track earliest old and latest new across all changes for this file
+                            var existing = perFileMap.get(key);
+                            String earliestOld = (existing == null)
+                                    ? (de.oldContent() == null ? "" : de.oldContent())
+                                    : existing.earliestOld();
+                            String latestNew = safeFragmentText(de);
+
+                            perFileMap.put(key, new PerFileChange(earliestOld, latestNew));
+                        }
+                    }
+
+                    // Compute net changes: count actual added/deleted lines between earliest and latest versions
+                    int totalAdded = 0;
+                    int totalDeleted = 0;
+                    for (var change : perFileMap.values()) {
+                        int[] netCounts = computeNetLineCounts(change.earliestOld(), change.latestNew());
+                        totalAdded += netCounts[0];
+                        totalDeleted += netCounts[1];
+                    }
+
+                    return new CumulativeChanges(perFileMap.size(), totalAdded, totalDeleted, Map.copyOf(perFileMap));
+                })
+                .thenApply(result -> {
+                    // Update UI on EDT
+                    SwingUtilities.invokeLater(() -> {
+                        lastCumulativeChanges = result;
+
+                        var tabs = outputTabs;
+                        if (tabs != null) {
+                            int idx = -1;
+                            if (changesTabPlaceholder != null) {
+                                idx = tabs.indexOfComponent(changesTabPlaceholder);
+                            }
+                            if (idx < 0 && tabs.getTabCount() >= 2) {
+                                // Fallback: assume second tab is "Changes"
+                                idx = 1;
+                            }
+                            if (idx >= 0) {
+                                if (result.filesChanged() == 0) {
+                                    try {
+                                        tabs.setTitleAt(idx, "Changes (0)");
+                                        tabs.setToolTipTextAt(idx, "No changes in this session.");
+                                    } catch (IndexOutOfBoundsException ignore) {
+                                        // Tab disappeared or index changed; ignore
+                                    }
+                                } else {
+                                    boolean isDark = chrome.getTheme().isDarkTheme();
+                                    Color plusColor = ThemeColors.getColor(isDark, "diff_added_fg");
+                                    Color minusColor = ThemeColors.getColor(isDark, "diff_deleted_fg");
+                                    String htmlTitle = String.format(
+                                            "<html>Changes (%d, <span style='color:%s'>+%d</span>/<span style='color:%s'>-%d</span>)</html>",
+                                            result.filesChanged(),
+                                            toHex(plusColor),
+                                            result.totalAdded(),
+                                            toHex(minusColor),
+                                            result.totalDeleted());
+                                    try {
+                                        tabs.setTitleAt(idx, htmlTitle);
+                                        String tooltip = "Cumulative changes: "
+                                                + result.filesChanged()
+                                                + " files, +" + result.totalAdded()
+                                                + "/-" + result.totalDeleted();
+                                        tabs.setToolTipTextAt(idx, tooltip);
+                                    } catch (IndexOutOfBoundsException ignore) {
+                                        // Tab disappeared or index changed; ignore
+                                    }
+                                }
+                            }
+                        }
+
+                        // Render or update the Changes tab content
+                        updateChangesTabContent(result);
+                    });
+                    return result;
+                });
+    }
+
+    // Build and insert the aggregated multi-file diff panel into the Changes tab.
+    // Must be called on the EDT.
+    private void updateChangesTabContent(CumulativeChanges res) {
+        assert SwingUtilities.isEventDispatchThread() : "updateChangesTabContent must run on EDT";
+        var container = changesTabPlaceholder;
+        if (container == null) {
+            return;
+        }
+
+        // Dispose any previous diff panel to free resources
+        if (aggregatedChangesPanel instanceof BrokkDiffPanel diffPanel) {
+            try {
+                diffPanel.dispose();
+            } catch (Throwable t) {
+                logger.debug("Ignoring error disposing previous BrokkDiffPanel", t);
+            }
+        }
+        aggregatedChangesPanel = null;
+
+        container.removeAll();
+
+        if (res.filesChanged() == 0) {
+            var none = new JLabel("No changes in this session.", SwingConstants.CENTER);
+            none.setBorder(new EmptyBorder(20, 0, 20, 0));
+            container.setLayout(new BorderLayout());
+            container.add(none, BorderLayout.CENTER);
+            container.revalidate();
+            container.repaint();
+            return;
+        }
+
+        try {
+            var aggregatedPanel = buildAggregatedChangesPanel(res);
+            container.setLayout(new BorderLayout());
+            container.add(aggregatedPanel, BorderLayout.CENTER);
+        } catch (Throwable t) {
+            logger.warn("Failed to build aggregated Changes panel", t);
+            container.setLayout(new BorderLayout());
+            var err = new JLabel("Unable to display aggregated changes.", SwingConstants.CENTER);
+            err.setBorder(new EmptyBorder(20, 0, 20, 0));
+            container.removeAll();
+            container.add(err, BorderLayout.CENTER);
+            aggregatedChangesPanel = null;
+        }
+        container.revalidate();
+        container.repaint();
+    }
+
+    // Constructs a panel containing a summary header and a BrokkDiffPanel with per-file comparisons.
+    // Sets aggregatedChangesPanel to the created BrokkDiffPanel for lifecycle management.
+    private JPanel buildAggregatedChangesPanel(CumulativeChanges res) {
+        var wrapper = new JPanel(new BorderLayout());
+
+        // Use a compound border: line border for separation + padding
+        wrapper.setBorder(new CompoundBorder(
+                new LineBorder(UIManager.getColor("Separator.foreground"), 1), new EmptyBorder(6, 6, 6, 6)));
+
+        // Build BrokkDiffPanel with string sources
+        String projectName = "Project";
+        try {
+            var proj = contextManager.getProject();
+            var root = proj.getRoot();
+            if (root != null && root.getFileName() != null) {
+                projectName = root.getFileName().toString();
+            }
+        } catch (Exception ignored) {
+            // fallback to default projectName
+        }
+
+        var builder = new BrokkDiffPanel.Builder(chrome.getTheme(), contextManager)
+                .setMultipleCommitsContext(false)
+                .setRootTitle(projectName)
+                .setInitialFileIndex(0);
+
+        // Stable order by path key
+        var keys = new ArrayList<>(res.perFileMap().keySet());
+        keys.sort(Comparator.naturalOrder());
+
+        for (var path : keys) {
+            var change = res.perFileMap().get(path);
+            String leftContent = change.earliestOld() == null ? "" : change.earliestOld();
+            String rightContent = change.latestNew() == null ? "" : change.latestNew();
+
+            // Use non-ref titles to avoid accidental git ref resolution; keep filename for syntax highlighting.
+            BufferSource left = new BufferSource.StringSource(leftContent, "", path, null);
+            BufferSource right = new BufferSource.StringSource(rightContent, "", path, null);
+            builder.addComparison(left, right);
+        }
+
+        if (!GlobalUiSettings.isDiffUnifiedView()) GlobalUiSettings.saveDiffUnifiedView(true);
+        var diffPanel = builder.build();
+        aggregatedChangesPanel = diffPanel;
+        // Ensure the embedded diff reflects the current theme immediately
+        diffPanel.applyTheme(chrome.getTheme());
+
+        wrapper.add(diffPanel, BorderLayout.CENTER);
+        return wrapper;
+    }
+
+    // Compute the net added/deleted line counts between two versions of a file.
+    // Returns [added, deleted] counts that represent the actual net change.
+    private static int[] computeNetLineCounts(String earliestOld, String latestNew) {
+        var oldLines = (earliestOld == null || earliestOld.isEmpty())
+                ? List.<String>of()
+                : List.of(earliestOld.split("\n", -1));
+        var newLines =
+                (latestNew == null || latestNew.isEmpty()) ? List.<String>of() : List.of(latestNew.split("\n", -1));
+
+        // Simple line-by-line diff: count lines that are only in new (added) or only in old (deleted)
+        Set<String> oldSet = new HashSet<>(oldLines);
+        Set<String> newSet = new HashSet<>(newLines);
+
+        int added = 0;
+        for (var line : newSet) {
+            if (!oldSet.contains(line)) {
+                added++;
+            }
+        }
+
+        int deleted = 0;
+        for (var line : oldSet) {
+            if (!newSet.contains(line)) {
+                deleted++;
+            }
+        }
+
+        return new int[] {added, deleted};
+    }
+
+    private static String safeFragmentText(Context.DiffEntry de) {
+        try {
+            return de.fragment().text();
+        } catch (Throwable t) {
+            return "";
+        }
+    }
+
+    private static record PerFileChange(String earliestOld, String latestNew) {}
+
+    private static record CumulativeChanges(
+            int filesChanged, int totalAdded, int totalDeleted, Map<String, PerFileChange> perFileMap) {}
 
     /** A LayerUI that paints reset-from-history arrows over the history table. */
     private class ResetArrowLayerUI extends LayerUI<JScrollPane> {
