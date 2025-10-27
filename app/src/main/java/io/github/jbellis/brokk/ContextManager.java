@@ -1084,12 +1084,15 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     for (VirtualFragment vfToAdd : virtualFragmentsToAdd) {
                         modifiedCtx = modifiedCtx.addVirtualFragment(vfToAdd);
                     }
-                    return new Context(
+                    return Context.createWithId(
+                            Context.newContextId(),
                             this,
                             modifiedCtx.allFragments().toList(),
                             newHistory,
                             null,
-                            CompletableFuture.completedFuture(actionMessage));
+                            CompletableFuture.completedFuture(actionMessage),
+                            currentLiveCtx.getGroupId(),
+                            currentLiveCtx.getGroupLabel());
                 });
 
                 io.showNotification(IConsoleIO.NotificationRole.INFO, actionMessage);
@@ -1537,7 +1540,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         }
 
         TaskResult result;
-        try (var scope = beginTask(prompt, false)) {
+        try (var scope = beginTask(prompt, false, "Task")) {
             var agent = new ArchitectAgent(this, planningModel, codeModel, prompt, scope);
             result = agent.executeWithSearch();
         } finally {
@@ -2087,7 +2090,12 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     /** Begin a new aggregating scope with explicit compress-at-commit semantics and non-text resolution mode. */
     public TaskScope beginTask(String input, boolean compressAtCommit) {
-        TaskScope scope = new TaskScope(compressAtCommit, input);
+        return beginTask(input, compressAtCommit, null);
+    }
+
+    /** Begin a new aggregating scope with explicit compress-at-commit semantics and optional grouping label. */
+    public TaskScope beginTask(String input, boolean compressAtCommit, @Nullable String groupLabel) {
+        TaskScope scope = new TaskScope(compressAtCommit, groupLabel != null ? groupLabel + ": " + input : null);
 
         // prepare MOP
         var history = liveContext().getTaskHistory();
@@ -2123,9 +2131,17 @@ public class ContextManager implements IContextManager, AutoCloseable {
     public final class TaskScope implements AutoCloseable {
         private final boolean compressResults;
         private boolean closed = false;
+        private final @Nullable UUID groupId;
+        private final @Nullable String groupLabel;
 
-        private TaskScope(boolean compressResults, String input) {
+        private TaskScope(boolean compressResults) {
+            this(compressResults, null);
+        }
+
+        private TaskScope(boolean compressResults, @Nullable String groupLabel) {
             this.compressResults = compressResults;
+            this.groupLabel = groupLabel;
+            this.groupId = (groupLabel != null) ? UUID.randomUUID() : null;
             io.setTaskInProgress(true);
             taskScopeInProgress.set(true);
         }
@@ -2163,7 +2179,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             // push context
             final Context[] updatedContext = new Context[1];
             pushContext(currentLiveCtx -> {
-                var updated = result.context();
+                var updated = result.context().withGroup(groupId, groupLabel);
                 TaskEntry entry = updated.createTaskEntry(result);
                 TaskEntry finalEntry = compressResults ? compressHistory(entry) : entry;
                 updatedContext[0] = updated.addHistoryEntry(finalEntry, result.output(), actionFuture);
