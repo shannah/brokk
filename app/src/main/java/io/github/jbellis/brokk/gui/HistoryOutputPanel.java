@@ -34,6 +34,7 @@ import io.github.jbellis.brokk.gui.util.GitUiUtil;
 import io.github.jbellis.brokk.gui.util.Icons;
 import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
+import io.github.jbellis.brokk.util.ContentDiffUtils;
 import io.github.jbellis.brokk.util.GlobalUiSettings;
 import java.awt.*;
 import java.awt.event.ActionEvent;
@@ -2962,33 +2963,11 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     }
 
     // Compute the net added/deleted line counts between two versions of a file.
-    // Returns [added, deleted] counts that represent the actual net change.
+    // Uses ContentDiffUtils for accurate Myers-algorithm-based diff counts.
     private static int[] computeNetLineCounts(String earliestOld, String latestNew) {
-        var oldLines = (earliestOld == null || earliestOld.isEmpty())
-                ? List.<String>of()
-                : List.of(earliestOld.split("\n", -1));
-        var newLines =
-                (latestNew == null || latestNew.isEmpty()) ? List.<String>of() : List.of(latestNew.split("\n", -1));
-
-        // Simple line-by-line diff: count lines that are only in new (added) or only in old (deleted)
-        Set<String> oldSet = new HashSet<>(oldLines);
-        Set<String> newSet = new HashSet<>(newLines);
-
-        int added = 0;
-        for (var line : newSet) {
-            if (!oldSet.contains(line)) {
-                added++;
-            }
-        }
-
-        int deleted = 0;
-        for (var line : oldSet) {
-            if (!newSet.contains(line)) {
-                deleted++;
-            }
-        }
-
-        return new int[] {added, deleted};
+        var result = ContentDiffUtils.computeDiffResult(
+                earliestOld == null ? "" : earliestOld, latestNew == null ? "" : latestNew, "old", "new");
+        return new int[] {result.added(), result.deleted()};
     }
 
     private static String safeFragmentText(Context.DiffEntry de) {
