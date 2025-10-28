@@ -36,12 +36,8 @@ class FileListenersIntegrationTest {
 
     @AfterEach
     void tearDown() {
-        if (analyzerWrapper != null) {
-            analyzerWrapper.close();
-        }
-        if (watchService != null) {
-            watchService.close();
-        }
+        analyzerWrapper.close();
+        watchService.close();
     }
 
     /**
@@ -249,29 +245,6 @@ class FileListenersIntegrationTest {
         // Both should receive events
         assertTrue(listener1.filesChangedLatch.await(5, TimeUnit.SECONDS), "Listener1 should receive event");
         assertTrue(listener2.filesChangedLatch.await(5, TimeUnit.SECONDS), "Listener2 should receive event");
-    }
-
-    /**
-     * Test helper for tracking analyzer lifecycle events.
-     */
-    private static class TestAnalyzerListener implements AnalyzerListener {
-        @Override
-        public void onBlocked() {}
-
-        @Override
-        public void afterFirstBuild(String msg) {}
-
-        @Override
-        public void onTrackedFileChange() {}
-
-        @Override
-        public void onRepoChange() {}
-
-        @Override
-        public void beforeEachBuild() {}
-
-        @Override
-        public void afterEachBuild(boolean externalRequest) {}
     }
 
     /**
