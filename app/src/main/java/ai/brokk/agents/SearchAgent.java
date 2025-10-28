@@ -791,12 +791,11 @@ public class SearchAgent {
 
         var recommendation = contextAgent.getRecommendations(context);
 
-        // create a history entry in any case
-        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
-        context = scope.append(contextAgentResult);
-
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
+            // create a history entry
+            var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
+            context = scope.append(contextAgentResult);
             long scanTime = System.currentTimeMillis() - scanStartTime;
             metrics.recordContextScan(0, scanTime, false, Set.of());
             return;
@@ -821,6 +820,10 @@ public class SearchAgent {
                     "\n\n**Brokk Context Engine** complete — contextual insights added to Workspace.\n",
                     ChatMessageType.AI);
         }
+
+        // create a history entry
+        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
+        context = scope.append(contextAgentResult);
 
         // Track metrics
         Set<ProjectFile> filesAfterScan = getWorkspaceFileSet();
