@@ -2918,7 +2918,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         var builder = new BrokkDiffPanel.Builder(chrome.getTheme(), contextManager)
                 .setMultipleCommitsContext(false)
                 .setRootTitle(projectName)
-                .setInitialFileIndex(0);
+                .setInitialFileIndex(0)
+                .setForceFileTree(true);
 
         // Stable order by display file path
         var changes = new ArrayList<>(res.perFileChanges());
