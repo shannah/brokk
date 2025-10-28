@@ -2582,6 +2582,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             // If we have cached diff entries, add a summary panel; otherwise, action-only
             if (cachedOpt.isPresent() && !cachedOpt.get().isEmpty()) {
                 boolean isDark = chrome.getTheme().isDarkTheme();
+                Color plusColor = ThemeColors.getColor(isDark, "diff_added_fg");
+                Color minusColor = ThemeColors.getColor(isDark, "diff_deleted_fg");
 
                 var diffPanel = new JPanel();
                 diffPanel.setLayout(new BoxLayout(diffPanel, BoxLayout.Y_AXIS));
@@ -2609,11 +2611,11 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
 
                     var plus = new JLabel("+" + de.linesAdded());
                     plus.setFont(smallFont);
-                    plus.setForeground(ThemeColors.getDiffAdded(!isDark));
+                    plus.setForeground(plusColor);
 
                     var minus = new JLabel("-" + de.linesDeleted());
                     minus.setFont(smallFont);
-                    minus.setForeground(ThemeColors.getDiffDeleted(!isDark));
+                    minus.setForeground(minusColor);
 
                     var rowPanel = new JPanel(new FlowLayout(FlowLayout.LEFT, 6, 0));
                     rowPanel.setOpaque(false);
