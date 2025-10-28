@@ -137,7 +137,7 @@ public class Context {
 
     /** Per-fragment diff entry between two contexts. */
     public record DiffEntry(
-            ContextFragment fragment, String diff, int linesAdded, int linesDeleted, String oldContent) {}
+            FrozenFragment fragment, String diff, int linesAdded, int linesDeleted, String oldContent, String newContent) {}
 
     /** Produces a live context whose fragments are un-frozen versions of those in {@code frozen}. */
     public static Context unfreeze(Context frozen) {
@@ -1028,7 +1028,7 @@ public class Context {
                             if (result.diff().isEmpty()) {
                                 return null;
                             }
-                            return new DiffEntry(ff, result.diff(), result.added(), result.deleted(), "");
+                            return new DiffEntry(ff, result.diff(), result.added(), result.deleted(), "", newContent);
                         }
                         return null;
                     }
@@ -1060,7 +1060,7 @@ public class Context {
                     if (result.diff().isEmpty()) {
                         return null;
                     }
-                    return new DiffEntry(ff, result.diff(), result.added(), result.deleted(), oldContent);
+                    return new DiffEntry(ff, result.diff(), result.added(), result.deleted(), oldContent, newContent);
                 })
                 .filter(Objects::nonNull)
                 .toList();
