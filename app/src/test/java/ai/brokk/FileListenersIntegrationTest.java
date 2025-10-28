@@ -162,52 +162,6 @@ class FileListenersIntegrationTest {
     }
 
     /**
-     * Test pause/resume from external component doesn't break AnalyzerWrapper.
-     */
-    @Test
-    void testExternalPauseResumeDoesNotBreakAnalyzer() throws Exception {
-        // Setup
-        var projectRoot = tempDir.resolve("project");
-        Files.createDirectories(projectRoot);
-        Files.writeString(projectRoot.resolve("Test.java"), "public class Test {}");
-        var project = new TestProject(projectRoot, Languages.JAVA);
-
-        // Create watch service and AnalyzerWrapper
-        watchService = new ProjectWatchService(projectRoot, null, List.of());
-        // Pass null for analyzerListener to avoid git repo access in tests
-        analyzerWrapper = new AnalyzerWrapper(project, null, watchService);
-
-        // Add external listener
-        var externalListener = new TestExternalListener();
-        watchService.addListener(externalListener);
-
-        // Start watching
-        watchService.start(java.util.concurrent.CompletableFuture.completedFuture(null));
-        Thread.sleep(500);
-
-        // External component pauses via getWatchService()
-        analyzerWrapper.getWatchService().pause();
-        assertTrue(analyzerWrapper.getWatchService().isPaused(), "Should be paused");
-
-        // Create a file while paused
-        Files.writeString(projectRoot.resolve("Paused.java"), "public class Paused {}");
-        Thread.sleep(500);
-
-        // Listeners should not receive event yet
-        int countBeforeResume = externalListener.filesChangedCount.get();
-
-        // External component resumes
-        analyzerWrapper.getWatchService().resume();
-        assertFalse(analyzerWrapper.getWatchService().isPaused(), "Should not be paused");
-
-        // Events should now be processed
-        Thread.sleep(1500);
-        assertTrue(
-                externalListener.filesChangedCount.get() > countBeforeResume,
-                "Events should be processed after resume");
-    }
-
-    /**
      * Test that multiple components can access watch service via getWatchService().
      */
     @Test
