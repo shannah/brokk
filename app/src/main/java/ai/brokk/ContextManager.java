@@ -2112,7 +2112,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
             return entry;
         }
 
-        logger.debug("Compressed summary '{}' from entry: {}", summary, entry);
+        logger.debug("Compressed summary:\n{}", summary);
         return TaskEntry.fromCompressed(entry.sequence(), summary);
     }
 
