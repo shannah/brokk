@@ -342,7 +342,7 @@ public class Chrome
 
         // Create workspace panel and project files panel
         workspacePanel = new WorkspacePanel(this, contextManager);
-        projectFilesPanel = new ProjectFilesPanel(this, contextManager, this.testRunnerPanel);
+        projectFilesPanel = new ProjectFilesPanel(this, contextManager);
         dependenciesPanel = new DependenciesPanel(this);
 
         // Create left vertical-tabbed pane for ProjectFiles and Git with vertical tab placement
@@ -486,6 +486,23 @@ public class Chrome
                     }
                 });
             }
+        }
+
+        // --- New top-level Tests panel (always last) ---
+        {
+            var testsIcon = Icons.PLAY;
+            leftTabbedPanel.addTab(null, testsIcon, testRunnerPanel);
+            var testsTabIdx = leftTabbedPanel.indexOfComponent(testRunnerPanel);
+            var testsShortcut =
+                    KeyboardShortcutUtil.formatKeyStroke(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_8));
+            var testsTabLabel = createSquareTabLabel(testsIcon, "Tests (" + testsShortcut + ")");
+            leftTabbedPanel.setTabComponentAt(testsTabIdx, testsTabLabel);
+            testsTabLabel.addMouseListener(new MouseAdapter() {
+                @Override
+                public void mousePressed(MouseEvent e) {
+                    handleTabToggle(testsTabIdx);
+                }
+            });
         }
 
         /*
@@ -1355,6 +1372,20 @@ public class Chrome
                 @Override
                 public void actionPerformed(ActionEvent e) {
                     var idx = leftTabbedPanel.indexOfComponent(issuesPanel);
+                    if (idx != -1) leftTabbedPanel.setSelectedIndex(idx);
+                }
+            });
+        }
+
+        // Alt/Cmd+8 for Tests panel
+        if (testRunnerPanel != null) {
+            KeyStroke switchToTests = GlobalUiSettings.getKeybinding(
+                    "panel.switchToTests", KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_8));
+            bindKey(rootPane, switchToTests, "switchToTests");
+            rootPane.getActionMap().put("switchToTests", new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    var idx = leftTabbedPanel.indexOfComponent(testRunnerPanel);
                     if (idx != -1) leftTabbedPanel.setSelectedIndex(idx);
                 }
             });
@@ -2606,6 +2637,10 @@ public class Chrome
 
     public DependenciesPanel getDependenciesPanel() {
         return dependenciesPanel;
+    }
+
+    public TestRunnerPanel getTestRunnerPanel() {
+        return testRunnerPanel;
     }
 
     // --- New helpers for Git tabs moved into Chrome ---

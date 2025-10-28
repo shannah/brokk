@@ -440,6 +440,15 @@ public class MenuBar {
                     windowMenu.add(issuesItem);
                 }
 
+                // Tests
+                var testsItem = new JMenuItem("Tests");
+                testsItem.setAccelerator(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_8));
+                testsItem.addActionListener(actionEvent -> {
+                    var idx = chrome.getLeftTabbedPanel().indexOfComponent(chrome.getTestRunnerPanel());
+                    if (idx != -1) chrome.getLeftTabbedPanel().setSelectedIndex(idx);
+                });
+                windowMenu.add(testsItem);
+
                 windowMenu.addSeparator();
 
                 Window currentChromeWindow = chrome.getFrame();
