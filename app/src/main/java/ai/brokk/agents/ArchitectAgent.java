@@ -159,8 +159,10 @@ public class ArchitectAgent {
         context = scope.append(result);
 
         if (result.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {
-            var resultString = "CodeAgent finished! Details are in the Workspace messages.";
-            logger.debug("callCodeAgent finished");
+            var resultString = deferBuild
+                    ? "CodeAgent finished! Details are in the Workspace messages."
+                    : "CodeAgent finished with a successful build! Details are in the Workspace messages.";
+            logger.debug("callCodeAgent finished successfully");
             codeAgentJustSucceeded = !deferBuild
                     && !context.freeze().getDiff(initialContext.freeze()).isEmpty();
             return resultString;
