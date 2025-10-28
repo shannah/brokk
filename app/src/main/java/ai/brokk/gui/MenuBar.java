@@ -181,7 +181,7 @@ public class MenuBar {
         }));
         sessionMenu.add(newSessionItem);
 
-        var newSessionCopyWorkspaceItem = new JMenuItem("New + Copy Workspace");
+        var newSessionCopyWorkspaceItem = new JMenuItem("New + Copy Context");
         newSessionCopyWorkspaceItem.setAccelerator(KeyStroke.getKeyStroke(
                 KeyEvent.VK_N, Toolkit.getDefaultToolkit().getMenuShortcutKeyMaskEx() | InputEvent.SHIFT_DOWN_MASK));
         newSessionCopyWorkspaceItem.addActionListener(e -> runWithRefocus(chrome, () -> {
