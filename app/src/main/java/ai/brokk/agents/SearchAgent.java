@@ -140,10 +140,6 @@ public class SearchAgent {
         var wst = new WorkspaceTools(context);
         var tr = cm.getToolRegistry().builder().register(wst).register(this).build();
 
-        // Single pruning turn if workspace is not empty
-        performInitialPruningTurn(tr);
-        context = wst.getContext();
-
         // Main loop: propose actions, execute, record, repeat until finalization
         while (true) {
             wst.setContext(context);
@@ -710,11 +706,14 @@ public class SearchAgent {
         };
     }
 
-    private void performInitialPruningTurn(ToolRegistry tr) throws InterruptedException {
+    private void performInitialPruningTurn() throws InterruptedException {
         // Skip if workspace is empty
-        if (cm.liveContext().isEmpty()) {
+        if (context.isEmpty()) {
             return;
         }
+
+        var wst = new WorkspaceTools(context);
+        var tr = cm.getToolRegistry().builder().register(wst).register(this).build();
 
         var messages = buildInitialPruningPrompt();
         var toolSpecs = tr.getTools(List.of("performedInitialReview", "dropWorkspaceFragments"));
@@ -739,6 +738,7 @@ public class SearchAgent {
                 logger.warn("Tool execution failed during initial pruning for {}: {}", req.name(), e.getMessage());
             }
         }
+        context = wst.getContext();
     }
 
     private List<ChatMessage> buildInitialPruningPrompt() {
@@ -779,6 +779,10 @@ public class SearchAgent {
      * Callers should invoke this before calling execute() if they want the initial context scan.
      */
     public void scanInitialContext() throws InterruptedException {
+
+        // Prune initial workspace when not empty
+        performInitialPruningTurn();
+
         long scanStartTime = System.currentTimeMillis();
         Set<ProjectFile> filesBeforeScan = getWorkspaceFileSet();
 
@@ -786,13 +790,17 @@ public class SearchAgent {
         io.llmOutput("\n**Brokk Context Engine** analyzing repository context…\n", ChatMessageType.AI, true, false);
 
         var recommendation = contextAgent.getRecommendations(context);
+
+        // create a history entry in any case
+        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
+        context = scope.append(contextAgentResult);
+
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
             long scanTime = System.currentTimeMillis() - scanStartTime;
             metrics.recordContextScan(0, scanTime, false, Set.of());
             return;
         }
-        scope.append(new TaskResult(cm, "Context Engine", List.of(), context, TaskResult.StopReason.SUCCESS));
 
         var totalTokens = contextAgent.calculateFragmentTokens(recommendation.fragments());
         int finalBudget = cm.getService().getMaxInputTokens(model) / 2;
