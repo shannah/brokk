@@ -1771,7 +1771,7 @@ public class Chrome
             }
 
             // Set a minimum width for preview windows to ensure search controls work properly
-            previewFrame.setMinimumSize(new Dimension(400, 200));
+            previewFrame.setMinimumSize(new Dimension(700, 200));
 
             // Add listener to save bounds using the "preview" key
             final JFrame finalFrameForBounds = previewFrame;
@@ -1821,6 +1821,11 @@ public class Chrome
 
         // Add content component (for both new and reused windows)
         previewFrame.add(contentComponent, BorderLayout.CENTER);
+
+        // Apply theme to ThemeAware components after they're added to the window
+        if (contentComponent instanceof ThemeAware themeAware) {
+            themeAware.applyTheme(themeManager);
+        }
 
         // Only use DO_NOTHING_ON_CLOSE for PreviewTextPanel (which has its own confirmation dialog)
         // Other preview types should use DISPOSE_ON_CLOSE for normal close behavior
