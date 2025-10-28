@@ -386,7 +386,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         activityTabs.setBorder(BorderFactory.createMatteBorder(0, 0, 1, 0, UIManager.getColor("Separator.foreground")));
 
         // Create center container with both tab panels
-        var centerContainer = new JPanel(new BorderLayout());
+        var centerContainer = new JPanel(new BorderLayout(Constants.H_GAP, 0));
         centerContainer.add(centerPanel, BorderLayout.CENTER);
         centerContainer.add(activityTabs, BorderLayout.EAST);
 
