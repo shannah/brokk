@@ -1,10 +1,10 @@
 package ai.brokk.difftool.ui.unified;
 
+import ai.brokk.difftool.node.JMDiffNode;
+import ai.brokk.difftool.ui.BufferSource;
 import com.github.difflib.DiffUtils;
 import com.github.difflib.UnifiedDiffUtils;
 import com.github.difflib.patch.Patch;
-import ai.brokk.difftool.node.JMDiffNode;
-import ai.brokk.difftool.ui.BufferSource;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.util.ArrayList;

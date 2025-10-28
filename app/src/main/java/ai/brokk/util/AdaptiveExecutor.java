@@ -1,7 +1,7 @@
 package ai.brokk.util;
 
-import dev.langchain4j.model.chat.StreamingChatModel;
 import ai.brokk.Service;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;

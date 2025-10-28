@@ -2,10 +2,6 @@ package ai.brokk.difftool.ui;
 
 import static java.util.Objects.requireNonNull;
 
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Patch;
-import com.jgoodies.forms.layout.CellConstraints;
-import com.jgoodies.forms.layout.FormLayout;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.difftool.doc.AbstractBufferDocument;
 import ai.brokk.difftool.doc.BufferDocumentIF;
@@ -18,6 +14,10 @@ import ai.brokk.gui.search.GenericSearchBar;
 import ai.brokk.gui.theme.GuiTheme;
 import ai.brokk.gui.util.KeyboardShortcutUtil;
 import ai.brokk.util.SlidingWindowCache;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Patch;
+import com.jgoodies.forms.layout.CellConstraints;
+import com.jgoodies.forms.layout.FormLayout;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;

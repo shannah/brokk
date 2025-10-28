@@ -1,7 +1,6 @@
 package ai.brokk.gui.search;
 
 import ai.brokk.gui.SwingUtil;
-
 import javax.swing.*;
 import org.fife.ui.rtextarea.RTextArea;
 import org.fife.ui.rtextarea.SearchContext;

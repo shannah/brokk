@@ -3,9 +3,9 @@ package ai.brokk.gui.wand;
 import static org.junit.jupiter.api.Assertions.*;
 import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.testutil.TestConsoleIO;
 import ai.brokk.testutil.TestContextManager;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.HeadlessException;
 import java.lang.reflect.InvocationTargetException;
 import java.lang.reflect.Method;

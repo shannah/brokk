@@ -2,10 +2,10 @@ package ai.brokk.git;
 
 import static java.util.Objects.requireNonNull;
 
-import com.google.common.base.Splitter;
 import ai.brokk.SessionRegistry;
 import ai.brokk.git.IGitRepo.WorktreeInfo;
 import ai.brokk.util.Environment;
+import com.google.common.base.Splitter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.nio.file.NoSuchFileException;

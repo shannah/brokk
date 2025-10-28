@@ -2,6 +2,8 @@ package ai.brokk.prompts;
 
 import static java.nio.charset.StandardCharsets.UTF_8;
 
+import ai.brokk.IProject;
+import ai.brokk.difftool.performance.PerformanceConstants;
 import com.github.difflib.patch.AbstractDelta;
 import com.github.difflib.patch.Chunk;
 import com.github.difflib.patch.DeltaType;
@@ -11,8 +13,6 @@ import com.github.difflib.unifieddiff.UnifiedDiffReader;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import ai.brokk.IProject;
-import ai.brokk.difftool.performance.PerformanceConstants;
 import java.io.ByteArrayInputStream;
 import java.io.IOException;
 import java.util.ArrayList;

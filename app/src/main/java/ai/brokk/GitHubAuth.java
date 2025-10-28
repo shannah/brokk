@@ -2,12 +2,12 @@ package ai.brokk;
 
 import static java.util.Objects.requireNonNull;
 
-import com.fasterxml.jackson.databind.JsonNode;
-import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.brokk.git.GitRepo;
 import ai.brokk.gui.util.GitUiUtil;
 import ai.brokk.issues.IssueProviderType;
 import ai.brokk.issues.IssuesProviderConfig;
+import com.fasterxml.jackson.databind.JsonNode;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.io.IOException;
 import java.util.LinkedHashSet;
 import java.util.List;

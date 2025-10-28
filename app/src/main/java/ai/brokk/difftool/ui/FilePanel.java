@@ -1,7 +1,5 @@
 package ai.brokk.difftool.ui;
 
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Patch;
 import ai.brokk.MainProject;
 import ai.brokk.difftool.doc.BufferDocumentChangeListenerIF;
 import ai.brokk.difftool.doc.BufferDocumentIF;
@@ -14,6 +12,8 @@ import ai.brokk.gui.search.RTextAreaSearchableComponent;
 import ai.brokk.gui.search.SearchableComponent;
 import ai.brokk.gui.theme.GuiTheme;
 import ai.brokk.gui.theme.ThemeAware;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Patch;
 import java.awt.*;
 import java.awt.Font;
 import java.awt.event.ActionEvent;

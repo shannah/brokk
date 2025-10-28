@@ -820,8 +820,7 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
 
         lightThemeRadio.putClientProperty("theme", GuiTheme.THEME_LIGHT);
         darkThemeRadio.putClientProperty("theme", GuiTheme.THEME_DARK);
-        highContrastThemeRadio.putClientProperty(
-                "theme", GuiTheme.THEME_HIGH_CONTRAST);
+        highContrastThemeRadio.putClientProperty("theme", GuiTheme.THEME_HIGH_CONTRAST);
 
         gbc.gridx = 1;
         gbc.gridy = row++;
@@ -1296,8 +1295,7 @@ public class SettingsGlobalPanel extends JPanel implements ThemeAware, SettingsC
         String currentTheme = MainProject.getTheme();
         switch (currentTheme) {
             case GuiTheme.THEME_DARK -> darkThemeRadio.setSelected(true);
-            case GuiTheme.THEME_HIGH_CONTRAST ->
-                highContrastThemeRadio.setSelected(true);
+            case GuiTheme.THEME_HIGH_CONTRAST -> highContrastThemeRadio.setSelected(true);
             default -> lightThemeRadio.setSelected(true);
         }
 

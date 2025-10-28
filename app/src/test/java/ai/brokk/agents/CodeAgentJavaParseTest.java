@@ -3,8 +3,8 @@ package ai.brokk.agents;
 import static java.util.Objects.requireNonNull;
 import static org.junit.jupiter.api.Assertions.*;
 
-import dev.langchain4j.data.message.UserMessage;
 import ai.brokk.analyzer.ProjectFile;
+import dev.langchain4j.data.message.UserMessage;
 import java.io.IOException;
 import java.util.HashMap;
 import java.util.HashSet;

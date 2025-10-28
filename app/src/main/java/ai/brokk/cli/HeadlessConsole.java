@@ -1,9 +1,9 @@
 package ai.brokk.cli;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.IConsoleIO;
 import ai.brokk.agents.BlitzForge;
 import ai.brokk.gui.dialogs.BlitzForgeProgressHeadless;
+import dev.langchain4j.data.message.ChatMessageType;
 import javax.swing.*;
 
 /**

@@ -1,8 +1,8 @@
 package ai.brokk.prompts;
 
+import ai.brokk.ContextManager;
 import com.google.common.collect.Streams;
 import dev.langchain4j.data.message.ChatMessage;
-import ai.brokk.ContextManager;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.stream.Stream;

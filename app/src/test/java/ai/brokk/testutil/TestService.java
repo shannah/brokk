@@ -1,14 +1,14 @@
 package ai.brokk.testutil;
 
+import ai.brokk.IProject;
+import ai.brokk.MainProject;
+import ai.brokk.Service;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ChatRequest;
 import dev.langchain4j.model.chat.response.ChatResponse;
 import dev.langchain4j.model.chat.response.StreamingChatResponseHandler;
 import dev.langchain4j.model.openai.OpenAiChatRequestParameters;
-import ai.brokk.IProject;
-import ai.brokk.MainProject;
-import ai.brokk.Service;
 import java.io.IOException;
 import java.util.Map;
 import org.jetbrains.annotations.Nullable;

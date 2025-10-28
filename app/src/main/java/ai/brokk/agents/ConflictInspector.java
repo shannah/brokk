@@ -2,11 +2,11 @@ package ai.brokk.agents;
 
 import static java.util.Objects.requireNonNull;
 
-import com.google.common.base.Splitter;
-import com.google.common.collect.Iterables;
 import ai.brokk.IProject;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.git.GitRepo;
+import com.google.common.base.Splitter;
+import com.google.common.collect.Iterables;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

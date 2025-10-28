@@ -1,8 +1,5 @@
 package ai.brokk.tools;
 
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.AnalyzerUtil;
 import ai.brokk.Completions;
 import ai.brokk.IContextManager;
@@ -18,6 +15,9 @@ import ai.brokk.context.ContextFragment;
 import ai.brokk.git.CommitInfo;
 import ai.brokk.git.GitRepo;
 import ai.brokk.git.GitRepoFactory;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.nio.file.Path;
 import java.util.ArrayList;
 import java.util.HashSet;

@@ -1,11 +1,11 @@
 package ai.brokk.util;
 
+import ai.brokk.IContextManager;
+import ai.brokk.Llm;
 import com.google.common.base.Splitter;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
-import ai.brokk.IContextManager;
-import ai.brokk.Llm;
 import java.util.List;
 import java.util.regex.Pattern;
 import org.apache.logging.log4j.LogManager;

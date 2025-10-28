@@ -2,10 +2,10 @@ package ai.brokk.analyzer.cpp;
 
 import static ai.brokk.analyzer.cpp.CppTreeSitterNodeTypes.*;
 
+import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.ASTTraversalUtils;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.ProjectFile;
-import ai.brokk.analyzer.*;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.function.Function;

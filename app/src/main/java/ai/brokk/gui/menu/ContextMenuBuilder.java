@@ -1,6 +1,5 @@
 package ai.brokk.gui.menu;
 
-import com.google.common.base.Splitter;
 import ai.brokk.AnalyzerWrapper;
 import ai.brokk.ContextManager;
 import ai.brokk.analyzer.CodeUnit;
@@ -12,6 +11,7 @@ import ai.brokk.analyzer.TreeSitterAnalyzer;
 import ai.brokk.gui.Chrome;
 import ai.brokk.gui.util.SourceCaptureUtil;
 import ai.brokk.util.FileManagerUtil;
+import com.google.common.base.Splitter;
 import java.awt.Component;
 import java.awt.Container;
 import java.awt.Toolkit;

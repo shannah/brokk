@@ -1,9 +1,5 @@
 package ai.brokk.difftool.ui;
 
-import com.github.difflib.DiffUtils;
-import com.github.difflib.UnifiedDiffUtils;
-import com.github.difflib.algorithm.DiffAlgorithmListener;
-import dev.langchain4j.data.message.ChatMessage;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.TaskResult;
@@ -29,6 +25,10 @@ import ai.brokk.util.GlobalUiSettings;
 import ai.brokk.util.Messages;
 import ai.brokk.util.SlidingWindowCache;
 import ai.brokk.util.SyntaxDetector;
+import com.github.difflib.DiffUtils;
+import com.github.difflib.UnifiedDiffUtils;
+import com.github.difflib.algorithm.DiffAlgorithmListener;
+import dev.langchain4j.data.message.ChatMessage;
 import java.awt.*;
 import java.awt.event.ComponentAdapter;
 import java.awt.event.ComponentEvent;

@@ -1,12 +1,6 @@
 package ai.brokk.git;
 
 import ai.brokk.ContextManager;
-import ai.brokk.tools.WorkspaceTools;
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.agent.tool.ToolContext;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.request.ToolChoice;
 import ai.brokk.GitHubAuth;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
@@ -14,6 +8,12 @@ import ai.brokk.Llm;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.prompts.CommitPrompts;
 import ai.brokk.prompts.SummarizerPrompts;
+import ai.brokk.tools.WorkspaceTools;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.agent.tool.ToolContext;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.model.chat.request.ToolChoice;
 import java.net.URI;
 import java.util.ArrayList;
 import java.util.HashSet;

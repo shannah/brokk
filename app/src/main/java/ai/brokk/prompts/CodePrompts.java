@@ -2,21 +2,21 @@ package ai.brokk.prompts;
 
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
+import ai.brokk.*;
 import ai.brokk.EditBlock;
 import ai.brokk.IContextManager;
 import ai.brokk.IProject;
 import ai.brokk.Service;
 import ai.brokk.TaskEntry;
+import ai.brokk.analyzer.ProjectFile;
+import ai.brokk.context.Context;
+import ai.brokk.context.ContextFragment;
+import ai.brokk.util.ImageUtil;
 import dev.langchain4j.data.message.*;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
-import ai.brokk.*;
-import ai.brokk.analyzer.ProjectFile;
-import ai.brokk.context.Context;
-import ai.brokk.context.ContextFragment;
-import ai.brokk.util.ImageUtil;
 import java.awt.*;
 import java.io.IOException;
 import java.io.UncheckedIOException;

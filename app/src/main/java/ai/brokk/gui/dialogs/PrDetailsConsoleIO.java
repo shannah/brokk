@@ -1,8 +1,8 @@
 package ai.brokk.gui.dialogs;
 
+import ai.brokk.IConsoleIO;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
-import ai.brokk.IConsoleIO;
 import java.util.List;
 import javax.swing.*;
 import org.jetbrains.annotations.Nullable;

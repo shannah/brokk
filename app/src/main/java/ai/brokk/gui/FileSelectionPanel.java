@@ -2,12 +2,12 @@ package ai.brokk.gui;
 
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import com.google.common.base.Splitter;
 import ai.brokk.Completions;
 import ai.brokk.IProject;
 import ai.brokk.analyzer.BrokkFile;
 import ai.brokk.analyzer.ExternalFile;
 import ai.brokk.analyzer.ProjectFile;
+import com.google.common.base.Splitter;
 import java.awt.*;
 import java.awt.event.KeyEvent;
 import java.awt.event.MouseAdapter;

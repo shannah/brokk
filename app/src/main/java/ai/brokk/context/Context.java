@@ -1,9 +1,5 @@
 package ai.brokk.context;
 
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.github.f4b6a3.uuid.UuidCreator;
-import com.google.common.collect.Streams;
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.AbstractProject;
 import ai.brokk.Completions;
 import ai.brokk.IContextManager;
@@ -21,6 +17,10 @@ import ai.brokk.tools.WorkspaceTools;
 import ai.brokk.util.ContentDiffUtils;
 import ai.brokk.util.HtmlToMarkdown;
 import ai.brokk.util.Json;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.github.f4b6a3.uuid.UuidCreator;
+import com.google.common.collect.Streams;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;

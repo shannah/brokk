@@ -2,12 +2,12 @@ package ai.brokk.issues;
 
 import static java.util.Objects.requireNonNull;
 
+import ai.brokk.IProject;
+import ai.brokk.IssueProvider;
 import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.google.common.collect.ImmutableList;
-import ai.brokk.IProject;
-import ai.brokk.IssueProvider;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;

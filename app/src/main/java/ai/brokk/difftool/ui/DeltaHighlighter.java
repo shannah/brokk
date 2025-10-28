@@ -1,9 +1,9 @@
 package ai.brokk.difftool.ui;
 
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Chunk;
 import ai.brokk.difftool.doc.BufferDocumentIF;
 import ai.brokk.gui.mop.ThemeColors;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Chunk;
 import javax.swing.text.BadLocationException;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;

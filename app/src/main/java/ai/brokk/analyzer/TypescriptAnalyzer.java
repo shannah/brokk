@@ -2,8 +2,8 @@ package ai.brokk.analyzer;
 
 import static ai.brokk.analyzer.typescript.TypeScriptTreeSitterNodeTypes.*;
 
-import com.google.common.base.Splitter;
 import ai.brokk.IProject;
+import com.google.common.base.Splitter;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

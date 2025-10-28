@@ -3,8 +3,6 @@ package ai.brokk.agents;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
@@ -16,6 +14,8 @@ import ai.brokk.git.GitRepo;
 import ai.brokk.git.IGitRepo.ModifiedFile;
 import ai.brokk.tools.GitTools;
 import ai.brokk.util.AdaptiveExecutor;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;

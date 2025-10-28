@@ -1,8 +1,8 @@
 package ai.brokk.util;
 
-import dev.langchain4j.model.chat.StreamingChatModel;
 import ai.brokk.IProject;
 import ai.brokk.Service;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ExecutionException;
 import org.jetbrains.annotations.Nullable;

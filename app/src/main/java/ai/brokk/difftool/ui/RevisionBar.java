@@ -1,11 +1,11 @@
 package ai.brokk.difftool.ui;
 
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Chunk;
-import com.github.difflib.patch.Patch;
 import ai.brokk.difftool.doc.BufferDocumentIF;
 import ai.brokk.difftool.utils.ColorUtil;
 import ai.brokk.gui.mop.ThemeColors;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Chunk;
+import com.github.difflib.patch.Patch;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;

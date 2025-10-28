@@ -1,12 +1,12 @@
 package ai.brokk.difftool.scroll;
 
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Chunk;
-import com.github.difflib.patch.Patch;
 import ai.brokk.difftool.performance.PerformanceConstants;
 import ai.brokk.difftool.ui.BufferDiffPanel;
 import ai.brokk.difftool.ui.FilePanel;
 import ai.brokk.gui.SwingUtil;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Chunk;
+import com.github.difflib.patch.Patch;
 import java.awt.Point;
 import java.awt.event.AdjustmentEvent;
 import java.awt.event.AdjustmentListener;

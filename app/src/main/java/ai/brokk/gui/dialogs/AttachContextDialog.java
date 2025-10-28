@@ -2,12 +2,12 @@ package ai.brokk.gui.dialogs;
 
 import ai.brokk.Completions;
 import ai.brokk.ContextManager;
+import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.IAnalyzer;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.analyzer.SkeletonProvider;
 import ai.brokk.analyzer.SourceCodeProvider;
-import ai.brokk.analyzer.*;
 import ai.brokk.context.ContextFragment;
 import ai.brokk.gui.AutoCompleteUtil;
 import ai.brokk.gui.Constants;

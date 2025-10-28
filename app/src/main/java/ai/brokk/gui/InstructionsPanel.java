@@ -4,6 +4,7 @@ import static ai.brokk.gui.Constants.*;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
+import ai.brokk.*;
 import ai.brokk.Brokk;
 import ai.brokk.Completions;
 import ai.brokk.ContextManager;
@@ -13,9 +14,6 @@ import ai.brokk.Llm;
 import ai.brokk.MainProject;
 import ai.brokk.Service;
 import ai.brokk.TaskResult;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.StreamingChatModel;
-import ai.brokk.*;
 import ai.brokk.agents.ArchitectAgent;
 import ai.brokk.agents.CodeAgent;
 import ai.brokk.agents.SearchAgent;
@@ -44,6 +42,8 @@ import ai.brokk.metrics.SearchMetrics;
 import ai.brokk.prompts.CodePrompts;
 import ai.brokk.util.GlobalUiSettings;
 import ai.brokk.util.Messages;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.dnd.DnDConstants;
@@ -2855,8 +2855,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         @Override
         public void setIcon(@Nullable Icon icon) {
             // Apply high-contrast processing if needed
-            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(
-                    MainProject.getTheme());
+            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
             Icon processedIcon = ColorUtil.createHighContrastIcon(icon, getBackground(), isHighContrast);
             super.setIcon(processedIcon);
         }
@@ -2870,8 +2869,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         @Override
         public void setIcon(@Nullable Icon icon) {
             // Apply high-contrast processing if needed
-            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(
-                    MainProject.getTheme());
+            boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
             Icon processedIcon = ColorUtil.createHighContrastIcon(icon, getBackground(), isHighContrast);
             super.setIcon(processedIcon);
         }

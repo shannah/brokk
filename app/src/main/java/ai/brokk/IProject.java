@@ -1,11 +1,11 @@
 package ai.brokk;
 
-import com.jakewharton.disklrucache.DiskLruCache;
 import ai.brokk.agents.BuildAgent;
 import ai.brokk.analyzer.Language;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.git.IGitRepo;
 import ai.brokk.mcp.McpConfig;
+import com.jakewharton.disklrucache.DiskLruCache;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.nio.file.Files;

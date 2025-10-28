@@ -1,5 +1,13 @@
 package ai.brokk.gui.terminal;
 
+import ai.brokk.IConsoleIO;
+import ai.brokk.MainProject;
+import ai.brokk.gui.Chrome;
+import ai.brokk.gui.components.MaterialButton;
+import ai.brokk.gui.theme.GuiTheme;
+import ai.brokk.gui.theme.ThemeAware;
+import ai.brokk.gui.util.Icons;
+import ai.brokk.util.Environment;
 import com.jediterm.pty.PtyProcessTtyConnector;
 import com.jediterm.terminal.CursorShape;
 import com.jediterm.terminal.TerminalColor;
@@ -9,14 +17,6 @@ import com.jediterm.terminal.ui.TerminalActionPresentation;
 import com.jediterm.terminal.ui.settings.DefaultSettingsProvider;
 import com.pty4j.PtyProcess;
 import com.pty4j.PtyProcessBuilder;
-import ai.brokk.IConsoleIO;
-import ai.brokk.MainProject;
-import ai.brokk.gui.Chrome;
-import ai.brokk.gui.components.MaterialButton;
-import ai.brokk.gui.theme.GuiTheme;
-import ai.brokk.gui.theme.ThemeAware;
-import ai.brokk.gui.util.Icons;
-import ai.brokk.util.Environment;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Cursor;

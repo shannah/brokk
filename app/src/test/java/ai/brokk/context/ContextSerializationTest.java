@@ -2,9 +2,6 @@ package ai.brokk.context;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.UserMessage;
 import ai.brokk.IContextManager;
 import ai.brokk.TaskEntry;
 import ai.brokk.analyzer.CodeUnit;
@@ -15,6 +12,9 @@ import ai.brokk.testutil.NoOpConsoleIO;
 import ai.brokk.testutil.TestContextManager;
 import ai.brokk.util.HistoryIo;
 import ai.brokk.util.Messages;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import java.io.ByteArrayInputStream;

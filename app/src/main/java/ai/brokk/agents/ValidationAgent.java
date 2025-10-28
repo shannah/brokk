@@ -1,11 +1,11 @@
 package ai.brokk.agents;
 
-import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.UserMessage;
 import ai.brokk.ContextManager;
 import ai.brokk.Llm;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.prompts.CodePrompts;
+import dev.langchain4j.data.message.SystemMessage;
+import dev.langchain4j.data.message.UserMessage;
 import java.util.List;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;

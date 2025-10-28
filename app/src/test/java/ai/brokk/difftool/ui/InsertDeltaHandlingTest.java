@@ -2,9 +2,9 @@ package ai.brokk.difftool.ui;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import ai.brokk.difftool.doc.InMemoryDocument;
 import com.github.difflib.DiffUtils;
 import com.github.difflib.patch.DeltaType;
-import ai.brokk.difftool.doc.InMemoryDocument;
 import java.util.List;
 import javax.swing.text.PlainDocument;
 import org.junit.jupiter.api.DisplayName;

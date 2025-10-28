@@ -1,7 +1,7 @@
 package dev.langchain4j.agent.tool;
 
-import dev.langchain4j.model.chat.request.ToolChoice;
 import ai.brokk.tools.ToolRegistry;
+import dev.langchain4j.model.chat.request.ToolChoice;
 import java.util.List;
 
 /**

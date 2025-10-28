@@ -1,10 +1,10 @@
 package ai.brokk.analyzer;
 
-import com.google.common.base.Splitter;
 import ai.brokk.IProject;
 import ai.brokk.util.Environment;
 import ai.brokk.util.ExecutorServiceUtil;
 import ai.brokk.util.TextCanonicalizer;
+import com.google.common.base.Splitter;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.UncheckedIOException;

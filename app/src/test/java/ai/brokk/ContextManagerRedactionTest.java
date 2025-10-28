@@ -3,9 +3,9 @@ package ai.brokk;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import static org.junit.jupiter.api.Assertions.assertTrue;
 
-import dev.langchain4j.data.message.AiMessage;
 import ai.brokk.prompts.CodePrompts;
 import ai.brokk.prompts.EditBlockParser;
+import dev.langchain4j.data.message.AiMessage;
 import java.util.Optional;
 import org.junit.jupiter.api.Test;
 

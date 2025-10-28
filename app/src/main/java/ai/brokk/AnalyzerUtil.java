@@ -1,12 +1,12 @@
 package ai.brokk;
 
+import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.CallSite;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.IAnalyzer;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.analyzer.SkeletonProvider;
 import ai.brokk.analyzer.SourceCodeProvider;
-import ai.brokk.analyzer.*;
 import java.util.*;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;

@@ -1,6 +1,5 @@
 package ai.brokk.gui.dialogs;
 
-import com.google.common.io.Files;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IProject;
 import ai.brokk.MainProject;
@@ -13,6 +12,7 @@ import ai.brokk.gui.components.MaterialButton;
 import ai.brokk.util.Environment;
 import ai.brokk.util.ExecutorConfig;
 import ai.brokk.util.ExecutorValidator;
+import com.google.common.io.Files;
 import java.awt.*;
 import java.util.*;
 import java.util.List;

@@ -2,10 +2,10 @@ package ai.brokk.difftool.scroll;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.github.difflib.DiffUtils;
-import com.github.difflib.patch.Patch;
 import ai.brokk.difftool.performance.PerformanceConstants;
 import ai.brokk.difftool.ui.FilePanel;
+import com.github.difflib.DiffUtils;
+import com.github.difflib.patch.Patch;
 import java.awt.event.AdjustmentListener;
 import java.util.ArrayList;
 import java.util.List;

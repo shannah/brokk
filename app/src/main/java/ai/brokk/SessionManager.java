@@ -1,8 +1,5 @@
 package ai.brokk;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
-import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
-import com.github.f4b6a3.uuid.UuidCreator;
 import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
 import ai.brokk.context.ContextHistory;
@@ -11,6 +8,9 @@ import ai.brokk.git.GitRepoFactory;
 import ai.brokk.tasks.TaskList;
 import ai.brokk.util.HistoryIo;
 import ai.brokk.util.SerialByKeyExecutor;
+import com.fasterxml.jackson.annotation.JsonIgnore;
+import com.fasterxml.jackson.annotation.JsonIgnoreProperties;
+import com.github.f4b6a3.uuid.UuidCreator;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.FileSystems;

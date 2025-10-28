@@ -1,7 +1,5 @@
 package ai.brokk;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.jakewharton.disklrucache.DiskLruCache;
 import ai.brokk.Service.ModelConfig;
 import ai.brokk.agents.BuildAgent;
 import ai.brokk.analyzer.Language;
@@ -15,6 +13,8 @@ import ai.brokk.mcp.McpConfig;
 import ai.brokk.util.AtomicWrites;
 import ai.brokk.util.Environment;
 import ai.brokk.util.GlobalUiSettings;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.jakewharton.disklrucache.DiskLruCache;
 import java.io.File;
 import java.io.IOException;
 import java.nio.file.Files;

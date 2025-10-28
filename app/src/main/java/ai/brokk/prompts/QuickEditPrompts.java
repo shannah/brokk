@@ -1,10 +1,10 @@
 package ai.brokk.prompts;
 
+import ai.brokk.context.ContextFragment;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import ai.brokk.context.ContextFragment;
 import java.util.ArrayList;
 import java.util.List;
 

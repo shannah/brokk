@@ -1,14 +1,14 @@
 package ai.brokk.difftool.node;
 
+import ai.brokk.difftool.doc.BufferDocumentIF;
+import ai.brokk.difftool.doc.StringDocument;
+import ai.brokk.difftool.performance.PerformanceConstants;
 import com.github.difflib.DiffUtils;
 import com.github.difflib.patch.ChangeDelta;
 import com.github.difflib.patch.Chunk;
 import com.github.difflib.patch.DeleteDelta;
 import com.github.difflib.patch.InsertDelta;
 import com.github.difflib.patch.Patch;
-import ai.brokk.difftool.doc.BufferDocumentIF;
-import ai.brokk.difftool.doc.StringDocument;
-import ai.brokk.difftool.performance.PerformanceConstants;
 import java.io.File;
 import java.util.*;
 import javax.swing.tree.TreeNode;

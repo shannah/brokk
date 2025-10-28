@@ -1,13 +1,13 @@
 package ai.brokk.cli;
 
+import ai.brokk.IConsoleIO;
+import ai.brokk.util.Messages;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.CustomMessage;
 import dev.langchain4j.data.message.SystemMessage;
 import dev.langchain4j.data.message.UserMessage;
-import ai.brokk.IConsoleIO;
-import ai.brokk.util.Messages;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;

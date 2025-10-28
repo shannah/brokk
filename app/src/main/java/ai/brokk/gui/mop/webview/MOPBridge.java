@@ -2,10 +2,6 @@ package ai.brokk.gui.mop.webview;
 
 import static java.util.Objects.requireNonNull;
 
-import com.fasterxml.jackson.core.JsonProcessingException;
-import com.fasterxml.jackson.core.type.TypeReference;
-import com.fasterxml.jackson.databind.ObjectMapper;
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.BuildInfo;
 import ai.brokk.ContextManager;
 import ai.brokk.MainProject;
@@ -16,6 +12,10 @@ import ai.brokk.gui.menu.ContextMenuBuilder;
 import ai.brokk.gui.mop.FilePathLookupService;
 import ai.brokk.gui.mop.SymbolLookupService;
 import ai.brokk.util.Messages;
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.core.type.TypeReference;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.Component;
 import java.awt.KeyboardFocusManager;
 import java.io.UncheckedIOException;

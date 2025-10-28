@@ -3,7 +3,6 @@ package ai.brokk;
 import static ai.brokk.SessionManager.SessionInfo;
 import static org.junit.jupiter.api.Assertions.*;
 
-import dev.langchain4j.data.message.ChatMessage;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.context.Context;
@@ -13,6 +12,7 @@ import ai.brokk.context.FrozenFragment;
 import ai.brokk.testutil.NoOpConsoleIO;
 import ai.brokk.testutil.TestContextManager;
 import ai.brokk.util.Messages;
+import dev.langchain4j.data.message.ChatMessage;
 import java.awt.Graphics2D;
 import java.awt.Image;
 import java.awt.image.BufferedImage;

@@ -1,7 +1,7 @@
 package ai.brokk.analyzer;
 
-import com.fasterxml.jackson.annotation.JsonIgnore;
 import ai.brokk.util.SyntaxDetector;
+import com.fasterxml.jackson.annotation.JsonIgnore;
 import java.io.IOException;
 import java.io.UncheckedIOException;
 import java.nio.file.Files;

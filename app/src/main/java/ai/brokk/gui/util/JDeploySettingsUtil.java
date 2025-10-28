@@ -1,10 +1,10 @@
 package ai.brokk.gui.util;
 
+import ai.brokk.MainProject;
+import ai.brokk.util.Json;
 import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.node.ArrayNode;
 import com.fasterxml.jackson.databind.node.ObjectNode;
-import ai.brokk.MainProject;
-import ai.brokk.util.Json;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;

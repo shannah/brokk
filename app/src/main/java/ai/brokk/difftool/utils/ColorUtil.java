@@ -1,7 +1,7 @@
 package ai.brokk.difftool.utils;
 
-import com.github.difflib.patch.AbstractDelta;
 import ai.brokk.gui.mop.ThemeColors;
+import com.github.difflib.patch.AbstractDelta;
 import java.awt.*;
 import java.awt.image.BufferedImage;
 import javax.swing.Icon;

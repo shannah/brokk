@@ -2,9 +2,9 @@ package ai.brokk.gui.util;
 
 import static org.junit.jupiter.api.Assertions.*;
 
-import com.fasterxml.jackson.databind.JsonNode;
 import ai.brokk.MainProject;
 import ai.brokk.util.Json;
+import com.fasterxml.jackson.databind.JsonNode;
 import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;

@@ -3,8 +3,6 @@ package ai.brokk.gui;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
 import ai.brokk.AnalyzerWrapper;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
@@ -28,6 +26,8 @@ import ai.brokk.util.HtmlToMarkdown;
 import ai.brokk.util.ImageUtil;
 import ai.brokk.util.Messages;
 import ai.brokk.util.StackTrace;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
 import java.awt.*;
 import java.awt.datatransfer.DataFlavor;
 import java.awt.datatransfer.StringSelection;

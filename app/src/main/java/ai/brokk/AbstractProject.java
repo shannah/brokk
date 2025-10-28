@@ -1,7 +1,5 @@
 package ai.brokk;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
-import com.fasterxml.jackson.databind.node.ObjectNode;
 import ai.brokk.analyzer.Language;
 import ai.brokk.analyzer.Languages;
 import ai.brokk.analyzer.ProjectFile;
@@ -11,6 +9,8 @@ import ai.brokk.git.IGitRepo;
 import ai.brokk.git.LocalFileRepo;
 import ai.brokk.util.AtomicWrites;
 import ai.brokk.util.EnvironmentJava;
+import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import java.awt.Rectangle;
 import java.io.IOException;
 import java.nio.file.Files;

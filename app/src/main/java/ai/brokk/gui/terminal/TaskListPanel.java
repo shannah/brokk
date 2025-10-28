@@ -2,7 +2,6 @@ package ai.brokk.gui.terminal;
 
 import static java.util.Objects.requireNonNull;
 
-import com.google.common.base.Splitter;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
@@ -18,6 +17,7 @@ import ai.brokk.gui.theme.ThemeAware;
 import ai.brokk.gui.util.BadgedIcon;
 import ai.brokk.gui.util.Icons;
 import ai.brokk.tasks.TaskList;
+import com.google.common.base.Splitter;
 import java.awt.BorderLayout;
 import java.awt.Color;
 import java.awt.Component;

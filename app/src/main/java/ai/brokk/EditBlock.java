@@ -2,10 +2,10 @@ package ai.brokk;
 
 import static ai.brokk.prompts.EditBlockUtils.DEFAULT_FENCE;
 
-import com.google.common.base.Splitter;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.analyzer.SourceCodeProvider;
+import com.google.common.base.Splitter;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;

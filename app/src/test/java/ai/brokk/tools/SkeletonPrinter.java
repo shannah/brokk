@@ -1,6 +1,7 @@
 package ai.brokk.tools;
 
 import ai.brokk.IProject;
+import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.CppAnalyzer;
 import ai.brokk.analyzer.IAnalyzer;
@@ -13,7 +14,6 @@ import ai.brokk.analyzer.PythonAnalyzer;
 import ai.brokk.analyzer.SkeletonProvider;
 import ai.brokk.analyzer.TreeSitterAnalyzer;
 import ai.brokk.analyzer.TypescriptAnalyzer;
-import ai.brokk.analyzer.*;
 import java.io.IOException;
 import java.lang.reflect.Field;
 import java.nio.file.Files;

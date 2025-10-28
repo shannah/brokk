@@ -1,10 +1,10 @@
 package ai.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.agents.BlitzForge;
 import ai.brokk.context.Context;
 import ai.brokk.gui.InstructionsPanel;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.*;
 import java.util.List;
 import org.jetbrains.annotations.Nullable;

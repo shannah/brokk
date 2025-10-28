@@ -1,10 +1,5 @@
 package ai.brokk.tools;
 
-import com.jakewharton.disklrucache.DiskLruCache;
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
-import dev.langchain4j.exception.ContextTooLargeException;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import ai.brokk.IContextManager;
 import ai.brokk.Llm;
 import ai.brokk.exception.LlmException;
@@ -13,6 +8,11 @@ import ai.brokk.prompts.CommitPrompts;
 import ai.brokk.prompts.MergePrompts;
 import ai.brokk.prompts.SummarizerPrompts;
 import ai.brokk.util.Messages;
+import com.jakewharton.disklrucache.DiskLruCache;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
+import dev.langchain4j.exception.ContextTooLargeException;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.io.IOException;
 import java.nio.charset.StandardCharsets;
 import org.apache.logging.log4j.LogManager;

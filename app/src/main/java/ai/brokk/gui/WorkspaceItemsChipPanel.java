@@ -686,8 +686,7 @@ public class WorkspaceItemsChipPanel extends JPanel implements ThemeAware, Scrol
         int targetH = 10;
 
         // In high-contrast mode, draw a theme-aware × with proper contrast against the chip background
-        boolean isHighContrast =
-                GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
+        boolean isHighContrast = GuiTheme.THEME_HIGH_CONTRAST.equalsIgnoreCase(MainProject.getTheme());
         if (isHighContrast) {
             BufferedImage icon = new BufferedImage(targetW, targetH, BufferedImage.TYPE_INT_ARGB);
             Graphics2D g2 = icon.createGraphics();

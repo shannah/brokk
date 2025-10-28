@@ -2,7 +2,6 @@ package ai.brokk.gui.mop.webview;
 
 import static java.util.Objects.requireNonNull;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.ContextManager;
 import ai.brokk.MainProject;
 import ai.brokk.TaskEntry;
@@ -10,6 +9,7 @@ import ai.brokk.gui.Chrome;
 import ai.brokk.gui.mop.ThemeColors;
 import ai.brokk.gui.theme.GuiTheme;
 import ai.brokk.util.Environment;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.*;
 import java.io.File;
 import java.net.URLEncoder;

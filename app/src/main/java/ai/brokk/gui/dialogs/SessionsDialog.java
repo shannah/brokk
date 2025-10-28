@@ -3,7 +3,6 @@ package ai.brokk.gui.dialogs;
 import static ai.brokk.SessionManager.SessionInfo;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.ContextManager;
 import ai.brokk.MainProject;
 import ai.brokk.SessionRegistry;
@@ -20,6 +19,7 @@ import ai.brokk.gui.mop.MarkdownOutputPanel;
 import ai.brokk.gui.mop.ThemeColors;
 import ai.brokk.gui.util.GitUiUtil;
 import ai.brokk.gui.util.Icons;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.KeyEvent;

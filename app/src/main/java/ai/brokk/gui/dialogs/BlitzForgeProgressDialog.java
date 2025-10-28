@@ -2,7 +2,6 @@ package ai.brokk.gui.dialogs;
 
 import static java.util.Objects.requireNonNull;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.TaskResult;
 import ai.brokk.agents.BlitzForge;
 import ai.brokk.analyzer.ProjectFile;
@@ -13,6 +12,7 @@ import ai.brokk.gui.Chrome;
 import ai.brokk.gui.components.MaterialButton;
 import ai.brokk.util.ContentDiffUtils;
 import ai.brokk.util.Messages;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;

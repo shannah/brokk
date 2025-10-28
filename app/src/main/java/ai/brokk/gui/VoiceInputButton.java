@@ -2,12 +2,12 @@ package ai.brokk.gui;
 
 import static java.util.Objects.requireNonNull;
 
-import com.google.common.base.Splitter;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IConsoleIO.NotificationRole;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.gui.util.Icons;
+import com.google.common.base.Splitter;
 import java.awt.*;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;

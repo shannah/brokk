@@ -1,6 +1,5 @@
 package ai.brokk.gui;
 
-import com.fasterxml.jackson.databind.ObjectMapper;
 import ai.brokk.IContextManager;
 import ai.brokk.IProject;
 import ai.brokk.SessionManager;
@@ -10,6 +9,7 @@ import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
 import ai.brokk.context.FrozenFragment;
 import ai.brokk.gui.components.MaterialButton;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.awt.*;
 import java.io.File;
 import java.io.IOException;

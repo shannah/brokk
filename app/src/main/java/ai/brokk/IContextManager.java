@@ -2,9 +2,6 @@ package ai.brokk;
 
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import com.google.common.collect.Streams;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import ai.brokk.analyzer.BrokkFile;
 import ai.brokk.analyzer.IAnalyzer;
 import ai.brokk.analyzer.ProjectFile;
@@ -12,6 +9,9 @@ import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
 import ai.brokk.git.IGitRepo;
 import ai.brokk.tools.ToolRegistry;
+import com.google.common.collect.Streams;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.io.File;
 import java.util.Collection;
 import java.util.List;

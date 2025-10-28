@@ -3,7 +3,6 @@ package ai.brokk;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import com.google.common.base.Splitter;
 import ai.brokk.context.Context;
 import ai.brokk.exception.OomShutdownHandler;
 import ai.brokk.git.GitRepo;
@@ -20,6 +19,7 @@ import ai.brokk.gui.theme.GuiTheme;
 import ai.brokk.gui.theme.ThemeBorderManager;
 import ai.brokk.util.Environment;
 import ai.brokk.util.Messages;
+import com.google.common.base.Splitter;
 import java.awt.*;
 import java.awt.event.WindowAdapter;
 import java.awt.event.WindowEvent;

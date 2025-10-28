@@ -1,8 +1,8 @@
 package ai.brokk.gui.components;
 
-import com.formdev.flatlaf.extras.FlatSVGIcon;
 import ai.brokk.gui.SwingUtil;
 import ai.brokk.gui.util.KeyboardShortcutUtil;
+import com.formdev.flatlaf.extras.FlatSVGIcon;
 import java.awt.Color;
 import java.awt.Cursor;
 import java.awt.Graphics;

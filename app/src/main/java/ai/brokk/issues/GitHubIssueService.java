@@ -1,9 +1,9 @@
 package ai.brokk.issues;
 
-import com.google.common.collect.ImmutableList;
 import ai.brokk.GitHubAuth;
 import ai.brokk.IProject;
 import ai.brokk.util.MarkdownImageParser;
+import com.google.common.collect.ImmutableList;
 import java.io.IOException;
 import java.net.URI;
 import java.net.URISyntaxException;

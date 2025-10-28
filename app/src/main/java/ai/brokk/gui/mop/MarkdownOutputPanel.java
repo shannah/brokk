@@ -2,9 +2,6 @@ package ai.brokk.gui.mop;
 
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.ContextManager;
 import ai.brokk.IContextManager;
 import ai.brokk.MainProject;
@@ -16,6 +13,9 @@ import ai.brokk.gui.mop.webview.MOPWebViewHost;
 import ai.brokk.gui.theme.GuiTheme;
 import ai.brokk.gui.theme.ThemeAware;
 import ai.brokk.util.Messages;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.awt.*;
 import java.awt.datatransfer.StringSelection;
 import java.util.ArrayList;

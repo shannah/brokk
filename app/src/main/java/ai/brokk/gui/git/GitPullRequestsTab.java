@@ -2,14 +2,13 @@ package ai.brokk.gui.git;
 
 import static java.util.Objects.requireNonNull;
 
+import ai.brokk.*;
 import ai.brokk.ContextManager;
+import ai.brokk.GitHubAuth;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IProject;
 import ai.brokk.MainProject;
 import ai.brokk.SettingsChangeListener;
-import com.google.common.base.Ascii;
-import ai.brokk.*;
-import ai.brokk.GitHubAuth;
 import ai.brokk.context.ContextFragment;
 import ai.brokk.difftool.ui.BrokkDiffPanel;
 import ai.brokk.difftool.ui.BufferSource;
@@ -27,6 +26,7 @@ import ai.brokk.gui.components.WrapLayout;
 import ai.brokk.gui.util.GitUiUtil;
 import ai.brokk.gui.util.Icons;
 import ai.brokk.util.Environment;
+import com.google.common.base.Ascii;
 import java.awt.*;
 import java.awt.event.MouseAdapter;
 import java.awt.event.MouseEvent;

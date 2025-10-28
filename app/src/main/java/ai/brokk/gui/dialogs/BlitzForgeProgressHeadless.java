@@ -1,10 +1,10 @@
 package ai.brokk.gui.dialogs;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.IConsoleIO;
 import ai.brokk.TaskResult;
 import ai.brokk.agents.BlitzForge;
 import ai.brokk.analyzer.ProjectFile;
+import dev.langchain4j.data.message.ChatMessageType;
 import java.util.Collections;
 import java.util.Map;
 import java.util.Set;

@@ -1,8 +1,8 @@
 package ai.brokk;
 
-import dev.langchain4j.data.message.ChatMessage;
 import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
+import dev.langchain4j.data.message.ChatMessage;
 import java.util.List;
 
 /**

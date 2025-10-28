@@ -1,9 +1,9 @@
 package ai.brokk.tools;
 
-import dev.langchain4j.agent.tool.P;
-import dev.langchain4j.agent.tool.Tool;
 import ai.brokk.gui.Chrome;
 import ai.brokk.gui.dialogs.AskHumanDialog;
+import dev.langchain4j.agent.tool.P;
+import dev.langchain4j.agent.tool.Tool;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 

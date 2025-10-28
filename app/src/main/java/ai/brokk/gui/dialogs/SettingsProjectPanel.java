@@ -1,6 +1,5 @@
 package ai.brokk.gui.dialogs;
 
-import com.google.common.io.Files;
 import ai.brokk.ExceptionReporter;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IProject;
@@ -20,6 +19,7 @@ import ai.brokk.issues.IssueProviderType;
 import ai.brokk.issues.IssuesProviderConfig;
 import ai.brokk.issues.JiraFilterOptions;
 import ai.brokk.issues.JiraIssueService;
+import com.google.common.io.Files;
 import java.awt.*;
 import java.io.IOException;
 import java.nio.file.InvalidPathException;

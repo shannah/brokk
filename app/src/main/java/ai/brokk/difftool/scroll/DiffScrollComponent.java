@@ -2,13 +2,13 @@ package ai.brokk.difftool.scroll;
 
 import static java.util.Objects.requireNonNull;
 
-import com.github.difflib.patch.AbstractDelta;
-import com.github.difflib.patch.Chunk;
 import ai.brokk.difftool.doc.BufferDocumentIF;
 import ai.brokk.difftool.ui.BufferDiffPanel;
 import ai.brokk.difftool.ui.FilePanel;
 import ai.brokk.gui.SwingUtil;
 import ai.brokk.gui.mop.ThemeColors;
+import com.github.difflib.patch.AbstractDelta;
+import com.github.difflib.patch.Chunk;
 import java.awt.*;
 import java.awt.event.*;
 import java.awt.geom.GeneralPath;

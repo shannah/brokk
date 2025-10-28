@@ -2,9 +2,9 @@ package ai.brokk;
 
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import dev.langchain4j.data.message.ChatMessage;
 import ai.brokk.context.ContextFragment;
 import ai.brokk.util.Messages;
+import dev.langchain4j.data.message.ChatMessage;
 import java.util.List;
 import java.util.Locale;
 import java.util.stream.Collectors;

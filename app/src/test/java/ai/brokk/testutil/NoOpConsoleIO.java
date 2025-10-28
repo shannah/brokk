@@ -1,7 +1,7 @@
 package ai.brokk.testutil;
 
-import dev.langchain4j.data.message.ChatMessageType;
 import ai.brokk.IConsoleIO;
+import dev.langchain4j.data.message.ChatMessageType;
 
 public class NoOpConsoleIO implements IConsoleIO {
     @Override

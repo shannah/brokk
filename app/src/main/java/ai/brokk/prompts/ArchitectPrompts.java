@@ -1,8 +1,8 @@
 package ai.brokk.prompts;
 
-import dev.langchain4j.data.message.SystemMessage;
 import ai.brokk.ContextManager;
 import ai.brokk.IContextManager;
+import dev.langchain4j.data.message.SystemMessage;
 
 public abstract class ArchitectPrompts extends CodePrompts {
     public static final ArchitectPrompts instance = new ArchitectPrompts() {};

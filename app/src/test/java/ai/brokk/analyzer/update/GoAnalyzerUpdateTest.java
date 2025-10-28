@@ -2,10 +2,10 @@ package ai.brokk.analyzer.update;
 
 import static org.junit.jupiter.api.Assertions.*;
 
+import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.GoAnalyzer;
 import ai.brokk.analyzer.IAnalyzer;
 import ai.brokk.analyzer.Languages;
-import ai.brokk.analyzer.*;
 import ai.brokk.testutil.TestProject;
 import java.io.IOException;
 import java.nio.file.Files;

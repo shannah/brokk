@@ -2,10 +2,6 @@ package ai.brokk.agents;
 
 import static java.util.Objects.requireNonNull;
 
-import dev.langchain4j.data.message.AiMessage;
-import dev.langchain4j.data.message.ChatMessage;
-import dev.langchain4j.data.message.UserMessage;
-import dev.langchain4j.model.chat.StreamingChatModel;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Service;
@@ -17,6 +13,10 @@ import ai.brokk.prompts.EditBlockParser;
 import ai.brokk.util.AdaptiveExecutor;
 import ai.brokk.util.Messages;
 import ai.brokk.util.TokenAware;
+import dev.langchain4j.data.message.AiMessage;
+import dev.langchain4j.data.message.ChatMessage;
+import dev.langchain4j.data.message.UserMessage;
+import dev.langchain4j.model.chat.StreamingChatModel;
 import java.io.IOException;
 import java.nio.file.Files;
 import java.util.ArrayList;

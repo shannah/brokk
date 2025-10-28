@@ -1,6 +1,5 @@
 package ai.brokk.gui.util;
 
-import com.google.common.base.Splitter;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IProject;
@@ -17,6 +16,7 @@ import ai.brokk.gui.Chrome;
 import ai.brokk.gui.DiffWindowManager;
 import ai.brokk.gui.PrTitleFormatter;
 import ai.brokk.util.SyntaxDetector;
+import com.google.common.base.Splitter;
 import java.time.Duration;
 import java.time.Instant;
 import java.time.LocalDate;

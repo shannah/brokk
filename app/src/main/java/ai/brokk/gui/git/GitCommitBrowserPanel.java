@@ -1,6 +1,5 @@
 package ai.brokk.gui.git;
 
-import com.google.common.base.Splitter;
 import ai.brokk.ContextManager;
 import ai.brokk.ExceptionReporter;
 import ai.brokk.GitHubAuth;
@@ -22,6 +21,7 @@ import ai.brokk.gui.dialogs.CreatePullRequestDialog;
 import ai.brokk.gui.mop.ThemeColors;
 import ai.brokk.gui.util.GitUiUtil;
 import ai.brokk.gui.util.Icons;
+import com.google.common.base.Splitter;
 import java.awt.*;
 import java.awt.event.ActionListener;
 import java.awt.event.MouseAdapter;
