@@ -455,7 +455,8 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
     @Override
     public ContextFragment unfreeze(IContextManager cm) throws IOException {
         return switch (originalClassName) {
-            case "io.github.jbellis.brokk.context.ContextFragment$ProjectPathFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$ProjectPathFragment",
+                    "ai.brokk.context.ContextFragment$ProjectPathFragment" -> {
                 var repoRoot = meta.get("repoRoot");
                 var relPath = meta.get("relPath");
                 if (repoRoot == null || relPath == null) {
@@ -464,7 +465,8 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 var file = new ProjectFile(Path.of(repoRoot), Path.of(relPath));
                 yield new ContextFragment.ProjectPathFragment(file, cm);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$ExternalPathFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$ExternalPathFragment",
+                    "ai.brokk.context.ContextFragment$ExternalPathFragment" -> {
                 var absPath = meta.get("absPath");
                 if (absPath == null) {
                     throw new IllegalArgumentException("Missing metadata for ExternalPathFragment");
@@ -472,7 +474,8 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 var file = new ExternalFile(Path.of(absPath));
                 yield new ContextFragment.ExternalPathFragment(file, cm);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$ImageFileFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$ImageFileFragment",
+                    "ai.brokk.context.ContextFragment$ImageFileFragment" -> {
                 var absPath = meta.get("absPath");
                 if (absPath == null) {
                     throw new IllegalArgumentException("Missing metadata for ImageFileFragment");
@@ -491,7 +494,8 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 }
                 yield new ContextFragment.ImageFileFragment(file, cm);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$SkeletonFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$SkeletonFragment",
+                    "ai.brokk.context.ContextFragment$SkeletonFragment" -> {
                 var targetIdentifiersStr = meta.get("targetIdentifiers");
                 var summaryTypeStr = meta.get("summaryType");
                 if (targetIdentifiersStr == null || summaryTypeStr == null) {
@@ -511,7 +515,8 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 var summaryType = ContextFragment.SummaryType.valueOf(summaryTypeStr);
                 yield new ContextFragment.SkeletonFragment(cm, targetIdentifiers, summaryType);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$SummaryFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$SummaryFragment",
+                    "ai.brokk.context.ContextFragment$SummaryFragment" -> {
                 var targetIdentifier = meta.get("targetIdentifier");
                 var summaryTypeStr = meta.get("summaryType");
                 if (targetIdentifier == null || summaryTypeStr == null) {
@@ -520,14 +525,16 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 var summaryType = ContextFragment.SummaryType.valueOf(summaryTypeStr);
                 yield new ContextFragment.SummaryFragment(cm, targetIdentifier, summaryType);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$UsageFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$UsageFragment",
+                    "ai.brokk.context.ContextFragment$UsageFragment" -> {
                 var targetIdentifier = meta.get("targetIdentifier");
                 if (targetIdentifier == null) {
                     throw new IllegalArgumentException("Missing metadata for UsageFragment");
                 }
                 yield new ContextFragment.UsageFragment(cm, targetIdentifier);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$CallGraphFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$CallGraphFragment",
+                    "ai.brokk.context.ContextFragment$CallGraphFragment" -> {
                 var methodName = meta.get("methodName");
                 var depthStr = meta.get("depth");
                 var isCalleeGraphStr = meta.get("isCalleeGraph");
@@ -538,7 +545,8 @@ public final class FrozenFragment extends ContextFragment.VirtualFragment {
                 var isCalleeGraph = Boolean.parseBoolean(isCalleeGraphStr);
                 yield new ContextFragment.CallGraphFragment(cm, methodName, depth, isCalleeGraph);
             }
-            case "io.github.jbellis.brokk.context.ContextFragment$CodeFragment" -> {
+            case "io.github.jbellis.brokk.context.ContextFragment$CodeFragment",
+                    "ai.brokk.context.ContextFragment$CodeFragment" -> {
                 var repoRoot = meta.get("repoRoot");
                 var relPath = meta.get("relPath");
                 var kindStr = meta.get("kind");

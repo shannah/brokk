@@ -87,8 +87,18 @@ public final class HistoryIo {
             ZipEntry entry;
             while ((entry = zis.getNextEntry()) != null) {
                 switch (entry.getName()) {
-                    case V3_FRAGMENTS_FILENAME ->
-                        allFragmentsDto = objectMapper.readValue(zis.readAllBytes(), AllFragmentsDto.class);
+                    case V3_FRAGMENTS_FILENAME -> {
+                        var fragmentJsonBytes = zis.readAllBytes();
+                        // Migration from 'io.github.jbellis' -> 'ai.brokk'
+                        var fragmentJsonString = new String(fragmentJsonBytes, StandardCharsets.UTF_8)
+                                .replace(
+                                        "\"type\":\"io.github.jbellis.brokk.context.FragmentDtos",
+                                        "\"type\":\"ai.brokk.context.FragmentDtos")
+                                .replace(
+                                        "\"@class\":\"io.github.jbellis.brokk.context.FragmentDtos",
+                                        "\"@class\":\"ai.brokk.context.FragmentDtos");
+                        allFragmentsDto = objectMapper.readValue(fragmentJsonString, AllFragmentsDto.class);
+                    }
                     case CONTENT_FILENAME -> {
                         var typeRef = new TypeReference<Map<String, ContentMetadataDto>>() {};
                         contentMetadata = objectMapper.readValue(zis.readAllBytes(), typeRef);

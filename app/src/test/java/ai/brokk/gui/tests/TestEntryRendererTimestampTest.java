@@ -20,7 +20,7 @@ import org.junit.jupiter.api.Test;
 public class TestEntryRendererTimestampTest {
 
     private static Object newRenderer() throws Exception {
-        Class<?> rendererClass = Class.forName("io.github.jbellis.brokk.gui.tests.TestRunnerPanel$TestEntryRenderer");
+        Class<?> rendererClass = Class.forName("ai.brokk.gui.tests.TestRunnerPanel$TestEntryRenderer");
         Constructor<?> ctor = rendererClass.getDeclaredConstructor();
         ctor.setAccessible(true);
         return ctor.newInstance();
