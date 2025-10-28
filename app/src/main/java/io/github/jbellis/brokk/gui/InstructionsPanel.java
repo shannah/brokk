@@ -98,7 +98,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             Brokk action modes:
             - Lutz: Lutz is one of the best context engineers around. After a all-day meetup in Amsterdam, we baked his workflow into Brokk.
-              Lutz mode performs an "agentic" search across your entire project, gathers the right context, and generates a plan by creating a list of tasks before coding.
+              Lutz Mode performs an "agentic" search across your entire project, gathers the right context, and generates a plan by creating a list of tasks before coding.
               It is a great way to kick off work with strong context and a clear plan.
             - Code: Applies changes directly to the files currently in your Workspace context based on your instructions.
             - Ask: Gives general-purpose answers or guidance grounded in the files that are in your Workspace.
@@ -2208,9 +2208,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         private static final String MODE_TOOLTIP_CODE =
                 "<b>Code Mode:</b> The Code agent executes your instructions to directly modify the code files currently in the context.";
         private static final String MODE_TOOLTIP_ASK =
-                "<b>Ask mode:</b> An Ask agent giving you general purpose answers to a question or a request based on the files in your context.";
+                "<b>Ask Mode:</b> An Ask agent giving you general purpose answers to a question or a request based on the files in your context.";
         private static final String MODE_TOOLTIP_LUTZ =
-                "<b>Lutz mode:</b> Performs an \"agentic\" search across your entire project to find code relevant to your prompt and will generate a plan for you by creating a list of tasks.";
+                "<b>Lutz Mode:</b> Performs an \"agentic\" search across your entire project to find code relevant to your prompt and will generate a plan for you by creating a list of tasks.";
 
         public ActionSplitButton(Supplier<Boolean> isActionRunning, String defaultMode) {
             super();
@@ -2373,13 +2373,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
             JMenuItem askItem = new JMenuItem("Ask");
             askItem.setToolTipText(
-                    "<html><body style='width: 300px;'><b>Ask mode:</b> An Ask agent giving you general purpose answers to a question or a request based on the files in your context.</body></html>");
+                    "<html><body style='width: 300px;'><b>Ask Mode:</b> An Ask agent giving you general purpose answers to a question or a request based on the files in your context.</body></html>");
             askItem.addActionListener(ev -> setSelectedMode(ACTION_ASK));
             menu.add(askItem);
 
             JMenuItem searchItem = new JMenuItem("Lutz");
             searchItem.setToolTipText(
-                    "<html><body style='width: 300px;'><b>Lutz mode:</b> Performs an \"agentic\" search across your entire project to find code relevant to your prompt and will generate a plan for you by creating a list of tasks.</body></html>");
+                    "<html><body style='width: 300px;'><b>Lutz Mode:</b> Performs an \"agentic\" search across your entire project to find code relevant to your prompt and will generate a plan for you by creating a list of tasks.</body></html>");
             searchItem.addActionListener(ev -> setSelectedMode(ACTION_SEARCH));
             menu.add(searchItem);
 
