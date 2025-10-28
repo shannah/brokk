@@ -36,7 +36,6 @@ import io.github.jbellis.brokk.tools.ToolExecutionResult;
 import io.github.jbellis.brokk.tools.ToolRegistry;
 import io.github.jbellis.brokk.util.ContentDiffUtils;
 import io.github.jbellis.brokk.util.GlobalUiSettings;
-
 import java.awt.*;
 import java.awt.event.ActionEvent;
 import java.awt.event.ComponentAdapter;
@@ -77,7 +76,6 @@ import javax.swing.border.TitledBorder;
 import javax.swing.plaf.LayerUI;
 import javax.swing.table.DefaultTableCellRenderer;
 import javax.swing.table.DefaultTableModel;
-
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -154,31 +152,30 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     private List<Color> resolveNotificationColors(IConsoleIO.NotificationRole role) {
         boolean isDark = chrome.themeManager.isDarkTheme();
         return switch (role) {
-            case ERROR -> List.of(
-                    ThemeColors.getColor(isDark, "notif_error_bg"),
-                    ThemeColors.getColor(isDark, "notif_error_fg"),
-                    ThemeColors.getColor(isDark, "notif_error_border"));
-            case CONFIRM -> List.of(
-                    ThemeColors.getColor(isDark, "notif_confirm_bg"),
-                    ThemeColors.getColor(isDark, "notif_confirm_fg"),
-                    ThemeColors.getColor(isDark, "notif_confirm_border"));
-            case COST -> List.of(
-                    ThemeColors.getColor(isDark, "notif_cost_bg"),
-                    ThemeColors.getColor(isDark, "notif_cost_fg"),
-                    ThemeColors.getColor(isDark, "notif_cost_border"));
-            case INFO -> List.of(
-                    ThemeColors.getColor(isDark, "notif_info_bg"),
-                    ThemeColors.getColor(isDark, "notif_info_fg"),
-                    ThemeColors.getColor(isDark, "notif_info_border"));
+            case ERROR ->
+                List.of(
+                        ThemeColors.getColor(isDark, "notif_error_bg"),
+                        ThemeColors.getColor(isDark, "notif_error_fg"),
+                        ThemeColors.getColor(isDark, "notif_error_border"));
+            case CONFIRM ->
+                List.of(
+                        ThemeColors.getColor(isDark, "notif_confirm_bg"),
+                        ThemeColors.getColor(isDark, "notif_confirm_fg"),
+                        ThemeColors.getColor(isDark, "notif_confirm_border"));
+            case COST ->
+                List.of(
+                        ThemeColors.getColor(isDark, "notif_cost_bg"),
+                        ThemeColors.getColor(isDark, "notif_cost_fg"),
+                        ThemeColors.getColor(isDark, "notif_cost_border"));
+            case INFO ->
+                List.of(
+                        ThemeColors.getColor(isDark, "notif_info_bg"),
+                        ThemeColors.getColor(isDark, "notif_info_fg"),
+                        ThemeColors.getColor(isDark, "notif_info_border"));
         };
     }
 
     private final List<OutputWindow> activeStreamingWindows = new ArrayList<>();
-
-    // Diff caching
-    private final Map<UUID, List<Context.DiffEntry>> diffCache = new ConcurrentHashMap<>();
-    private final Set<UUID> diffInFlight = ConcurrentHashMap.newKeySet();
-    private Map<UUID, Context> previousContextMap = new HashMap<>();
 
     @Nullable
     private String lastSpinnerMessage = null; // Explicitly initialize
@@ -346,7 +343,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         loadPersistedNotifications();
 
         // Build session controls and activity panel (East)
-        this.historyModel = new DefaultTableModel(new Object[]{"", "Action", "Context"}, 0) {
+        this.historyModel = new DefaultTableModel(new Object[] {"", "Action", "Context"}, 0) {
             @Override
             public boolean isCellEditable(int row, int column) {
                 return false;
@@ -843,7 +840,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         JMenuItem showDiffItem = new JMenuItem("Show diff");
         showDiffItem.addActionListener(event -> openDiffPreview(context));
         // Enable only if we have a previous context to diff against
-        showDiffItem.setEnabled(previousContextMap.get(context.id()) != null);
+        showDiffItem.setEnabled(contextManager.getContextHistory().previousOf(context) != null);
         popup.add(showDiffItem);
 
         popup.addSeparator();
@@ -897,25 +894,14 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         assert contextToSelect == null || !contextToSelect.containsDynamicFragments();
 
         SwingUtilities.invokeLater(() -> {
-            // Recompute previous-context map for diffing AI result contexts
-            {
-                var list = contextManager.getContextHistoryList();
-                var map = new HashMap<UUID, Context>();
-                for (int i = 1; i < list.size(); i++) {
-                    map.put(list.get(i).id(), list.get(i - 1));
-                }
-                previousContextMap = map;
-            }
             historyModel.setRowCount(0);
 
             int rowToSelect = -1;
             int currentRow = 0;
 
             var contexts = contextManager.getContextHistoryList();
-            // Proactively compute diffs for the renderer; grouping boundaries are independent of diffs
-            for (var c : contexts) {
-                scheduleDiffComputation(c);
-            }
+            // Warm up diffs centrally via ContextHistory.DiffService
+            contextManager.getContextHistory().getDiffService().warmUp(contexts);
             var descriptors = HistoryGrouping.GroupingBuilder.discoverGroups(contexts, this::isGroupingBoundary);
             latestDescriptors = descriptors;
 
@@ -928,7 +914,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                     var ctx = children.getFirst();
                     Icon icon = ctx.isAiResult() ? Icons.CHAT_BUBBLE : null;
                     var actionVal = new ActionText(ctx.getAction(), 0);
-                    historyModel.addRow(new Object[]{icon, actionVal, ctx});
+                    historyModel.addRow(new Object[] {icon, actionVal, ctx});
                     if (ctx.equals(contextToSelect)) {
                         rowToSelect = currentRow;
                     }
@@ -945,14 +931,14 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                         .anyMatch(c -> ActivityTableRenderers.CLEARED_TASK_HISTORY.equalsIgnoreCase(c.getAction()));
 
                 var groupRow = new GroupRow(uuidKey, expanded, containsClearHistory);
-                historyModel.addRow(new Object[]{new TriangleIcon(expanded), descriptor.label(), groupRow});
+                historyModel.addRow(new Object[] {new TriangleIcon(expanded), descriptor.label(), groupRow});
                 currentRow++;
 
                 if (expanded) {
                     for (var child : children) {
                         var childAction = new ActionText(child.getAction(), 1);
                         Icon childIcon = child.isAiResult() ? Icons.CHAT_BUBBLE : null;
-                        historyModel.addRow(new Object[]{childIcon, childAction, child});
+                        historyModel.addRow(new Object[] {childIcon, childAction, child});
                         if (child.equals(contextToSelect)) {
                             rowToSelect = currentRow;
                         }
@@ -1357,7 +1343,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         String display = compactMessageForToolbar(role, message);
         var msg = new JLabel(
                 "<html><div style='width:100%; text-align: left; word-wrap: break-word; white-space: normal;'>"
-                + escapeHtml(display) + "</div></html>");
+                        + escapeHtml(display) + "</div></html>");
         msg.setForeground(fg);
         msg.setVerticalAlignment(JLabel.CENTER);
         msg.setHorizontalAlignment(JLabel.LEFT);
@@ -1514,7 +1500,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         try {
             var linesToPersist = notifications.stream()
                     .sorted(Comparator.comparingLong((NotificationEntry n) -> n.timestamp)
-                                    .reversed())
+                            .reversed())
                     .limit(100)
                     .map(n -> {
                         var msgB64 = Base64.getEncoder().encodeToString(n.message.getBytes(StandardCharsets.UTF_8));
@@ -1678,7 +1664,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             // Sort by timestamp descending (newest first)
             var sortedNotifications = new ArrayList<>(notifications);
             sortedNotifications.sort(Comparator.comparingLong((NotificationEntry n) -> n.timestamp)
-                                             .reversed());
+                    .reversed());
 
             for (int i = 0; i < sortedNotifications.size(); i++) {
                 var n = sortedNotifications.get(i);
@@ -1699,7 +1685,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                 String timeStr = formatModified(n.timestamp);
                 String combined = escapeHtml(n.message) + " <b>" + escapeHtml(timeStr) + "</b>";
                 var msgLabel = new JLabel("<html><div style='width:100%; word-wrap: break-word; white-space: normal;'>"
-                                          + combined + "</div></html>");
+                        + combined + "</div></html>");
                 msgLabel.setForeground(fg);
                 msgLabel.setHorizontalAlignment(JLabel.LEFT);
                 msgLabel.setVerticalAlignment(JLabel.CENTER);
@@ -2093,7 +2079,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
 
     /** Presents a choice to capture output to Workspace or to Task List. */
     private void presentCaptureChoice() {
-        var options = new Object[]{"Workspace", "Task List", "Cancel"};
+        var options = new Object[] {"Workspace", "Task List", "Cancel"};
         int choice = JOptionPane.showOptionDialog(
                 chrome.getFrame(),
                 "Where would you like to capture this output?",
@@ -2142,14 +2128,14 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
 
                 var system = new SystemMessage(
                         "You are generating an actionable, incremental task list based on the provided capture."
-                        + "Do not speculate beyond it. You MUST produce tasks via the tool call createTaskList(List<String>). "
-                        + "Do not output free-form text.");
+                                + "Do not speculate beyond it. You MUST produce tasks via the tool call createTaskList(List<String>). "
+                                + "Do not output free-form text.");
                 var user = new UserMessage(
                         """
                                 <capture>
                                 %s
                                 </capture>
-                                
+
                                 Instructions:
                                 - Prefer using tasks that are already defined in the capture.
                                 - If no such tasks exist, use your best judgement with the following guidelines:
@@ -2158,7 +2144,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                                 - Avoid multi-goal items; split if needed.
                                 - Avoid external/non-code tasks.
                                 - Include all the relevant details that you see in the capture for each task, but do not embellish or speculate.
-                                
+
                                 Call the tool createTaskList(List<String>) with your final list. Do not include any explanation outside the tool call.
                                 """
                                 .formatted(captureText));
@@ -2182,8 +2168,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                 var result = llm.sendRequest(List.of(system, user), toolContext);
                 if (result.error() != null || result.isEmpty()) {
                     var msg = result.error() != null
-                              ? String.valueOf(result.error().getMessage())
-                              : "Empty response";
+                            ? String.valueOf(result.error().getMessage())
+                            : "Empty response";
                     chrome.toolError("Failed to create task list: " + msg, "Task List");
                 } else {
                     var ai = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
@@ -2446,9 +2432,9 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                                 res.totalDeleted());
                         outputTabs.setTitleAt(idx, htmlTitle);
                         String tooltip = "Cumulative changes: "
-                                         + res.filesChanged()
-                                         + " files, +" + res.totalAdded()
-                                         + "/-" + res.totalDeleted();
+                                + res.filesChanged()
+                                + " files, +" + res.totalAdded()
+                                + "/-" + res.totalDeleted();
                         outputTabs.setToolTipTextAt(idx, tooltip);
                     }
                 } catch (IndexOutOfBoundsException ignore) {
@@ -2529,11 +2515,12 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             }
 
             // Decide whether to render a diff panel or just the label
-            var cached = diffCache.get(ctx.id());
+            var ds = contextManager.getContextHistory().getDiffService();
+            var cachedOpt = ds.peek(ctx);
 
             // Kick off background computation if needed
-            if (cached == null) {
-                scheduleDiffComputation(ctx);
+            if (cachedOpt.isEmpty()) {
+                ds.diff(ctx).whenComplete((r, ex) -> SwingUtilities.invokeLater(table::repaint));
             }
 
             // Build action component using LAF-consistent renderer, but make it non-opaque
@@ -2556,7 +2543,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             panel.setToolTipText(actionText);
 
             // If we have cached diff entries, add a summary panel; otherwise, action-only
-            if (cached != null && !cached.isEmpty()) {
+            if (cachedOpt.isPresent() && !cachedOpt.get().isEmpty()) {
                 boolean isDark = chrome.getTheme().isDarkTheme();
 
                 var diffPanel = new JPanel();
@@ -2565,7 +2552,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                 // No extra left inset; the outer panel border provides the indent alignment
                 diffPanel.setBorder(new EmptyBorder(0, 0, 0, 0));
 
-                for (var de : cached) {
+                for (var de : cachedOpt.get()) {
                     String bareName;
                     try {
                         var files = de.fragment().files();
@@ -2622,44 +2609,15 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         }
     }
 
-    /** Schedule background computation (with caching) of diff for an AI result context. */
-    private void scheduleDiffComputation(Context ctx) {
-        if (diffCache.containsKey(ctx.id())) return;
-        if (!diffInFlight.add(ctx.id())) return;
-
-        var prev = previousContextMap.get(ctx.id());
-        if (prev == null) {
-            diffInFlight.remove(ctx.id());
-            return;
-        }
-
-        contextManager.submitBackgroundTask("Compute diff for history entry", () -> {
-            try {
-                var diffs = ctx.getDiff(prev);
-                diffCache.put(ctx.id(), diffs);
-            } finally {
-                diffInFlight.remove(ctx.id());
-                SwingUtilities.invokeLater(() -> {
-                    historyTable.repaint();
-                    // Rebuild table so group boundaries can reflect new diff availability
-                    updateHistoryTable(null);
-                });
-            }
-        });
-    }
-
     /** Open a multi-file diff preview window for the given AI result context. */
     private void openDiffPreview(Context ctx) {
-        var prev = previousContextMap.get(ctx.id());
-        if (prev == null) {
+        var ch = contextManager.getContextHistory();
+        if (ch.previousOf(ctx) == null) {
             chrome.showNotification(IConsoleIO.NotificationRole.INFO, "No previous context to diff against.");
             return;
         }
-
-        contextManager.submitBackgroundTask("Preparing diff preview", () -> {
-            var diffs = diffCache.computeIfAbsent(ctx.id(), id -> ctx.getDiff(prev));
-            SwingUtilities.invokeLater(() -> showDiffWindow(ctx, diffs));
-        });
+        var ds = ch.getDiffService();
+        ds.diff(ctx).thenAccept(diffs -> SwingUtilities.invokeLater(() -> showDiffWindow(ctx, diffs)));
     }
 
     private void showDiffWindow(Context ctx, List<Context.DiffEntry> diffs) {
@@ -2709,33 +2667,33 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         return contextManager
                 .submitBackgroundTask("Aggregate session changes", () -> {
                     var contexts = contextManager.getContextHistoryList();
-                    var prevMapSnapshot = new HashMap<>(previousContextMap);
+                    var ch = contextManager.getContextHistory();
+                    var ds = ch.getDiffService();
 
-                    // Step 1: Collect all DiffEntry objects across all contexts
-                    var allDiffEntries = new ArrayList<Context.DiffEntry>();
+                    // Step 1: Collect all DiffEntry objects across all contexts (compute in parallel via cache)
+                    var futures = new ArrayList<CompletableFuture<List<Context.DiffEntry>>>();
                     for (var ctx : contexts) {
-                        var prev = prevMapSnapshot.get(ctx.id());
-                        if (prev == null) {
-                            continue;
+                        if (ch.previousOf(ctx) != null) {
+                            futures.add(ds.diff(ctx));
                         }
+                    }
+                    CompletableFuture.allOf(futures.toArray(CompletableFuture[]::new))
+                            .join();
 
-                        var diffs = diffCache.get(ctx.id());
-                        if (diffs == null) {
-                            diffs = ctx.getDiff(prev);
-                            diffCache.put(ctx.id(), diffs);
+                    var allDiffEntries = new ArrayList<Context.DiffEntry>();
+                    for (var f : futures) {
+                        try {
+                            var list = f.get();
+                            allDiffEntries.addAll(list);
+                        } catch (Exception ignore) {
+                            // skip failed computations; best-effort aggregation
                         }
-
-                        allDiffEntries.addAll(diffs);
                     }
 
                     // Step 2: Identify unique frozen fragments by source matching
                     var uniqueFragments = new ArrayList<FrozenFragment>();
                     for (var de : allDiffEntries) {
-                        var frag = de.fragment();
-                        // Only consider FrozenFragment instances; other CF types are constant
-                        if (!(frag instanceof FrozenFragment ff)) {
-                            continue;
-                        }
+                        FrozenFragment ff = de.fragment();
                         boolean found = false;
                         for (var existing : uniqueFragments) {
                             if (ff.hasSameSource(existing)) {
@@ -2833,9 +2791,9 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                                     try {
                                         tabs.setTitleAt(idx, htmlTitle);
                                         String tooltip = "Cumulative changes: "
-                                                         + result.filesChanged()
-                                                         + " files, +" + result.totalAdded()
-                                                         + "/-" + result.totalDeleted();
+                                                + result.filesChanged()
+                                                + " files, +" + result.totalAdded()
+                                                + "/-" + result.totalDeleted();
                                         tabs.setToolTipTextAt(idx, tooltip);
                                     } catch (IndexOutOfBoundsException ignore) {
                                         // Tab disappeared or index changed; ignore
@@ -2913,7 +2871,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         try {
             var proj = contextManager.getProject();
             var root = proj.getRoot();
-            if (root != null && root.getFileName() != null) {
+            if (root.getFileName() != null) {
                 projectName = root.getFileName().toString();
             }
         } catch (Exception ignored) {
@@ -2931,8 +2889,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
 
         for (var change : changes) {
             String path = change.displayFile();
-            String leftContent = change.earliestOld() == null ? "" : change.earliestOld();
-            String rightContent = change.latestNew() == null ? "" : change.latestNew();
+            String leftContent = change.earliestOld();
+            String rightContent = change.latestNew();
 
             // Use non-ref titles to avoid accidental git ref resolution; keep filename for syntax highlighting.
             BufferSource left = new BufferSource.StringSource(leftContent, "", path, null);
@@ -2953,9 +2911,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     // Compute the net added/deleted line counts between two versions of a file.
     // Uses ContentDiffUtils for accurate Myers-algorithm-based diff counts.
     private static int[] computeNetLineCounts(String earliestOld, String latestNew) {
-        var result = ContentDiffUtils.computeDiffResult(
-                earliestOld == null ? "" : earliestOld, latestNew == null ? "" : latestNew, "old", "new");
-        return new int[]{result.added(), result.deleted()};
+        var result = ContentDiffUtils.computeDiffResult(earliestOld, latestNew, "old", "new");
+        return new int[] {result.added(), result.deleted()};
     }
 
     private static String safeFragmentText(Context.DiffEntry de) {
@@ -2966,12 +2923,10 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         }
     }
 
-    private record PerFileChange(String displayFile, String earliestOld, String latestNew) {
-    }
+    private record PerFileChange(String displayFile, String earliestOld, String latestNew) {}
 
     private record CumulativeChanges(
-            int filesChanged, int totalAdded, int totalDeleted, List<PerFileChange> perFileChanges) {
-    }
+            int filesChanged, int totalAdded, int totalDeleted, List<PerFileChange> perFileChanges) {}
 
     /** A LayerUI that paints reset-from-history arrows over the history table. */
     private class ResetArrowLayerUI extends LayerUI<JScrollPane> {
@@ -2993,8 +2948,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             firePropertyChange("resetEdges", null, edges); // Triggers repaint for the JLayer
         }
 
-        private record Arrow(ContextHistory.ResetEdge edge, int sourceRow, int targetRow, int length) {
-        }
+        private record Arrow(ContextHistory.ResetEdge edge, int sourceRow, int targetRow, int length) {}
 
         private Color colorFor(ContextHistory.ResetEdge edge, boolean isDark) {
             int paletteIndex = edgePaletteIndices.computeIfAbsent(edge, e -> {
@@ -3008,14 +2962,14 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             var palette = List.of(
                     isDark ? Color.LIGHT_GRAY : Color.DARK_GRAY,
                     isDark
-                    ? ColorUtil.brighter(ThemeColors.getDiffAdded(true), 0.4f)
-                    : ColorUtil.brighter(ThemeColors.getDiffAdded(false), -0.4f),
+                            ? ColorUtil.brighter(ThemeColors.getDiffAdded(true), 0.4f)
+                            : ColorUtil.brighter(ThemeColors.getDiffAdded(false), -0.4f),
                     isDark
-                    ? ColorUtil.brighter(ThemeColors.getDiffChanged(true), 0.6f)
-                    : ColorUtil.brighter(ThemeColors.getDiffChanged(false), -0.4f),
+                            ? ColorUtil.brighter(ThemeColors.getDiffChanged(true), 0.6f)
+                            : ColorUtil.brighter(ThemeColors.getDiffChanged(false), -0.4f),
                     isDark
-                    ? ColorUtil.brighter(ThemeColors.getDiffDeleted(true), 1.2f)
-                    : ColorUtil.brighter(ThemeColors.getDiffDeleted(false), -0.4f));
+                            ? ColorUtil.brighter(ThemeColors.getDiffDeleted(true), 1.2f)
+                            : ColorUtil.brighter(ThemeColors.getDiffDeleted(false), -0.4f));
             return palette.get(paletteIndex);
         }
 
@@ -3078,7 +3032,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             if (!c.getVisibleRect().contains(sourcePoint) && !c.getVisibleRect().contains(targetPoint)) {
                 // a bit of a hack -- if just one is visible, we still want to draw part of the arrow
                 if (c.getVisibleRect().contains(sourcePoint)
-                    || c.getVisibleRect().contains(targetPoint)) {
+                        || c.getVisibleRect().contains(targetPoint)) {
                     // one is visible, fall through
                 } else {
                     return;
@@ -3114,19 +3068,17 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             int halfHeight = (int) Math.round(size * 0.6); // Make it slightly wider than it is long
 
             var head = new Polygon(
-                    new int[]{tipX, baseX, baseX}, new int[]{midY, midY - halfHeight, midY + halfHeight}, 3);
+                    new int[] {tipX, baseX, baseX}, new int[] {midY, midY - halfHeight, midY + halfHeight}, 3);
             g2.fill(head);
         }
     }
 
     // --- Tree-like grouping support types and helpers ---
 
-    public static record GroupRow(UUID key, boolean expanded, boolean containsClearHistory) {
-    }
+    public static record GroupRow(UUID key, boolean expanded, boolean containsClearHistory) {}
 
     // Structural action text + indent data for column 1 (Option A)
-    private static record ActionText(String text, int indentLevel) {
-    }
+    private static record ActionText(String text, int indentLevel) {}
 
     private enum PendingSelectionType {
         NONE,
@@ -3172,8 +3124,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                 }
 
                 Color color = c.isEnabled()
-                              ? UIManager.getColor("Label.foreground")
-                              : UIManager.getColor("Label.disabledForeground");
+                        ? UIManager.getColor("Label.foreground")
+                        : UIManager.getColor("Label.disabledForeground");
                 if (color == null) color = Color.DARK_GRAY;
                 g2.setColor(color);
                 g2.fillPolygon(p);
@@ -3198,7 +3150,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
         // Boundary when this is an AI result WITHOUT a groupId, or an explicit "dropped all context" separator.
         // Note: AI results that carry a groupId are NOT boundaries and may merge into a single GROUP_BY_ID run.
         return (ctx.isAiResult() && ctx.getGroupId() == null)
-               || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction());
+                || ActivityTableRenderers.DROPPED_ALL_CONTEXT.equals(ctx.getAction());
     }
 
     private void toggleGroupRow(int row) {
@@ -3232,8 +3184,8 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
             Point screenLoc = anchor.getLocationOnScreen();
             GraphicsConfiguration gc = anchor.getGraphicsConfiguration();
             Rectangle screenBounds = (gc != null)
-                                     ? gc.getBounds()
-                                     : new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
+                    ? gc.getBounds()
+                    : new Rectangle(Toolkit.getDefaultToolkit().getScreenSize());
             Insets insets = (gc != null) ? Toolkit.getDefaultToolkit().getScreenInsets(gc) : new Insets(0, 0, 0, 0);
             int bottomEdge = screenBounds.y + screenBounds.height - insets.bottom;
             int anchorBottom = screenLoc.y + anchor.getHeight();

@@ -137,7 +137,12 @@ public class Context {
 
     /** Per-fragment diff entry between two contexts. */
     public record DiffEntry(
-            FrozenFragment fragment, String diff, int linesAdded, int linesDeleted, String oldContent, String newContent) {}
+            FrozenFragment fragment,
+            String diff,
+            int linesAdded,
+            int linesDeleted,
+            String oldContent,
+            String newContent) {}
 
     /** Produces a live context whose fragments are un-frozen versions of those in {@code frozen}. */
     public static Context unfreeze(Context frozen) {
