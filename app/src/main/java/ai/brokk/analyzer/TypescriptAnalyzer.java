@@ -80,12 +80,18 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
             "type_parameters", // Standard field name for type parameters in TS
             // captureConfiguration - using unified naming convention
             Map.of(
-                    "type.definition", SkeletonType.CLASS_LIKE, // Classes, interfaces, enums, namespaces
-                    "function.definition", SkeletonType.FUNCTION_LIKE, // Functions, methods
-                    "value.definition", SkeletonType.FIELD_LIKE, // Variables, fields, constants
-                    "typealias.definition", SkeletonType.ALIAS_LIKE, // Type aliases
-                    "decorator.definition", SkeletonType.UNSUPPORTED, // Keep as UNSUPPORTED but handle differently
-                    "keyword.modifier", SkeletonType.UNSUPPORTED),
+                    CaptureNames.TYPE_DEFINITION,
+                    SkeletonType.CLASS_LIKE, // Classes, interfaces, enums, namespaces
+                    CaptureNames.FUNCTION_DEFINITION,
+                    SkeletonType.FUNCTION_LIKE, // Functions, methods
+                    CaptureNames.VALUE_DEFINITION,
+                    SkeletonType.FIELD_LIKE, // Variables, fields, constants
+                    CaptureNames.TYPEALIAS_DEFINITION,
+                    SkeletonType.ALIAS_LIKE, // Type aliases
+                    CaptureNames.DECORATOR_DEFINITION,
+                    SkeletonType.UNSUPPORTED, // Keep as UNSUPPORTED but handle differently
+                    "keyword.modifier",
+                    SkeletonType.UNSUPPORTED),
             // asyncKeywordNodeType
             "async", // TS uses 'async' keyword
             // modifierNodeTypes: Contains node types of keywords/constructs that act as modifiers.
@@ -142,7 +148,7 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     }
 
     @Override
-    protected CodeUnit createCodeUnit(
+    protected @Nullable CodeUnit createCodeUnit(
             ProjectFile file, String captureName, String simpleName, String packageName, String classChain) {
         // Adjust FQN based on capture type and context
         String finalShortName;
@@ -455,6 +461,21 @@ public final class TypescriptAnalyzer extends TreeSitterAnalyzer {
     @Override
     protected String bodyPlaceholder() {
         return "{ ... }"; // TypeScript typically uses braces
+    }
+
+    @Override
+    protected boolean shouldUnwrapExportStatements() {
+        return true;
+    }
+
+    @Override
+    protected boolean needsVariableDeclaratorUnwrapping(TSNode node, SkeletonType skeletonType) {
+        return skeletonType == SkeletonType.FIELD_LIKE || skeletonType == SkeletonType.FUNCTION_LIKE;
+    }
+
+    @Override
+    protected boolean shouldMergeSignaturesForSameFqn() {
+        return true;
     }
 
     @Override
