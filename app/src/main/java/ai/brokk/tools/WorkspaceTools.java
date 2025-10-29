@@ -106,7 +106,7 @@ public class WorkspaceTools {
 
         // Determine already-present files and files-to-add based on current workspace state
         var workspaceFiles = currentWorkspaceFiles();
-        var distinctRequested = new HashSet<>(workspaceFiles);
+        var distinctRequested = new HashSet<>(projectFiles);
         var toAddFiles = distinctRequested.stream()
                 .filter(f -> !workspaceFiles.contains(f))
                 .toList();
