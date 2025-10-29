@@ -65,6 +65,7 @@ import java.util.concurrent.locks.ReentrantLock;
 import java.util.function.Consumer;
 import java.util.function.Function;
 import java.util.stream.Collectors;
+import javax.swing.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
@@ -552,6 +553,10 @@ public class Llm {
      */
     private StreamingResult sendMessageWithRetry(
             List<ChatMessage> rawMessages, ToolContext toolContext, int maxAttempts) throws InterruptedException {
+        if (SwingUtilities.isEventDispatchThread() && Boolean.getBoolean("brokk.devmode")) {
+            throw new IllegalStateException("LLM calls must not be made from the EDT");
+        }
+
         Throwable lastError = null;
         int attempt = 0;
         var messages = Messages.forLlm(rawMessages);
