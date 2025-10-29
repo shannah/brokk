@@ -1413,12 +1413,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Determine stop details based on the response
         if (response != null) {
-            if (response.error() != null) {
-                String explanation = Objects.requireNonNullElse(response.error().getMessage(), "Unknown LLM error");
-                stop = new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, explanation);
-            } else {
-                stop = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
-            }
+            stop = TaskResult.StopDetails.fromResponse(response);
         }
 
         // construct TaskResult

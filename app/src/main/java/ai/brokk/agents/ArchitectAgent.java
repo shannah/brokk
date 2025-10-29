@@ -7,7 +7,6 @@ import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.Llm;
 import ai.brokk.TaskResult;
-import ai.brokk.TaskResult.StopDetails;
 import ai.brokk.TaskResult.StopReason;
 import ai.brokk.context.Context;
 import ai.brokk.gui.Chrome;
@@ -45,7 +44,6 @@ import java.util.concurrent.Future;
 import java.util.stream.Collectors;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.NotNull;
 
 public class ArchitectAgent {
     private static final Logger logger = LogManager.getLogger(ArchitectAgent.class);
@@ -159,7 +157,7 @@ public class ArchitectAgent {
         var initialContext = context;
         context = scope.append(result);
 
-        if (result.stopDetails().reason() == TaskResult.StopReason.SUCCESS) {
+        if (result.stopDetails().reason() == StopReason.SUCCESS) {
             var resultString = deferBuild
                     ? "CodeAgent finished! Details are in the Workspace messages."
                     : "CodeAgent finished with a successful build! Details are in the Workspace messages.";
@@ -171,10 +169,10 @@ public class ArchitectAgent {
 
         // For non-SUCCESS outcomes:
         // throw errors that should halt the architect
-        if (reason == TaskResult.StopReason.INTERRUPTED) {
+        if (reason == StopReason.INTERRUPTED) {
             throw new InterruptedException();
         }
-        if (reason == TaskResult.StopReason.LLM_ERROR) {
+        if (reason == StopReason.LLM_ERROR) {
             logger.error("Fatal LLM error during CodeAgent execution: {}", stopDetails.explanation());
             throw new FatalLlmException(stopDetails.explanation());
         }
@@ -242,11 +240,11 @@ public class ArchitectAgent {
         // DO NOT set this.context here, it is not threadsafe; the main agent loop will update it via the threadlocal
         threadlocalSearchResult.set(result);
 
-        if (result.stopDetails().reason() == TaskResult.StopReason.LLM_ERROR) {
+        if (result.stopDetails().reason() == StopReason.LLM_ERROR) {
             throw new FatalLlmException(result.stopDetails().explanation());
         }
 
-        if (result.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
+        if (result.stopDetails().reason() != StopReason.SUCCESS) {
             logger.debug("SearchAgent returned non-success for query {}: {}", query, result.stopDetails());
             return result.stopDetails().toString();
         }
@@ -281,21 +279,19 @@ public class ArchitectAgent {
      * <p>Returns the search result if it fails, otherwise returns the Architect result.
      */
     public TaskResult executeWithSearch() throws InterruptedException {
-        // Run Search first using the scan model (fast, token-friendly)
+        // ContextAgent Scan
         var scanModel = cm.getService().getScanModel();
         var searchAgent = new SearchAgent(
                 context, goal, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), SearchMetrics.noOp(), this.scope);
         searchAgent.scanInitialContext();
+
+        // Hardcode a Search first using the scan model (fast, token-friendly).
+        // No errors here are fatal; this hardcoded search is intended as an optimization to save the architect a turn.
         io.llmOutput("**Search Agent** engaged: " + goal, ChatMessageType.AI);
         var searchResult = searchAgent.execute();
-        // Synchronize local context with search results before continuing
         context = scope.append(searchResult);
 
-        if (searchResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {
-            return searchResult;
-        }
-
-        // Run Architect proper and append its result to scope
+        // Run Architect proper
         var archResult = this.execute();
         context = scope.append(archResult);
         return archResult;
@@ -640,19 +636,19 @@ public class ArchitectAgent {
         return allowed;
     }
 
-    private @NotNull TaskResult codeAgentSuccessResult() {
+    private TaskResult codeAgentSuccessResult() {
         // we've already added the code agent's result to history and we don't have anything extra to add to that here
         return new TaskResult(
                 cm,
                 "Architect finished work for: " + goal,
                 io.getLlmRawMessages(),
                 context,
-                new StopDetails(StopReason.SUCCESS));
+                new TaskResult.StopDetails(StopReason.SUCCESS));
     }
 
     private TaskResult resultWithMessages(StopReason reason, String message) {
         // include the messages we exchanged with the LLM for any planning steps since we ran a sub-agent
-        return new TaskResult(cm, message, io.getLlmRawMessages(), context, new StopDetails(reason));
+        return new TaskResult(cm, message, io.getLlmRawMessages(), context, new TaskResult.StopDetails(reason));
     }
 
     private TaskResult resultWithMessages(StopReason reason) {

@@ -1,7 +1,5 @@
 package ai.brokk.agents;
 
-import static java.util.Objects.requireNonNull;
-
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
@@ -186,11 +184,11 @@ public class SearchAgent {
             // Decide next action(s)
             io.llmOutput("\n**Brokk Search** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
             var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, tr));
-            if (result.error() != null || result.isEmpty()) {
-                var details =
-                        result.error() != null ? requireNonNull(result.error().getMessage()) : "Empty response";
-                io.showNotification(IConsoleIO.NotificationRole.INFO, "LLM error planning next step: " + details);
-                return errorResult(new TaskResult.StopDetails(TaskResult.StopReason.LLM_ERROR, details));
+            if (result.error() != null) {
+                var details = TaskResult.StopDetails.fromResponse(result);
+                io.showNotification(
+                        IConsoleIO.NotificationRole.INFO, "LLM error planning next step: " + details.explanation());
+                return errorResult(details);
             }
 
             // Record turn
@@ -201,7 +199,7 @@ public class SearchAgent {
             var ai = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
             if (!ai.hasToolExecutionRequests()) {
                 return errorResult(new TaskResult.StopDetails(
-                        TaskResult.StopReason.LLM_ERROR, "No tool requests found in LLM response."));
+                        TaskResult.StopReason.TOOL_ERROR, "No tool requests found in LLM response."));
             }
 
             // Start tracking this turn (only after successful LLM planning)
@@ -257,7 +255,7 @@ public class SearchAgent {
 
                     if (termExec.status() != ToolExecutionResult.Status.SUCCESS) {
                         return errorResult(new TaskResult.StopDetails(
-                                TaskResult.StopReason.LLM_ERROR,
+                                TaskResult.StopReason.TOOL_ERROR,
                                 "Terminal tool '" + termReq.name() + "' failed: " + display));
                     }
 
