@@ -1,6 +1,7 @@
 package ai.brokk.tools;
 
 import ai.brokk.AbstractProject;
+import ai.brokk.AnalyzerUtil;
 import ai.brokk.ContextManager;
 import ai.brokk.ExceptionReporter;
 import ai.brokk.analyzer.*;
@@ -416,7 +417,7 @@ public class WorkspaceTools {
                 notFoundClasses.add("<blank or null>");
                 return;
             }
-            var fileOpt = analyzer.getFileFor(className);
+            var fileOpt = AnalyzerUtil.getFileFor(analyzer, className);
             if (fileOpt.isPresent()) {
                 foundFiles.add(fileOpt.get().toString());
             } else {
