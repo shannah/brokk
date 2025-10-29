@@ -105,7 +105,7 @@ public class WorkspaceTools {
 
         // Determine already-present files and files-to-add based on current workspace state
         var workspaceFiles = currentWorkspaceFiles();
-        var distinctRequested = projectFiles.stream().distinct().toList();
+        var distinctRequested = new HashSet<>(workspaceFiles);
         var toAddFiles = distinctRequested.stream()
                 .filter(f -> !workspaceFiles.contains(f))
                 .toList();
@@ -115,22 +115,22 @@ public class WorkspaceTools {
                 .sorted()
                 .toList();
 
-        var fragments = context.getContextManager().toPathFragments(projectFiles);
+        var fragments = context.getContextManager().toPathFragments(toAddFiles);
         context = context.addPathFragments(fragments);
 
         String addedNames =
                 toAddFiles.stream().map(ProjectFile::toString).sorted().collect(Collectors.joining(", "));
         String result = "";
-        if (!addedNames.isEmpty()) {
-            result += "Added %s to the workspace. ".formatted(addedNames);
+        if (addedNames.isEmpty()) {
+            result += "No new files added.\n";
         } else {
-            result += "No new files added. ";
+            result += "Added to the workspace: %s\n".formatted(addedNames);
         }
         if (!alreadyPresent.isEmpty()) {
-            result += "Already present (no-op): %s. ".formatted(String.join(", ", alreadyPresent));
+            result += "Already present (no-op): %s.\n".formatted(String.join(", ", alreadyPresent));
         }
         if (!errors.isEmpty()) {
-            result += "Errors were [%s]".formatted(String.join(", ", errors));
+            result += "Errors were: [%s]\n".formatted(String.join(", ", errors));
         }
         return result;
     }
@@ -503,9 +503,8 @@ public class WorkspaceTools {
 
     private java.util.Set<ProjectFile> currentWorkspaceFiles() {
         return context.fileFragments()
-                .filter(f -> f instanceof ContextFragment.ProjectPathFragment)
-                .map(f -> (ContextFragment.ProjectPathFragment) f)
-                .map(ContextFragment.ProjectPathFragment::file)
+                .filter(f -> f.getType() == ContextFragment.FragmentType.PROJECT_PATH)
+                .flatMap(f -> f.files().stream())
                 .collect(Collectors.toSet());
     }
 

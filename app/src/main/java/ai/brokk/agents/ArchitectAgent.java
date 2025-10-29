@@ -15,6 +15,7 @@ import ai.brokk.metrics.SearchMetrics;
 import ai.brokk.prompts.ArchitectPrompts;
 import ai.brokk.prompts.CodePrompts;
 import ai.brokk.tools.ToolExecutionResult;
+import ai.brokk.tools.ToolRegistry;
 import ai.brokk.tools.WorkspaceTools;
 import ai.brokk.util.LogDescription;
 import ai.brokk.util.Messages;
@@ -452,7 +453,7 @@ public class ArchitectAgent {
             totalUsage = TokenUsage.sum(
                     totalUsage, castNonNull(result.originalResponse()).tokenUsage());
             // Add the request and response to message history
-            var aiMessage = tr.removeDuplicateToolRequests(result.aiMessage());
+            var aiMessage = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
             architectMessages.add(messages.getLast());
             architectMessages.add(aiMessage);
 
