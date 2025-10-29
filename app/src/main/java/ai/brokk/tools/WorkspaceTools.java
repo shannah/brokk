@@ -103,12 +103,31 @@ public class WorkspaceTools {
             }
         }
 
+        // Determine already-present files and files-to-add based on current workspace state
+        var workspaceFiles = currentWorkspaceFiles();
+        var distinctRequested = projectFiles.stream().distinct().toList();
+        var toAddFiles = distinctRequested.stream()
+                .filter(f -> !workspaceFiles.contains(f))
+                .toList();
+        var alreadyPresent = distinctRequested.stream()
+                .filter(workspaceFiles::contains)
+                .map(ProjectFile::toString)
+                .sorted()
+                .toList();
+
         var fragments = context.getContextManager().toPathFragments(projectFiles);
         context = context.addPathFragments(fragments);
-        String fileNames = projectFiles.stream().map(ProjectFile::toString).collect(Collectors.joining(", "));
+
+        String addedNames =
+                toAddFiles.stream().map(ProjectFile::toString).sorted().collect(Collectors.joining(", "));
         String result = "";
-        if (!fileNames.isEmpty()) {
-            result += "Added %s to the workspace. ".formatted(fileNames);
+        if (!addedNames.isEmpty()) {
+            result += "Added %s to the workspace. ".formatted(addedNames);
+        } else {
+            result += "No new files added. ";
+        }
+        if (!alreadyPresent.isEmpty()) {
+            result += "Already present (no-op): %s. ".formatted(String.join(", ", alreadyPresent));
         }
         if (!errors.isEmpty()) {
             result += "Errors were [%s]".formatted(String.join(", ", errors));
@@ -480,6 +499,14 @@ public class WorkspaceTools {
                 new BufferedReader(new InputStreamReader(connection.getInputStream(), StandardCharsets.UTF_8))) {
             return reader.lines().collect(Collectors.joining("\n"));
         }
+    }
+
+    private java.util.Set<ProjectFile> currentWorkspaceFiles() {
+        return context.fileFragments()
+                .filter(f -> f instanceof ContextFragment.ProjectPathFragment)
+                .map(f -> (ContextFragment.ProjectPathFragment) f)
+                .map(ContextFragment.ProjectPathFragment::file)
+                .collect(Collectors.toSet());
     }
 
     private IAnalyzer getAnalyzer() {
