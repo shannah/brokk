@@ -328,26 +328,21 @@ public class ArchitectAgent {
         while (true) {
             io.llmOutput("\n**Brokk Architect** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
 
-            // Determine active models and their minimum input token limit
+            // Determine active models and their maximum allowed input tokens
             var models = new ArrayList<StreamingChatModel>();
             models.add(this.planningModel);
             models.add(this.codeModel);
-            int minInputTokenLimit = models.stream()
+            int maxInputTokens = models.stream()
                     .mapToInt(modelsService::getMaxInputTokens)
-                    .filter(limit -> limit > 0)
                     .min()
-                    .orElse(64_000);
-
-            if (minInputTokenLimit == 64_000) {
-                logger.warn("Could not determine a valid minimum input token limit from active models {}", models);
-            }
+                    .orElseThrow();
 
             // Calculate current workspace token size
             var workspaceContentMessages = new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(context));
             int workspaceTokenSize = Messages.getApproximateMessageTokens(workspaceContentMessages);
 
             // Build the prompt messages, including history and conditional warnings
-            var messages = buildPrompt(workspaceTokenSize, minInputTokenLimit, workspaceContentMessages);
+            var messages = buildPrompt(workspaceTokenSize, maxInputTokens, workspaceContentMessages);
 
             // Create a local registry for this planning turn
             var wst = new WorkspaceTools(this.context);
@@ -355,12 +350,12 @@ public class ArchitectAgent {
 
             // Decide tool availability for this step
             var toolSpecs = new ArrayList<ToolSpecification>();
-            var criticalWorkspaceSize = minInputTokenLimit < Integer.MAX_VALUE
-                    && workspaceTokenSize > (ArchitectPrompts.WORKSPACE_CRITICAL_THRESHOLD * minInputTokenLimit);
+            var criticalWorkspaceSize =
+                    workspaceTokenSize > (ArchitectPrompts.WORKSPACE_CRITICAL_THRESHOLD * maxInputTokens);
 
             ToolContext toolContext;
             if (criticalWorkspaceSize) {
-                notifyCriticalWorkspaceRestriction(workspaceTokenSize, minInputTokenLimit);
+                notifyCriticalWorkspaceRestriction(workspaceTokenSize, maxInputTokens);
                 var allowed = criticalAllowedTools();
                 toolSpecs.addAll(tr.getTools(allowed));
                 toolContext = new ToolContext(toolSpecs, ToolChoice.REQUIRED, tr);
@@ -409,6 +404,8 @@ public class ArchitectAgent {
                     return resultWithMessages(StopReason.LLM_ERROR);
                 }
 
+                // we know workspace is too large; we don't know by how much so we'll guess 0.8 as the threshold
+                messages = buildPrompt(workspaceTokenSize, (int) (workspaceTokenSize * 0.8), workspaceContentMessages);
                 var currentModelTokens = modelsService.getMaxInputTokens(this.planningModel);
                 var fallbackModel = requireNonNull(modelsService.getModel(ai.brokk.Service.GEMINI_2_5_PRO));
                 var fallbackModelTokens = modelsService.getMaxInputTokens(fallbackModel);
@@ -673,7 +670,7 @@ public class ArchitectAgent {
      * history, agent's session messages, and the final user message with the goal and conditional workspace warnings.
      */
     private List<ChatMessage> buildPrompt(
-            int workspaceTokenSize, int minInputTokenLimit, List<ChatMessage> precomputedWorkspaceMessages)
+            int workspaceTokenSize, int maxInputTokens, List<ChatMessage> precomputedWorkspaceMessages)
             throws InterruptedException {
         var messages = new ArrayList<ChatMessage>();
         // System message defines the agent's role and general instructions
@@ -715,7 +712,7 @@ public class ArchitectAgent {
         messages.addAll(architectMessages);
         // Final user message with the goal and specific instructions for this turn, including workspace warnings
         messages.add(new UserMessage(
-                ArchitectPrompts.instance.getFinalInstructions(cm, goal, workspaceTokenSize, minInputTokenLimit)));
+                ArchitectPrompts.instance.getFinalInstructions(cm, goal, workspaceTokenSize, maxInputTokens)));
         return messages;
     }
 }
