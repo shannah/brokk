@@ -1727,9 +1727,24 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         cm.submitLlmAction(() -> {
             try {
                 chrome.showOutputSpinner(spinnerText);
+
+                // Derive TaskMeta (type + primary model) for this action
+                var svc = cm.getService();
+                var selectedModel = getSelectedModel();
+                TaskType taskType =
+                        switch (action) {
+                            case ACTION_ARCHITECT -> TaskType.ARCHITECT;
+                            case ACTION_CODE -> TaskType.CODE;
+                            case ACTION_ASK -> TaskType.ASK;
+                            case ACTION_SEARCH -> TaskType.SEARCH;
+                            default -> TaskType.NONE;
+                        };
+                var primary = ModelSpec.from(selectedModel, svc);
+                var meta = new TaskMeta(taskType, primary);
+
                 try (var scope = cm.beginTask(input, false)) {
                     var result = task.call();
-                    scope.append(result);
+                    scope.append(result, meta);
                     if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
                         populateInstructionsArea(input);
                     }
@@ -1751,9 +1766,24 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         return cm.submitLlmAction(() -> {
             try {
                 chrome.showOutputSpinner(spinnerText);
+
+                // Derive TaskMeta (type + primary model) for this action
+                var svc = cm.getService();
+                var selectedModel = getSelectedModel();
+                TaskType taskType =
+                        switch (action) {
+                            case ACTION_ARCHITECT -> TaskType.ARCHITECT;
+                            case ACTION_CODE -> TaskType.CODE;
+                            case ACTION_ASK -> TaskType.ASK;
+                            case ACTION_SEARCH -> TaskType.SEARCH;
+                            default -> TaskType.NONE;
+                        };
+                var primary = ModelSpec.from(selectedModel, svc);
+                var meta = new TaskMeta(taskType, primary);
+
                 try (var scope = cm.beginTask(input, false, "Lutz Mode")) {
                     var result = task.apply(scope);
-                    scope.append(result);
+                    scope.append(result, meta);
                     if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
                         populateInstructionsArea(input);
                     }

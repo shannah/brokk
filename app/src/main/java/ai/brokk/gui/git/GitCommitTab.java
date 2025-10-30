@@ -1,7 +1,6 @@
 package ai.brokk.gui.git;
 
-import ai.brokk.ContextManager;
-import ai.brokk.IConsoleIO;
+import ai.brokk.*;
 import ai.brokk.agents.ConflictInspector;
 import ai.brokk.agents.MergeAgent;
 import ai.brokk.analyzer.ProjectFile;
@@ -1013,7 +1012,10 @@ Would you like to resolve these conflicts with the Merge Agent?
                     var agent = new MergeAgent(
                             contextManager, planningModel, codeModel, conflict, scope, customInstructions);
                     var result = agent.execute();
-                    scope.append(result);
+                    // MergeAgent orchestrates both a planning model and a code model.
+                    scope.append(
+                            result,
+                            new TaskMeta(TaskType.MERGE, ModelSpec.from(planningModel, contextManager.getService())));
                 } catch (Exception ex) {
                     logger.error("AI merge failed", ex);
                     SwingUtilities.invokeLater(
