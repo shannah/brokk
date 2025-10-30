@@ -352,6 +352,8 @@ public class Chrome
         leftTabbedPanel = new JTabbedPane(JTabbedPane.LEFT);
         // Allow the divider to move further left by reducing the minimum width
         leftTabbedPanel.setMinimumSize(new Dimension(120, 0));
+        // Ensure all tabs are accessible when there are too many to fit (prevents "missing" icons)
+        leftTabbedPanel.setTabLayoutPolicy(JTabbedPane.SCROLL_TAB_LAYOUT);
 
         var projectIcon = Icons.FOLDER_CODE;
         leftTabbedPanel.addTab(null, projectIcon, projectFilesPanel);
@@ -385,45 +387,46 @@ public class Chrome
         }
 
         // Add Git tabs (Changes, Log, Worktrees) if available (in the requested visual order)
-        if (getProject().hasGit() && GlobalUiSettings.isAdvancedMode()) {
+        // Always construct Git tabs when the project has git; show/hide based on Advanced Mode
+        if (getProject().hasGit()) {
             gitCommitTab = new GitCommitTab(this, contextManager);
             gitLogTab = new GitLogTab(this, contextManager);
             gitWorktreeTab = new GitWorktreeTab(this, contextManager);
 
-            // Changes tab (with badge)
-            var commitIcon = Icons.COMMIT;
-            gitTabBadgedIcon = new BadgedIcon(commitIcon, themeManager);
-            leftTabbedPanel.addTab(null, gitTabBadgedIcon, gitCommitTab);
-            var commitTabIdx = leftTabbedPanel.indexOfComponent(gitCommitTab);
-            var changesShortcut =
-                    KeyboardShortcutUtil.formatKeyStroke(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_3));
-            gitTabLabel = createSquareTabLabel(gitTabBadgedIcon, "Changes (" + changesShortcut + ")");
-            leftTabbedPanel.setTabComponentAt(commitTabIdx, gitTabLabel);
-            gitTabLabel.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mousePressed(MouseEvent e) {
-                    handleTabToggle(commitTabIdx);
-                }
-            });
-
-            // Log tab (after Changes)
-            var logIcon = Icons.FLOWSHEET;
-            leftTabbedPanel.addTab(null, logIcon, gitLogTab);
-            var logTabIdx = leftTabbedPanel.indexOfComponent(gitLogTab);
-            var logShortcut =
-                    KeyboardShortcutUtil.formatKeyStroke(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_4));
-            var logTabLabel = createSquareTabLabel(logIcon, "Log (" + logShortcut + ")");
-            leftTabbedPanel.setTabComponentAt(logTabIdx, logTabLabel);
-            logTabLabel.addMouseListener(new MouseAdapter() {
-                @Override
-                public void mousePressed(MouseEvent e) {
-                    handleTabToggle(logTabIdx);
-                }
-            });
-
-            // Worktrees tab (after Log)
-            var worktreeIcon = Icons.FLOWCHART;
             if (GlobalUiSettings.isAdvancedMode()) {
+                // Changes tab (with badge)
+                var commitIcon = Icons.COMMIT;
+                gitTabBadgedIcon = new BadgedIcon(commitIcon, themeManager);
+                leftTabbedPanel.addTab(null, gitTabBadgedIcon, gitCommitTab);
+                var commitTabIdx = leftTabbedPanel.indexOfComponent(gitCommitTab);
+                var changesShortcut =
+                        KeyboardShortcutUtil.formatKeyStroke(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_3));
+                gitTabLabel = createSquareTabLabel(gitTabBadgedIcon, "Changes (" + changesShortcut + ")");
+                leftTabbedPanel.setTabComponentAt(commitTabIdx, gitTabLabel);
+                gitTabLabel.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mousePressed(MouseEvent e) {
+                        handleTabToggle(commitTabIdx);
+                    }
+                });
+
+                // Log tab (after Changes)
+                var logIcon = Icons.FLOWSHEET;
+                leftTabbedPanel.addTab(null, logIcon, gitLogTab);
+                var logTabIdx = leftTabbedPanel.indexOfComponent(gitLogTab);
+                var logShortcut =
+                        KeyboardShortcutUtil.formatKeyStroke(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_4));
+                var logTabLabel = createSquareTabLabel(logIcon, "Log (" + logShortcut + ")");
+                leftTabbedPanel.setTabComponentAt(logTabIdx, logTabLabel);
+                logTabLabel.addMouseListener(new MouseAdapter() {
+                    @Override
+                    public void mousePressed(MouseEvent e) {
+                        handleTabToggle(logTabIdx);
+                    }
+                });
+
+                // Worktrees tab (after Log)
+                var worktreeIcon = Icons.FLOWCHART;
                 leftTabbedPanel.addTab(null, worktreeIcon, gitWorktreeTab);
                 var worktreeTabIdx = leftTabbedPanel.indexOfComponent(gitWorktreeTab);
                 var worktreesShortcut =
@@ -2935,6 +2938,13 @@ public class Chrome
                         }
                     });
                 }
+            }
+
+            // Update badge count immediately after adding tabs so the Changes tab badged icon reflects current state
+            try {
+                updateGitTabBadge(getModifiedFiles().size());
+            } catch (Exception ex) {
+                logger.debug("Failed to update Git tab badge after advanced-mode toggle", ex);
             }
 
             leftTabbedPanel.revalidate();
