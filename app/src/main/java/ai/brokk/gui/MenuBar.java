@@ -578,7 +578,10 @@ public class MenuBar {
                 });
                 windowMenu.add(testsItem);
 
-                if (chrome.getProject().hasGit()) {
+                // Only show advanced Git-related entries when Advanced Mode is ON.
+                boolean advanced = GlobalUiSettings.isAdvancedMode();
+
+                if (advanced && chrome.getProject().hasGit()) {
                     var changesItem = new JMenuItem("Changes");
                     changesItem.setAccelerator(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_3));
                     changesItem.addActionListener(actionEvent -> {
@@ -610,25 +613,28 @@ public class MenuBar {
                     windowMenu.add(worktreesItem);
                 }
 
-                if (chrome.getProject().isGitHubRepo() && chrome.getProject().hasGit()) {
-                    var pullRequestsItem = new JMenuItem("Pull Requests");
-                    pullRequestsItem.setAccelerator(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_6));
-                    pullRequestsItem.addActionListener(actionEvent -> {
-                        var idx = chrome.getLeftTabbedPanel().indexOfComponent(chrome.getPullRequestsPanel());
-                        if (idx != -1) chrome.getLeftTabbedPanel().setSelectedIndex(idx);
-                    });
-                    windowMenu.add(pullRequestsItem);
-                }
+                if (advanced) {
+                    if (chrome.getProject().isGitHubRepo()
+                            && chrome.getProject().hasGit()) {
+                        var pullRequestsItem = new JMenuItem("Pull Requests");
+                        pullRequestsItem.setAccelerator(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_6));
+                        pullRequestsItem.addActionListener(actionEvent -> {
+                            var idx = chrome.getLeftTabbedPanel().indexOfComponent(chrome.getPullRequestsPanel());
+                            if (idx != -1) chrome.getLeftTabbedPanel().setSelectedIndex(idx);
+                        });
+                        windowMenu.add(pullRequestsItem);
+                    }
 
-                if (chrome.getProject().getIssuesProvider().type() != IssueProviderType.NONE
-                        && chrome.getProject().hasGit()) {
-                    var issuesItem = new JMenuItem("Issues");
-                    issuesItem.setAccelerator(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_7));
-                    issuesItem.addActionListener(actionEvent -> {
-                        var idx = chrome.getLeftTabbedPanel().indexOfComponent(chrome.getIssuesPanel());
-                        if (idx != -1) chrome.getLeftTabbedPanel().setSelectedIndex(idx);
-                    });
-                    windowMenu.add(issuesItem);
+                    if (chrome.getProject().getIssuesProvider().type() != IssueProviderType.NONE
+                            && chrome.getProject().hasGit()) {
+                        var issuesItem = new JMenuItem("Issues");
+                        issuesItem.setAccelerator(KeyboardShortcutUtil.createAltShortcut(KeyEvent.VK_7));
+                        issuesItem.addActionListener(actionEvent -> {
+                            var idx = chrome.getLeftTabbedPanel().indexOfComponent(chrome.getIssuesPanel());
+                            if (idx != -1) chrome.getLeftTabbedPanel().setSelectedIndex(idx);
+                        });
+                        windowMenu.add(issuesItem);
+                    }
                 }
 
                 windowMenu.addSeparator();
