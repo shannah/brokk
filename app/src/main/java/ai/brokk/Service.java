@@ -249,6 +249,7 @@ public class Service implements IExceptionReportingService {
     // Default models - now instance fields
     private final StreamingChatModel quickModel;
     private final StreamingChatModel quickestModel;
+    private final StreamingChatModel quickEditModel;
     private final SpeechToTextModel sttModel;
 
     public Service(IProject project) {
@@ -285,7 +286,9 @@ public class Service implements IExceptionReportingService {
         // these should always be available
         var qm = getModel(new ModelConfig(GEMINI_2_0_FLASH, ReasoningLevel.DEFAULT));
         quickModel = qm == null ? new UnavailableStreamingModel() : qm;
-        // hardcode quickest temperature to 0 so that Quick Context inference is reproducible
+        var qe = getModel(new ModelConfig("cerebras/gpt-oss-120b", ReasoningLevel.DEFAULT));
+        quickEditModel = qe == null ? new UnavailableStreamingModel() : qe;
+        // hard‑code quickest temperature to 0 so that Quick Context inference is reproducible
         var qqm = getModel(
                 new ModelConfig("gemini-2.0-flash-lite", ReasoningLevel.DEFAULT),
                 OpenAiChatRequestParameters.builder().temperature(0.0));
@@ -1033,6 +1036,11 @@ public class Service implements IExceptionReportingService {
 
     public StreamingChatModel quickModel() {
         return quickModel;
+    }
+
+    /** Returns the dedicated model for Quick‑Edit operations (Cerebras GPT‑OSS‑120B). */
+    public StreamingChatModel quickEditModel() {
+        return quickEditModel;
     }
 
     /** Returns the default speech-to-text model instance. */
