@@ -70,12 +70,16 @@ public interface SearchMetrics {
     void recordFinalWorkspaceFragments(List<FragmentInfo> fragmentDescriptions);
 
     /**
-     * Record the time spent in an LLM call for the current turn.
+     * Record metrics for the current turn's LLM call.
      * Called immediately after the LLM request completes.
      *
      * @param timeMs time spent in the LLM call in milliseconds
+     * @param inputTokens number of input tokens
+     * @param cachedInputTokens number of cached input tokens
+     * @param thinkingTokens number of thinking/reasoning tokens
+     * @param outputTokens number of output tokens
      */
-    void recordTurnTime(long timeMs);
+    void recordLlmCall(long timeMs, int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens);
 
     /**
      * Serialize metrics along with the basic result fields into JSON.
@@ -141,7 +145,7 @@ public interface SearchMetrics {
         public void recordFinalWorkspaceFragments(List<FragmentInfo> fragmentDescriptions) {}
 
         @Override
-        public void recordTurnTime(long timeMs) {}
+        public void recordLlmCall(long timeMs, int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens) {}
 
         @Override
         public String toJson(String query, int turns, boolean success) {
@@ -220,9 +224,11 @@ public interface SearchMetrics {
         }
 
         @Override
-        public synchronized void recordTurnTime(long timeMs) {
+        public synchronized void recordLlmCall(
+                long timeMs, int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens) {
             if (currentTurn != null) {
                 currentTurn.setTimeMs(timeMs);
+                currentTurn.setTokenUsage(inputTokens, cachedInputTokens, thinkingTokens, outputTokens);
             }
         }
 
@@ -347,6 +353,10 @@ public interface SearchMetrics {
             private final Set<String> files_added_paths = new HashSet<>();
             private final Set<String> files_removed_paths = new HashSet<>();
             private long time_ms = 0;
+            private int input_tokens = 0;
+            private int cached_input_tokens = 0;
+            private int thinking_tokens = 0;
+            private int output_tokens = 0;
 
             public TurnMetrics(int turnNumber) {
                 this.turn = turnNumber;
@@ -372,6 +382,13 @@ public interface SearchMetrics {
                 this.time_ms = timeMs;
             }
 
+            public void setTokenUsage(int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens) {
+                this.input_tokens = inputTokens;
+                this.cached_input_tokens = cachedInputTokens;
+                this.thinking_tokens = thinkingTokens;
+                this.output_tokens = outputTokens;
+            }
+
             // Jackson getters (required for serialization)
             public int getTurn() {
                 return turn;
@@ -395,6 +412,22 @@ public interface SearchMetrics {
 
             public long getTime_ms() {
                 return time_ms;
+            }
+
+            public int getInput_tokens() {
+                return input_tokens;
+            }
+
+            public int getCached_input_tokens() {
+                return cached_input_tokens;
+            }
+
+            public int getThinking_tokens() {
+                return thinking_tokens;
+            }
+
+            public int getOutput_tokens() {
+                return output_tokens;
             }
         }
     }

@@ -209,7 +209,12 @@ public class SearchAgent {
             var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, tr));
 
             long llmTimeMs = System.currentTimeMillis() - turnStartTime;
-            metrics.recordTurnTime(llmTimeMs);
+            var tokenUsage = result.tokenUsage();
+            int inputTokens = tokenUsage != null ? tokenUsage.inputTokens() : 0;
+            int cachedTokens = tokenUsage != null ? tokenUsage.cachedInputTokens() : 0;
+            int thinkingTokens = tokenUsage != null ? tokenUsage.thinkingTokens() : 0;
+            int outputTokens = tokenUsage != null ? tokenUsage.outputTokens() : 0;
+            metrics.recordLlmCall(llmTimeMs, inputTokens, cachedTokens, thinkingTokens, outputTokens);
 
             if (result.error() != null) {
                 var details = TaskResult.StopDetails.fromResponse(result);
