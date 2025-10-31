@@ -162,7 +162,7 @@ public class SearchAgent {
 
             // Beast mode triggers
             var inputLimit = cm.getService().getMaxInputTokens(model);
-            var workspaceMessages = new ArrayList<>(CodePrompts.instance.getWorkspaceContentsMessages(context));
+            var workspaceMessages = new ArrayList<>(CodePrompts.instance.getWorkspaceMessagesInAddedOrder(context));
             var workspaceTokens = Messages.getApproximateMessageTokens(workspaceMessages);
             if (!beastMode && inputLimit > 0 && workspaceTokens > WORKSPACE_CRITICAL * inputLimit) {
                 io.showNotification(

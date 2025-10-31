@@ -145,7 +145,8 @@ public interface SearchMetrics {
         public void recordFinalWorkspaceFragments(List<FragmentInfo> fragmentDescriptions) {}
 
         @Override
-        public void recordLlmCall(long timeMs, int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens) {}
+        public void recordLlmCall(
+                long timeMs, int inputTokens, int cachedInputTokens, int thinkingTokens, int outputTokens) {}
 
         @Override
         public String toJson(String query, int turns, boolean success) {
