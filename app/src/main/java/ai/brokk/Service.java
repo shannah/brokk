@@ -293,8 +293,9 @@ public class Service implements IExceptionReportingService {
             float balance = getUserBalance();
             freeTier = balance < MINIMUM_PAID_BALANCE;
             logger.info("User balance = {}, free‑tier = {}", balance, freeTier);
-        } catch (IOException e) {
-            // If we cannot determine balance, assume paid tier to avoid silently disabling the Cerebras model
+        } catch (IOException | IllegalArgumentException e) {
+            // If we cannot determine balance (network error or invalid/missing key), assume paid tier
+            // to avoid silently disabling the Cerebras model
             logger.warn("Unable to fetch user balance for quick‑edit model selection: {}", e.getMessage());
         }
 
@@ -471,7 +472,12 @@ public class Service implements IExceptionReportingService {
 
         var authHeader = "Bearer dummy-key";
         if (isBrokk) {
-            var kp = parseKey(MainProject.getBrokkKey());
+            String brokkKey = MainProject.getBrokkKey();
+            if (brokkKey.isEmpty()) {
+                logger.warn("Brokk API key is empty, cannot fetch models from Brokk proxy");
+                return;
+            }
+            var kp = parseKey(brokkKey);
             authHeader = "Bearer " + kp.token();
         }
         Request request = new Request.Builder()
