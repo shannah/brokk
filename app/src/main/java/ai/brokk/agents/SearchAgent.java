@@ -129,14 +129,11 @@ public class SearchAgent {
     /** Entry point. Runs until answer/abort or interruption. */
     public TaskResult execute() {
         try {
-            long startTime = System.currentTimeMillis();
             var tr = executeInternal();
-            long elapsedMs = System.currentTimeMillis() - startTime;
             if (metrics instanceof SearchMetrics.Tracking) {
                 var json = metrics.toJson(
                         goal,
                         countTurns(tr.output().messages()),
-                        elapsedMs,
                         tr.stopDetails().reason() == TaskResult.StopReason.SUCCESS);
                 System.err.println("\nBRK_SEARCHAGENT_METRICS=" + json);
             }
@@ -203,9 +200,17 @@ public class SearchAgent {
             allAllowed.addAll(globalTerminals);
             var toolSpecs = tr.getTools(allAllowed);
 
+            // Start tracking this turn before LLM call
+            metrics.startTurn();
+            long turnStartTime = System.currentTimeMillis();
+
             // Decide next action(s)
             io.llmOutput("\n**Brokk Search** is preparing the next actions…\n\n", ChatMessageType.AI, true, false);
             var result = llm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.REQUIRED, tr));
+
+            long llmTimeMs = System.currentTimeMillis() - turnStartTime;
+            metrics.recordTurnTime(llmTimeMs);
+
             if (result.error() != null) {
                 var details = TaskResult.StopDetails.fromResponse(result);
                 io.showNotification(
@@ -224,9 +229,8 @@ public class SearchAgent {
                         TaskResult.StopReason.TOOL_ERROR, "No tool requests found in LLM response."));
             }
 
-            // Start tracking this turn (only after successful LLM planning)
+            // Get workspace snapshot for file diff tracking
             Set<ProjectFile> filesBeforeSet = getWorkspaceFileSet();
-            metrics.startTurn();
 
             boolean executedResearch = false;
             Context contextAtTurnStart = context;
@@ -288,7 +292,7 @@ public class SearchAgent {
                     return createResult(termReq.name(), goal);
                 }
             } finally {
-                // End turn tracking after tool execution - always called even on exceptions
+                // End turn tracking - always called even on exceptions
                 endTurnAndRecordFileChanges(filesBeforeSet);
             }
         }

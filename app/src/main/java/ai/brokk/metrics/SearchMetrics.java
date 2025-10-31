@@ -70,14 +70,21 @@ public interface SearchMetrics {
     void recordFinalWorkspaceFragments(List<FragmentInfo> fragmentDescriptions);
 
     /**
+     * Record the time spent in an LLM call for the current turn.
+     * Called immediately after the LLM request completes.
+     *
+     * @param timeMs time spent in the LLM call in milliseconds
+     */
+    void recordTurnTime(long timeMs);
+
+    /**
      * Serialize metrics along with the basic result fields into JSON.
      *
      * @param query the original query
      * @param turns number of turns (AI messages)
-     * @param elapsedMs elapsed time in ms
      * @param success whether the search succeeded
      */
-    String toJson(String query, int turns, long elapsedMs, boolean success);
+    String toJson(String query, int turns, boolean success);
 
     /**
      * Information about a fragment in the workspace.
@@ -134,7 +141,10 @@ public interface SearchMetrics {
         public void recordFinalWorkspaceFragments(List<FragmentInfo> fragmentDescriptions) {}
 
         @Override
-        public String toJson(String query, int turns, long elapsedMs, boolean success) {
+        public void recordTurnTime(long timeMs) {}
+
+        @Override
+        public String toJson(String query, int turns, boolean success) {
             // Return empty object as requested in PR review
             return "{}";
         }
@@ -159,7 +169,6 @@ public interface SearchMetrics {
         private int turnCounter = 0;
         private final List<TurnMetrics> turns = new ArrayList<>();
         private @Nullable TurnMetrics currentTurn = null;
-        private long turnStartTimeMs = 0;
 
         // Failure classification
         private @Nullable String failureType = null;
@@ -187,7 +196,6 @@ public interface SearchMetrics {
                 turns.add(currentTurn);
             }
             currentTurn = new TurnMetrics(++turnCounter);
-            turnStartTimeMs = System.currentTimeMillis();
         }
 
         @Override
@@ -212,15 +220,19 @@ public interface SearchMetrics {
         }
 
         @Override
+        public synchronized void recordTurnTime(long timeMs) {
+            if (currentTurn != null) {
+                currentTurn.setTimeMs(timeMs);
+            }
+        }
+
+        @Override
         public synchronized void endTurn(Set<String> filesBeforeTurn, Set<String> filesAfterTurn) {
             if (currentTurn != null) {
                 // Compute files removed during this turn
                 Set<String> removed = new HashSet<>(filesBeforeTurn);
                 removed.removeAll(filesAfterTurn);
                 currentTurn.addRemovedFilePaths(removed);
-
-                long turnTimeMs = System.currentTimeMillis() - turnStartTimeMs;
-                currentTurn.setTimeMs(turnTimeMs);
 
                 turns.add(currentTurn);
                 currentTurn = null;
@@ -254,7 +266,11 @@ public interface SearchMetrics {
 
         /** Generate enhanced JSON output with metrics. Maintains backward compatibility. */
         @Override
-        public synchronized String toJson(String query, int turns, long elapsedMs, boolean success) {
+        public synchronized String toJson(String query, int turns, boolean success) {
+            // Compute elapsed_ms as sum of all turn times (LLM call times)
+            long elapsedMs =
+                    this.turns.stream().mapToLong(TurnMetrics::getTime_ms).sum();
+
             // Build found_files from context scan + all turn additions
             logger.debug(
                     "Building found_files: contextScanFilesAddedPaths size={}, paths={}",
