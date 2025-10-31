@@ -286,8 +286,27 @@ public class Service implements IExceptionReportingService {
         // these should always be available
         var qm = getModel(new ModelConfig(GEMINI_2_0_FLASH, ReasoningLevel.DEFAULT));
         quickModel = qm == null ? new UnavailableStreamingModel() : qm;
-        var qe = getModel(new ModelConfig("cerebras/gpt-oss-120b", ReasoningLevel.DEFAULT));
-        quickEditModel = qe == null ? new UnavailableStreamingModel() : qe;
+
+        // Determine whether the user is on a free tier (balance < MINIMUM_PAID_BALANCE)
+        boolean freeTier = false;
+        try {
+            float balance = getUserBalance();
+            freeTier = balance < MINIMUM_PAID_BALANCE;
+            logger.info("User balance = {}, free‑tier = {}", balance, freeTier);
+        } catch (IOException e) {
+            // If we cannot determine balance, assume paid tier to avoid silently disabling the Cerebras model
+            logger.warn("Unable to fetch user balance for quick‑edit model selection: {}", e.getMessage());
+        }
+
+        // If on free tier, fall back to the quickModel; otherwise attempt to load the Cerebras model
+        if (freeTier) {
+            logger.info("Free tier detected – using quickModel for quick‑edit operations.");
+            quickEditModel = quickModel;
+        } else {
+            var qe = getModel(new ModelConfig("cerebras/gpt-oss-120b", ReasoningLevel.DEFAULT));
+            quickEditModel = qe == null ? qm : qe;
+        }
+
         // hard‑code quickest temperature to 0 so that Quick Context inference is reproducible
         var qqm = getModel(
                 new ModelConfig("gemini-2.0-flash-lite", ReasoningLevel.DEFAULT),
