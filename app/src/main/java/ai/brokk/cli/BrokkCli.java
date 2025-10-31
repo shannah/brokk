@@ -392,7 +392,7 @@ public final class BrokkCli implements Callable<Integer> {
                 if (disableContextScan) {
                     metrics.recordContextScan(0, 0, true, Set.of());
                 } else {
-                    agent.scanInitialContext();
+                    agent.scanInitialContext(searchModel);
                 }
                 searchResult = agent.execute();
                 scope.append(

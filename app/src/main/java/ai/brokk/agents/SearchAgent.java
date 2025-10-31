@@ -718,20 +718,19 @@ public class SearchAgent {
      * Scan initial context using ContextAgent and add recommendations to the workspace.
      * Callers should invoke this before calling execute() if they want the initial context scan.
      */
-    public void scanInitialContext() throws InterruptedException {
-
+    public void scanInitialContext(StreamingChatModel model) throws InterruptedException {
         // Prune initial workspace when not empty
         performInitialPruningTurn();
 
         long scanStartTime = System.currentTimeMillis();
         Set<ProjectFile> filesBeforeScan = getWorkspaceFileSet();
 
-        var contextAgent = new ContextAgent(cm, cm.getService().getScanModel(), goal);
+        var contextAgent = new ContextAgent(cm, model, goal);
         io.llmOutput("\n**Brokk Context Engine** analyzing repository context…\n", ChatMessageType.AI, true, false);
 
         var recommendation = contextAgent.getRecommendations(context);
 
-        var meta = new TaskMeta(TaskType.CONTEXT, ModelSpec.from(cm.getService().getScanModel(), cm.getService()));
+        var meta = new TaskMeta(TaskType.CONTEXT, ModelSpec.from(model, cm.getService()));
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
             // create a history entry
@@ -772,6 +771,10 @@ public class SearchAgent {
         filesAdded.removeAll(filesBeforeScan);
         long scanTime = System.currentTimeMillis() - scanStartTime;
         metrics.recordContextScan(filesAdded.size(), scanTime, false, toRelativePaths(filesAdded));
+    }
+
+    public void scanInitialContext() throws InterruptedException {
+        scanInitialContext(cm.getService().getScanModel());
     }
 
     public void addToWorkspace(ContextAgent.RecommendationResult recommendationResult) {
