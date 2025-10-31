@@ -1,8 +1,8 @@
 package ai.brokk.metrics;
 
-import ai.brokk.AbstractProject;
 import ai.brokk.TaskResult;
 import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import java.util.ArrayList;
 import java.util.HashSet;
 import java.util.List;
@@ -145,6 +145,8 @@ public interface SearchMetrics {
      * Methods are synchronized to be safe if accessed from multiple threads.
      */
     class Tracking implements SearchMetrics {
+        private static final ObjectMapper OBJECT_MAPPER = new ObjectMapper();
+
         private static final Logger logger = LogManager.getLogger(Tracking.class);
 
         // Context scan metrics
@@ -296,9 +298,7 @@ public interface SearchMetrics {
                     finalWorkspaceFragments != null ? new ArrayList<>(finalWorkspaceFragments) : null);
 
             try {
-                return AbstractProject.objectMapper
-                        .writerWithDefaultPrettyPrinter()
-                        .writeValueAsString(result);
+                return OBJECT_MAPPER.writeValueAsString(result);
             } catch (JsonProcessingException e) {
                 throw new RuntimeException("Failed to serialize search result", e);
             }

@@ -8,7 +8,6 @@ import ai.brokk.ModelSpec;
 import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
-import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.Language;
 import ai.brokk.analyzer.Languages;
 import ai.brokk.analyzer.ProjectFile;
@@ -97,7 +96,6 @@ public class SearchAgent {
             String goal,
             StreamingChatModel model,
             Set<Terminal> allowedTerminals,
-            SearchMetrics metrics,
             ContextManager.TaskScope scope) {
         this.goal = goal;
         this.cm = initialContext.getContextManager();
@@ -106,11 +104,13 @@ public class SearchAgent {
         this.io = cm.getIo();
         this.llm = cm.getLlm(new Llm.Options(model, "Search: " + goal).withEcho());
         this.llm.setOutput(io);
-        this.summarizer = cm.getLlm(cm.getService().getScanModel(), "Summarizer: " + goal);
+        this.summarizer = cm.getLlm(cm.getService().quickModel(), "Summarizer: " + goal);
 
         this.beastMode = false;
         this.allowedTerminals = Set.copyOf(allowedTerminals);
-        this.metrics = metrics;
+        this.metrics = "true".equalsIgnoreCase(System.getenv("BRK_COLLECT_METRICS"))
+                ? SearchMetrics.tracking()
+                : SearchMetrics.noOp();
         this.scope = scope;
 
         var mcpConfig = cm.getProject().getMcpConfig();
@@ -129,11 +129,29 @@ public class SearchAgent {
     /** Entry point. Runs until answer/abort or interruption. */
     public TaskResult execute() {
         try {
-            return executeInternal();
+            long startTime = System.currentTimeMillis();
+            var tr = executeInternal();
+            long elapsedMs = System.currentTimeMillis() - startTime;
+            if (metrics instanceof SearchMetrics.Tracking) {
+                var json = metrics.toJson(
+                        goal,
+                        countTurns(tr.output().messages()),
+                        elapsedMs,
+                        tr.stopDetails().reason() == TaskResult.StopReason.SUCCESS);
+                System.err.println("\nBRK_SEARCHAGENT_METRICS=" + json);
+            }
+            return tr;
         } catch (InterruptedException e) {
             logger.debug("Search interrupted", e);
             return errorResult(new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
         }
+    }
+
+    private static int countTurns(List<ChatMessage> messages) {
+        // Count AI messages as turns
+        return (int) messages.stream()
+                .filter(msg -> msg.type() == ChatMessageType.AI)
+                .count();
     }
 
     private TaskResult executeInternal() throws InterruptedException {
@@ -646,7 +664,7 @@ public class SearchAgent {
         };
     }
 
-    private void performInitialPruningTurn() throws InterruptedException {
+    private void performInitialPruningTurn(StreamingChatModel model) throws InterruptedException {
         // Skip if workspace is empty
         if (context.isEmpty()) {
             return;
@@ -659,7 +677,7 @@ public class SearchAgent {
         var toolSpecs = tr.getTools(List.of("performedInitialReview", "dropWorkspaceFragments"));
 
         io.llmOutput("\n**Brokk** performing initial workspace review…", ChatMessageType.AI, true, false);
-        var jLlm = cm.getLlm(new Llm.Options(cm.getService().getScanModel(), "Janitor: " + goal).withEcho());
+        var jLlm = cm.getLlm(new Llm.Options(model, "Janitor: " + goal).withEcho());
         var result = jLlm.sendRequest(messages, new ToolContext(toolSpecs, ToolChoice.AUTO, tr));
         if (result.error() != null || result.isEmpty()) {
             return;
@@ -720,7 +738,7 @@ public class SearchAgent {
      */
     public void scanInitialContext(StreamingChatModel model) throws InterruptedException {
         // Prune initial workspace when not empty
-        performInitialPruningTurn();
+        performInitialPruningTurn(model);
 
         long scanStartTime = System.currentTimeMillis();
         Set<ProjectFile> filesBeforeScan = getWorkspaceFileSet();
