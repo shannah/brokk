@@ -74,9 +74,6 @@ public class CodeAgent {
     // A "global" for current task Context. Updated mid-task with new files and build status.
     private Context context;
 
-    @VisibleForTesting
-    boolean javaParsingEnabled = false;
-
     public CodeAgent(IContextManager contextManager, StreamingChatModel model) {
         this(contextManager, model, contextManager.getIo());
     }
@@ -979,10 +976,6 @@ public class CodeAgent {
      * expensive full build. Goal is to catch as many true positives as possible with zero false positives.
      */
     Step parseJavaPhase(ConversationState cs, EditState es, @Nullable Metrics metrics) {
-        if (!javaParsingEnabled) {
-            return new Step.Continue(cs, es);
-        }
-
         // Only run if there were edits since the last build attempt (PJ-21)
         if (es.blocksAppliedWithoutBuild() == 0) {
             return new Step.Continue(cs, es);
@@ -1003,11 +996,11 @@ public class CodeAgent {
         // Map from ProjectFile -> diagnostic list for that file
         var perFileProblems = new ConcurrentHashMap<ProjectFile, List<JavaDiagnostic>>();
 
-        javaFiles.parallelStream().forEach(file -> {
-            var absPath = projectRoot.resolve(file.toString());
+        // JDT internals are not threadsafe, even with a per-thread ASTParser
+        for (var file : javaFiles) {
             String src = file.read().orElse("");
             if (src.isBlank()) { // PJ-3: blank files should produce no diagnostics
-                return;
+                continue;
             }
             char[] sourceChars = src.toCharArray();
 
@@ -1018,7 +1011,7 @@ public class CodeAgent {
             parser.setResolveBindings(true);
             parser.setStatementsRecovery(true);
             parser.setBindingsRecovery(true);
-            parser.setUnitName(absPath.getFileName().toString());
+            parser.setUnitName(file.getFileName());
             parser.setEnvironment(new String[0], new String[0], null, true);
             var options = JavaCore.getOptions();
             JavaCore.setComplianceOptions(JavaCore.VERSION_25, options);
@@ -1048,14 +1041,14 @@ public class CodeAgent {
                     continue;
                 }
 
-                var description = formatJdtProblem(absPath, cu, prob, src);
+                var description = formatJdtProblem(file.absPath(), cu, prob, src);
                 diags.add(new JavaDiagnostic(id, catId, description));
             }
 
             if (!diags.isEmpty()) {
                 perFileProblems.put(file, diags);
             }
-        });
+        }
 
         // Save diagnostics per-file and continue (non-blocking pre-lint)
         var nextEs = es.withJavaLintDiagnostics(perFileProblems);
