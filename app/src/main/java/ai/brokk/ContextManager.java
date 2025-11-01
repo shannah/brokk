@@ -743,8 +743,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
         return service.get();
     }
 
-    public ExceptionReporter getExceptionReporter() {
-        return exceptionReporter;
+    @Override
+    public void reportException(Throwable th) {
+        exceptionReporter.reportException(th);
     }
 
     /** Returns the configured Code model, falling back to the system model if unavailable. */

@@ -681,7 +681,7 @@ public class CodeAgent {
                 }
 
                 // Send the summary string to the server via ExceptionReporter.
-                ExceptionReporter.tryReportException(
+                contextManager.reportException(
                         new JavaPreLintFalsePositiveException(sb.toString()));
             }
             logger.debug("Build verification succeeded");
@@ -712,7 +712,7 @@ public class CodeAgent {
         }
     }
 
-    private class JavaPreLintFalsePositiveException extends RuntimeException {
+    private static class JavaPreLintFalsePositiveException extends RuntimeException {
         public JavaPreLintFalsePositiveException(String message) {
             super(message);
         }
