@@ -989,7 +989,10 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
                     .filter(file -> !isBaselineExcluded(file, baselineExclusions))
                     .filter(file -> {
                         try {
-                            return !isPathIgnored(gitRepo, file.getRelPath(), fixedGitignorePairs);
+                            // do not filter out deps
+                            var isDep = file.getRelPath()
+                                    .startsWith(Path.of(BROKK_DIR).resolve(DEPENDENCIES_DIR));
+                            return isDep || !isPathIgnored(gitRepo, file.getRelPath(), fixedGitignorePairs);
                         } catch (IOException e) {
                             logger.warn(
                                     "Error checking if path {} is ignored, including it: {}",
