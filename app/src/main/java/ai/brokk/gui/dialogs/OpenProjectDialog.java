@@ -706,6 +706,8 @@ public class OpenProjectDialog extends JDialog {
                         disableGitHubTab("Failed to load GitHub repositories: " + errorMessage);
                         clearTable(tableModel);
                     }
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
         };
@@ -764,6 +766,8 @@ public class OpenProjectDialog extends JDialog {
                         disableGitHubTab("Failed to load GitHub repositories: " + errorMessage);
                     }
                     clearTable(tableModel);
+                } catch (InterruptedException e) {
+                    throw new RuntimeException(e);
                 }
             }
         };

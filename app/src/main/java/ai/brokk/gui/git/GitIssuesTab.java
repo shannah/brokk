@@ -2,7 +2,6 @@ package ai.brokk.gui.git;
 
 import ai.brokk.*;
 import ai.brokk.ContextManager;
-import ai.brokk.ExceptionReporter;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IProject;
 import ai.brokk.MainProject;
@@ -1183,19 +1182,16 @@ public class GitIssuesTab extends JPanel implements SettingsChangeListener, Them
         }
 
         for (URI imageUri : attachmentUris) {
-            try {
-                if (ImageUtil.isImageUri(imageUri, clientToUse)) {
-                    chrome.showNotification(
-                            IConsoleIO.NotificationRole.INFO, "Downloading image: " + imageUri.toString());
-                    Image image = ImageUtil.downloadImage(imageUri, clientToUse);
-                    if (image != null) {
-                        String description = String.format("Issue %s: Image", header.id());
-                        contextManager.addPastedImageFragment(image, description);
-                        capturedImageCount++;
-                    } else {
-                        logger.warn("Failed to download image identified by ImageUtil: {}", imageUri.toString());
-                        chrome.toolError("Failed to download image: " + imageUri.toString());
-                    }
+            if (ImageUtil.isImageUri(imageUri, clientToUse)) {
+                chrome.showNotification(IConsoleIO.NotificationRole.INFO, "Downloading image: " + imageUri.toString());
+                Image image = ImageUtil.downloadImage(imageUri, clientToUse);
+                if (image != null) {
+                    String description = String.format("Issue %s: Image", header.id());
+                    contextManager.addPastedImageFragment(image, description);
+                    capturedImageCount++;
+                } else {
+                    logger.warn("Failed to download image identified by ImageUtil: {}", imageUri.toString());
+                    chrome.toolError("Failed to download image: " + imageUri.toString());
                 }
             }
         }

@@ -27,7 +27,7 @@ public final class ExecutorServiceUtil {
                 t.setName(threadPrefix + ++count);
                 t.setDaemon(true);
                 t.setUncaughtExceptionHandler((thr, ex) -> {
-                    GlobalExceptionHandler.handle(thr, ex, () -> {});
+                    GlobalExceptionHandler.handle(thr, ex, s -> {});
                 });
                 return t;
             }
@@ -66,7 +66,7 @@ public final class ExecutorServiceUtil {
 
                 var t = Thread.ofVirtual().name(threadPrefix + ++count).unstarted(wrapped);
                 t.setUncaughtExceptionHandler((thr, ex) -> {
-                    GlobalExceptionHandler.handle(thr, ex, () -> {});
+                    GlobalExceptionHandler.handle(thr, ex, s -> {});
                 });
                 return t;
             }
