@@ -665,48 +665,24 @@ public class CodeAgent {
         if (buildError.isEmpty()) {
             // Build succeeded or was skipped by performBuildVerification
             if (!es.javaLintDiagnostics().isEmpty()) {
-                // Write one markdown file per source file to capture pre-lint findings and sources.
-                try {
-                    var tmp = System.getProperty("java.io.tmpdir");
-                    var timestamp = DateTimeFormatter.ofPattern("yyyyMMdd-HH-mm")
-                            .format(LocalDateTime.now(ZoneId.systemDefault()));
-                    var subdir = Path.of(tmp, "brokk", "codeagent-" + timestamp);
-                    Files.createDirectories(subdir);
+                // Build a concise summary of the pre‑lint diagnostics and report it directly.
+                var sb = new StringBuilder();
+                sb.append("Java pre‑lint false positives after successful build: ")
+                        .append(es.javaLintDiagnostics().size())
+                        .append(" file(s).\n");
 
-                    for (var entry : es.javaLintDiagnostics().entrySet()) {
-                        ProjectFile pf = entry.getKey();
-                        var list = entry.getValue();
-                        var diagsString =
-                                list.stream().map(JavaDiagnostic::description).collect(Collectors.joining("\n"));
-
-                        var unique = System.currentTimeMillis() + "-"
-                                + UUID.randomUUID().toString().substring(0, 8);
-                        var fileName = "badlint-" + pf.getFileName() + "-" + unique + ".md";
-                        var out = subdir.resolve(fileName);
-
-                        var markdownContent =
-                                """
-                                # False Positive for %s
-
-                                %s
-
-                                # Source
-
-                                ```java
-                                %s
-                                ```
-                                """
-                                        .formatted(
-                                                pf.getFileName(),
-                                                diagsString,
-                                                pf.read().orElse(""));
-
-                        Files.writeString(out, markdownContent);
-                        logger.info("Wrote pre-lint findings for {} to {}", pf.getFileName(), out.toString());
-                    }
-                } catch (IOException e) {
-                    logger.warn("Failed to write pre-lint diagnostics file(s)", e);
+                for (var entry : es.javaLintDiagnostics().entrySet()) {
+                    var pf = entry.getKey();
+                    var diags = entry.getValue();
+                    sb.append("- ").append(pf.getFileName())
+                            .append(": ").append(diags.size()).append(" issue(s)\n");
+                    // Include up to three diagnostic snippets for quick inspection.
+                    diags.stream().forEach(d -> sb.append("  * ").append(d.description()).append("\n"));
                 }
+
+                // Send the summary string to the server via ExceptionReporter.
+                ExceptionReporter.tryReportException(
+                        new JavaPreLintFalsePositiveException(sb.toString()));
             }
             logger.debug("Build verification succeeded");
             reportComplete("Success!");
@@ -733,6 +709,12 @@ public class CodeAgent {
             var newEs = es.afterBuildFailure(buildError);
             report("Asking LLM to fix build/lint failures");
             return new Step.Retry(newCs, newEs);
+        }
+    }
+
+    private class JavaPreLintFalsePositiveException extends RuntimeException {
+        public JavaPreLintFalsePositiveException(String message) {
+            super(message);
         }
     }
 
