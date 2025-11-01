@@ -4,7 +4,6 @@ import static java.util.Objects.requireNonNull;
 
 import ai.brokk.AnalyzerUtil;
 import ai.brokk.ContextManager;
-import ai.brokk.ExceptionReporter;
 import ai.brokk.IContextManager;
 import ai.brokk.IProject;
 import ai.brokk.Llm;
@@ -173,10 +172,7 @@ public class BuildAgent {
             try {
                 result = llm.sendRequest(messages, new ToolContext(tools, ToolChoice.REQUIRED, tr));
             } catch (InterruptedException e) {
-                Thread.currentThread().interrupt();
-                logger.error("Unexpected request cancellation in build agent");
-                ExceptionReporter.tryReportException(e);
-                return BuildDetails.EMPTY;
+                throw new RuntimeException(e);
             }
 
             if (result.error() != null) {

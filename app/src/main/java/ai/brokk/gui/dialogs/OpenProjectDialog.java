@@ -2,7 +2,6 @@ package ai.brokk.gui.dialogs;
 
 import ai.brokk.Brokk;
 import ai.brokk.BuildInfo;
-import ai.brokk.ExceptionReporter;
 import ai.brokk.GitHubAuth;
 import ai.brokk.MainProject;
 import ai.brokk.git.GitRepoFactory;
@@ -707,11 +706,6 @@ public class OpenProjectDialog extends JDialog {
                         disableGitHubTab("Failed to load GitHub repositories: " + errorMessage);
                         clearTable(tableModel);
                     }
-                } catch (Exception e) {
-                    logger.error("Unexpected error loading GitHub repositories", e);
-                    ExceptionReporter.tryReportException(e);
-                    disableGitHubTab("Failed to load GitHub repositories: " + e.getMessage());
-                    clearTable(tableModel);
                 }
             }
         };
@@ -769,11 +763,6 @@ public class OpenProjectDialog extends JDialog {
                         logger.error("Failed to load GitHub repositories", cause != null ? cause : e);
                         disableGitHubTab("Failed to load GitHub repositories: " + errorMessage);
                     }
-                    clearTable(tableModel);
-                } catch (Exception e) {
-                    logger.error("Unexpected error loading GitHub repositories", e);
-                    ExceptionReporter.tryReportException(e);
-                    disableGitHubTab("Failed to load GitHub repositories: " + e.getMessage());
                     clearTable(tableModel);
                 }
             }

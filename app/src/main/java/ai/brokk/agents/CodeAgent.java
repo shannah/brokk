@@ -28,12 +28,8 @@ import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.time.Duration;
-import java.time.LocalDateTime;
-import java.time.ZoneId;
-import java.time.format.DateTimeFormatter;
 import java.util.*;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.ExecutionException;
@@ -674,15 +670,19 @@ public class CodeAgent {
                 for (var entry : es.javaLintDiagnostics().entrySet()) {
                     var pf = entry.getKey();
                     var diags = entry.getValue();
-                    sb.append("- ").append(pf.getFileName())
-                            .append(": ").append(diags.size()).append(" issue(s)\n");
+                    sb.append("- ")
+                            .append(pf.getFileName())
+                            .append(": ")
+                            .append(diags.size())
+                            .append(" issue(s)\n");
                     // Include up to three diagnostic snippets for quick inspection.
-                    diags.stream().forEach(d -> sb.append("  * ").append(d.description()).append("\n"));
+                    diags.stream()
+                            .forEach(d ->
+                                    sb.append("  * ").append(d.description()).append("\n"));
                 }
 
                 // Send the summary string to the server via ExceptionReporter.
-                contextManager.reportException(
-                        new JavaPreLintFalsePositiveException(sb.toString()));
+                contextManager.reportException(new JavaPreLintFalsePositiveException(sb.toString()));
             }
             logger.debug("Build verification succeeded");
             reportComplete("Success!");

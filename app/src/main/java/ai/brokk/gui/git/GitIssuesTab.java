@@ -1197,10 +1197,6 @@ public class GitIssuesTab extends JPanel implements SettingsChangeListener, Them
                         chrome.toolError("Failed to download image: " + imageUri.toString());
                     }
                 }
-            } catch (Exception e) {
-                logger.error("Unexpected error processing image {}: {}", imageUri.toString(), e.getMessage(), e);
-                ExceptionReporter.tryReportException(e);
-                chrome.toolError("Error processing image " + imageUri.toString() + ": " + e.getMessage());
             }
         }
         return capturedImageCount;

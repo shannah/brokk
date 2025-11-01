@@ -9,7 +9,6 @@ import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
-import org.jetbrains.annotations.Nullable;
 
 /**
  * Reports uncaught exceptions to the Brokk server for monitoring and debugging purposes. This class handles
