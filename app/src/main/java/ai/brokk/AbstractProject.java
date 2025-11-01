@@ -882,7 +882,7 @@ public abstract sealed class AbstractProject implements IProject permits MainPro
 
         // Handle the final result
         if (finalResult == MatchResult.IGNORED) {
-            logger.debug("Path {} (isDir: {}) ignored: true (result: IGNORED)", gitRelPath, isDirectory);
+            logger.trace("Path {} (isDir: {}) ignored: true (result: IGNORED)", gitRelPath, isDirectory);
             return true;
         }
 
