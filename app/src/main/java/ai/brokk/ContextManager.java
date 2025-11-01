@@ -767,7 +767,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
     @Override
     public void reportException(Throwable th) {
-        exceptionReporter.reportException(th);
+        CompletableFuture.runAsync(() -> {
+            exceptionReporter.reportException(th);
+        });
     }
 
     /** Returns the configured Code model, falling back to the system model if unavailable. */

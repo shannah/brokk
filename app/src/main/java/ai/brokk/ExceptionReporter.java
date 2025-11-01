@@ -1,12 +1,14 @@
 package ai.brokk;
 
 import ai.brokk.gui.Chrome;
+import ai.brokk.gui.SwingUtil;
 import java.io.PrintWriter;
 import java.io.StringWriter;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.TimeUnit;
 import java.util.function.Supplier;
+import javax.swing.*;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 
@@ -180,7 +182,7 @@ public class ExceptionReporter {
             return;
         }
 
-        Chrome activeWindow = Brokk.getActiveWindow();
+        Chrome activeWindow = SwingUtil.runOnEdt(() -> Brokk.getActiveWindow(), null);
         if (activeWindow != null) {
             var cm = activeWindow.getContextManager();
             cm.reportException(throwable);
