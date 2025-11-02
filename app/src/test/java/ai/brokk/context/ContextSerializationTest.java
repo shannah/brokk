@@ -5,7 +5,7 @@ import static org.junit.jupiter.api.Assertions.*;
 import ai.brokk.IContextManager;
 import ai.brokk.Service;
 import ai.brokk.TaskEntry;
-import ai.brokk.TaskMeta;
+import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.CodeUnitType;
@@ -1296,7 +1296,7 @@ public class ContextSerializationTest {
         var messages = List.of(UserMessage.from("User"), AiMessage.from("AI"));
         var taskFragment = new ContextFragment.TaskFragment(mockContextManager, messages, "Test Task");
 
-        TaskMeta meta = new TaskMeta(
+        TaskResult.TaskMeta meta = new TaskResult.TaskMeta(
                 TaskType.CODE,
                 new Service.ModelConfig("test-model", Service.ReasoningLevel.DEFAULT, Service.ProcessingTier.DEFAULT));
         var taskEntry = new TaskEntry(42, taskFragment, null, meta);

@@ -5,7 +5,6 @@ import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Llm;
 import ai.brokk.Service;
-import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
 import ai.brokk.analyzer.Language;
@@ -761,7 +760,7 @@ public class SearchAgent {
 
         var recommendation = contextAgent.getRecommendations(context);
 
-        var meta = new TaskMeta(TaskType.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
+        var meta = new TaskResult.TaskMeta(TaskType.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
         var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal, meta);
 
         var md = recommendation.metadata();
@@ -910,7 +909,7 @@ public class SearchAgent {
         return createResult(action, goal, taskMeta());
     }
 
-    private TaskResult createResult(String action, String goal, TaskMeta meta) {
+    private TaskResult createResult(String action, String goal, TaskResult.TaskMeta meta) {
         // Build final messages from already-streamed transcript; fallback to session-local messages if empty
         List<ChatMessage> finalMessages = new ArrayList<>(io.getLlmRawMessages());
         if (finalMessages.isEmpty()) {
@@ -931,7 +930,7 @@ public class SearchAgent {
         return errorResult(details, null);
     }
 
-    private TaskResult errorResult(TaskResult.StopDetails details, @Nullable TaskMeta meta) {
+    private TaskResult errorResult(TaskResult.StopDetails details, @Nullable TaskResult.TaskMeta meta) {
         // Build final messages from already-streamed transcript; fallback to session-local messages if empty
         List<ChatMessage> finalMessages = new ArrayList<>(io.getLlmRawMessages());
         if (finalMessages.isEmpty()) {
@@ -1060,7 +1059,7 @@ public class SearchAgent {
         }
     }
 
-    private TaskMeta taskMeta() {
-        return new TaskMeta(TaskType.SEARCH, Service.ModelConfig.from(model, cm.getService()));
+    private TaskResult.TaskMeta taskMeta() {
+        return new TaskResult.TaskMeta(TaskType.SEARCH, Service.ModelConfig.from(model, cm.getService()));
     }
 }

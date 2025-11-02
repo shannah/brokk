@@ -7,7 +7,6 @@ import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.Llm;
 import ai.brokk.Service.ModelConfig;
-import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskResult.StopReason;
 import ai.brokk.TaskType;
@@ -644,7 +643,7 @@ public class ArchitectAgent {
                 io.getLlmRawMessages(),
                 context,
                 new TaskResult.StopDetails(StopReason.SUCCESS),
-                new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
+                new TaskResult.TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     private TaskResult resultWithMessages(StopReason reason, String message) {
@@ -655,7 +654,7 @@ public class ArchitectAgent {
                 io.getLlmRawMessages(),
                 context,
                 new TaskResult.StopDetails(reason),
-                new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
+                new TaskResult.TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     private TaskResult resultWithMessages(StopReason reason) {

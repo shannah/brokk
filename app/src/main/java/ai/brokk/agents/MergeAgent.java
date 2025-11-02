@@ -7,7 +7,6 @@ import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Service;
-import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
 import ai.brokk.analyzer.ProjectFile;
@@ -352,8 +351,8 @@ public class MergeAgent {
         return architectResult;
     }
 
-    private @NotNull TaskMeta taskMeta() {
-        return new TaskMeta(TaskType.MERGE, Service.ModelConfig.from(planningModel, cm.getService()));
+    private @NotNull TaskResult.TaskMeta taskMeta() {
+        return new TaskResult.TaskMeta(TaskType.MERGE, Service.ModelConfig.from(planningModel, cm.getService()));
     }
 
     private AnnotationResult annotate() {

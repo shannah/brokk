@@ -6,7 +6,7 @@ import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNul
 import ai.brokk.IContextManager;
 import ai.brokk.Service;
 import ai.brokk.TaskEntry;
-import ai.brokk.TaskMeta;
+import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
 import ai.brokk.analyzer.BrokkFile;
 import ai.brokk.analyzer.CodeUnit;
@@ -69,7 +69,7 @@ public class DtoMapper {
         var taskHistory = dto.tasks().stream()
                 .map(taskRefDto -> {
                     // Build TaskMeta if present and valid (ModelConfig requires non-null name)
-                    TaskMeta meta = null;
+                    TaskResult.TaskMeta meta = null;
                     boolean anyMetaPresent = taskRefDto.taskType() != null
                             || taskRefDto.primaryModelName() != null
                             || taskRefDto.primaryModelReasoning() != null;
@@ -79,7 +79,7 @@ public class DtoMapper {
                                 taskRefDto.primaryModelReasoning(), Service.ReasoningLevel.DEFAULT);
                         var pm = new Service.ModelConfig(
                                 taskRefDto.primaryModelName(), reasoning, Service.ProcessingTier.DEFAULT);
-                        meta = new TaskMeta(type, pm);
+                        meta = new TaskResult.TaskMeta(type, pm);
                         logger.debug(
                                 "Reconstructed TaskMeta for sequence {}: type={}, model={}",
                                 taskRefDto.sequence(),

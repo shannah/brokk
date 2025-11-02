@@ -2494,7 +2494,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     // ---- Centralized TaskMeta / ModelSpec helpers (used by multiple renderers) ----
 
     /** Returns the last TaskMeta in the given Context's task history, or null if not present. */
-    private @Nullable TaskMeta lastMetaOf(ai.brokk.context.Context ctx) {
+    private @Nullable TaskResult.TaskMeta lastMetaOf(ai.brokk.context.Context ctx) {
         var history = ctx.getTaskHistory();
         if (history.isEmpty()) return null;
         var last = history.getLast();

@@ -6,7 +6,6 @@ import ai.brokk.ContextManager;
 import ai.brokk.EditBlock;
 import ai.brokk.IConsoleIO;
 import ai.brokk.Service;
-import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
 import ai.brokk.agents.CodeAgent;
@@ -1205,13 +1204,13 @@ public class PreviewTextPanel extends JPanel implements ThemeAware, EditorFontSi
                         var ctx = cm.liveContext().addPathFragments(cm.toPathFragments(List.of(file)));
 
                         // Determine TaskMeta only if there was LLM activity in quick edits.
-                        TaskMeta meta = null;
+                        TaskResult.TaskMeta meta = null;
                         boolean llmInvolved = quickEditMessages.stream().anyMatch(m -> m instanceof AiMessage);
                         if (llmInvolved) {
                             var svc = cm.getService();
                             var model = svc.quickEditModel();
                             var modelConfig = Service.ModelConfig.from(model, svc);
-                            meta = new TaskMeta(TaskType.CODE, modelConfig);
+                            meta = new TaskResult.TaskMeta(TaskType.CODE, modelConfig);
                         }
 
                         var saveResult = new TaskResult(

@@ -2,6 +2,8 @@ package ai.brokk;
 
 import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
+import com.fasterxml.jackson.annotation.JsonCreator;
+import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.exception.ContextTooLargeException;
 import java.util.List;
@@ -104,6 +106,15 @@ public record TaskResult(
             }
             return new TaskResult.StopDetails(
                     TaskResult.StopReason.LLM_ERROR, response.error().getMessage());
+        }
+    }
+
+    public record TaskMeta(TaskType type, Service.ModelConfig primaryModel) {
+        @JsonCreator
+        public TaskMeta(
+                @JsonProperty("type") TaskType type, @JsonProperty("primaryModel") Service.ModelConfig primaryModel) {
+            this.type = type;
+            this.primaryModel = primaryModel;
         }
     }
 }

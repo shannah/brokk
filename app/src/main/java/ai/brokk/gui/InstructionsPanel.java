@@ -1423,13 +1423,13 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
 
         // Build TaskMeta for this Ask action using the selected model
         var svc = cm.getService();
-        TaskMeta meta = new TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, svc));
+        TaskResult.TaskMeta meta = new TaskResult.TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, svc));
 
         return executeAskCommand(llm, messages, cm, question, meta);
     }
 
     public static TaskResult executeAskCommand(
-            Llm llm, List<ChatMessage> messages, IContextManager cm, String question, TaskMeta meta) {
+            Llm llm, List<ChatMessage> messages, IContextManager cm, String question, TaskResult.TaskMeta meta) {
         // Build and send the request to the LLM
         TaskResult.StopDetails stop = null;
         Llm.StreamingResult response = null;
@@ -1722,7 +1722,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         cm.getIo().getLlmRawMessages(),
                         cm.liveContext(),
                         new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED),
-                        new TaskMeta(TaskType.SEARCH, Service.ModelConfig.from(modelToUse, cm.getService())));
+                        new TaskResult.TaskMeta(
+                                TaskType.SEARCH, Service.ModelConfig.from(modelToUse, cm.getService())));
             }
             return agent.execute();
         });
