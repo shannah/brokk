@@ -379,13 +379,14 @@ public class ToolRegistry {
             var headline = headlineFor(request.name());
             return """
                    `%s`
-                   ```yaml
-                   %s```
+                   ````yaml
+                   %s
+                   ````
                    """
                     .formatted(headline, argsYaml);
         } catch (ToolValidationException e) {
             logger.debug("Could not generate explanation for tool request '{}': {}", request.name(), e.getMessage());
-            return "Invalid tool request.";
+            return "Skip invalid tool request.";
         }
     }
 
