@@ -1407,6 +1407,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      * contextManager.submitAction.
      */
     public static TaskResult executeAskCommand(IContextManager cm, StreamingChatModel model, String question) {
+        var svc = cm.getService();
+        var meta = new TaskResult.TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, svc));
+
         List<ChatMessage> messages;
         try {
             messages = CodePrompts.instance.collectAskMessages(cm, question, model);
@@ -1417,14 +1420,10 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     cm.getIo().getLlmRawMessages(),
                     cm.liveContext(),
                     new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED),
-                    null);
+                    meta);
         }
+
         var llm = cm.getLlm(new Llm.Options(model, "Answer: " + question).withEcho());
-
-        // Build TaskMeta for this Ask action using the selected model
-        var svc = cm.getService();
-        TaskResult.TaskMeta meta = new TaskResult.TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, svc));
-
         return executeAskCommand(llm, messages, cm, question, meta);
     }
 

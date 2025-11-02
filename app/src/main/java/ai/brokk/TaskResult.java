@@ -4,9 +4,8 @@ import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.exception.ContextTooLargeException;
-import org.jetbrains.annotations.Nullable;
-
 import java.util.List;
+import org.jetbrains.annotations.Nullable;
 
 /**
  * Represents the outcome of an agent session, containing all necessary information to update the context history.
@@ -24,15 +23,13 @@ public record TaskResult(
         assert !context.containsFrozenFragments();
     }
 
-    // Overloads that accept optional TaskMeta for callers that can supply metadata
-
     public TaskResult(
             IContextManager contextManager,
             String actionDescription,
             List<ChatMessage> uiMessages,
             Context resultingContext,
             StopDetails stopDetails,
-            @Nullable TaskMeta meta) {
+            TaskMeta meta) {
         this(
                 actionDescription,
                 new ContextFragment.TaskFragment(contextManager, uiMessages, actionDescription),
@@ -41,19 +38,18 @@ public record TaskResult(
                 meta);
     }
 
-    public TaskResult(
+    public static TaskResult humanResult(
             IContextManager contextManager,
             String actionDescription,
             List<ChatMessage> uiMessages,
             Context resultingContext,
-            StopReason simpleReason,
-            @Nullable TaskMeta meta) {
-        this(
+            StopReason simpleReason) {
+        return new TaskResult(
                 actionDescription,
                 new ContextFragment.TaskFragment(contextManager, uiMessages, actionDescription),
                 resultingContext,
                 new StopDetails(simpleReason),
-                meta);
+                null);
     }
 
     /** Enum representing the reason a session concluded. */
@@ -109,6 +105,5 @@ public record TaskResult(
         }
     }
 
-    public record TaskMeta(TaskType type, Service.ModelConfig primaryModel) {
-    }
+    public record TaskMeta(TaskType type, Service.ModelConfig primaryModel) {}
 }
