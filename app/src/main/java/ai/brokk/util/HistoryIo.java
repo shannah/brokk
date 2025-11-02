@@ -303,11 +303,10 @@ public final class HistoryIo {
             var taskEntryRefs = ctx.getTaskHistory().stream()
                     .map(te -> {
                         String type = te.meta() != null ? te.meta().type().name() : null;
-                        String pmName = (te.meta() != null && te.meta().primaryModel() != null)
-                                ? te.meta().primaryModel().name()
-                                : null;
-                        String pmReason = (te.meta() != null && te.meta().primaryModel() != null)
-                                ? te.meta().primaryModel().reasoningLevel()
+                        String pmName =
+                                te.meta() != null ? te.meta().primaryModel().name() : null;
+                        String pmReason = te.meta() != null
+                                ? te.meta().primaryModel().reasoning().name()
                                 : null;
                         return new TaskEntryRefDto(
                                 te.sequence(),

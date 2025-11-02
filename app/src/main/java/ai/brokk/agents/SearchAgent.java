@@ -4,7 +4,7 @@ import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Llm;
-import ai.brokk.ModelSpec;
+import ai.brokk.Service;
 import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
@@ -756,7 +756,7 @@ public class SearchAgent {
 
         var recommendation = contextAgent.getRecommendations(context);
 
-        var meta = new TaskMeta(TaskType.CONTEXT, ModelSpec.from(model, cm.getService()));
+        var meta = new TaskMeta(TaskType.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
             // create a history entry

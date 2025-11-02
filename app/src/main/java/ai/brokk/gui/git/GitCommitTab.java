@@ -1032,7 +1032,9 @@ Would you like to resolve these conflicts with the Merge Agent?
                     // MergeAgent orchestrates both a planning model and a code model.
                     scope.append(
                             result,
-                            new TaskMeta(TaskType.MERGE, ModelSpec.from(planningModel, contextManager.getService())));
+                            new TaskMeta(
+                                    TaskType.MERGE,
+                                    Service.ModelConfig.from(planningModel, contextManager.getService())));
                 } catch (Exception ex) {
                     logger.error("AI merge failed", ex);
                     SwingUtilities.invokeLater(

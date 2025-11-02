@@ -7,8 +7,8 @@ import ai.brokk.AbstractProject;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.MainProject;
-import ai.brokk.ModelSpec;
 import ai.brokk.Service;
+import ai.brokk.Service.ModelConfig;
 import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskType;
@@ -387,7 +387,7 @@ public final class BrokkCli implements Callable<Integer> {
                     agent.scanInitialContext(searchModel);
                 }
                 searchResult = agent.execute();
-                scope.append(searchResult, new TaskMeta(TaskType.SEARCH, ModelSpec.from(searchModel, service)));
+                scope.append(searchResult, new TaskMeta(TaskType.SEARCH, ModelConfig.from(searchModel, service)));
                 success = searchResult.stopDetails().reason() == TaskResult.StopReason.SUCCESS;
             }
 
@@ -539,7 +539,7 @@ public final class BrokkCli implements Callable<Integer> {
                             result,
                             new TaskMeta(
                                     TaskType.ARCHITECT,
-                                    ModelSpec.from(planModel, service == null ? cm.getService() : service)));
+                                    ModelConfig.from(planModel, service == null ? cm.getService() : service)));
                 } else if (codePrompt != null) {
                     // CodeAgent must use codemodel only
                     if (codeModel == null) {
@@ -552,7 +552,7 @@ public final class BrokkCli implements Callable<Integer> {
                             result,
                             new TaskMeta(
                                     TaskType.CODE,
-                                    ModelSpec.from(codeModel, service == null ? cm.getService() : service)));
+                                    ModelConfig.from(codeModel, service == null ? cm.getService() : service)));
                 } else if (askPrompt != null) {
                     if (codeModel == null) {
                         System.err.println("Error: --ask requires --codemodel to be specified.");
@@ -563,7 +563,7 @@ public final class BrokkCli implements Callable<Integer> {
                             result,
                             new TaskMeta(
                                     TaskType.ASK,
-                                    ModelSpec.from(codeModel, service == null ? cm.getService() : service)));
+                                    ModelConfig.from(codeModel, service == null ? cm.getService() : service)));
                 } else if (merge) {
                     if (planModel == null) {
                         System.err.println("Error: --merge requires --planmodel to be specified.");
@@ -591,7 +591,7 @@ public final class BrokkCli implements Callable<Integer> {
                                 result,
                                 new TaskMeta(
                                         TaskType.MERGE,
-                                        ModelSpec.from(planModel, service == null ? cm.getService() : service)));
+                                        ModelConfig.from(planModel, service == null ? cm.getService() : service)));
                     } catch (Exception e) {
                         io.toolError(getStackTrace(e), "Merge failed: " + e.getMessage());
                         return 1;
@@ -614,7 +614,7 @@ public final class BrokkCli implements Callable<Integer> {
                             result,
                             new TaskMeta(
                                     TaskType.SEARCH,
-                                    ModelSpec.from(planModel, service == null ? cm.getService() : service)));
+                                    ModelConfig.from(planModel, service == null ? cm.getService() : service)));
                 } else if (build) {
                     String buildError = BuildAgent.runVerification(cm);
                     io.showNotification(
@@ -650,7 +650,7 @@ public final class BrokkCli implements Callable<Integer> {
                             taskResult,
                             new TaskMeta(
                                     TaskType.ARCHITECT,
-                                    ModelSpec.from(planModel, service == null ? cm.getService() : service)));
+                                    ModelConfig.from(planModel, service == null ? cm.getService() : service)));
                     result = taskResult;
                 } else { // lutzPrompt != null
                     if (planModel == null) {
@@ -673,7 +673,7 @@ public final class BrokkCli implements Callable<Integer> {
                             result,
                             new TaskMeta(
                                     TaskType.SEARCH,
-                                    ModelSpec.from(planModel, service == null ? cm.getService() : service)));
+                                    ModelConfig.from(planModel, service == null ? cm.getService() : service)));
 
                     // Execute pending tasks sequentially
                     var tasksData = cm.getTaskList();
@@ -694,7 +694,7 @@ public final class BrokkCli implements Callable<Integer> {
                                     taskResult,
                                     new TaskMeta(
                                             TaskType.ARCHITECT,
-                                            ModelSpec.from(planModel, service == null ? cm.getService() : service)));
+                                            ModelConfig.from(planModel, service == null ? cm.getService() : service)));
                             result = taskResult; // Track last result for final status check
 
                             if (taskResult.stopDetails().reason() != TaskResult.StopReason.SUCCESS) {

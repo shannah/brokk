@@ -1758,7 +1758,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                             case ACTION_SEARCH -> TaskType.SEARCH;
                             default -> TaskType.NONE;
                         };
-                var primary = ModelSpec.from(selectedModel, svc);
+                var primary = Service.ModelConfig.from(selectedModel, svc);
                 var meta = new TaskMeta(taskType, primary);
 
                 try (var scope = cm.beginTask(input, false)) {
@@ -1797,7 +1797,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                             case ACTION_SEARCH -> TaskType.SEARCH;
                             default -> TaskType.NONE;
                         };
-                var primary = ModelSpec.from(selectedModel, svc);
+                var primary = Service.ModelConfig.from(selectedModel, svc);
                 var meta = new TaskMeta(taskType, primary);
 
                 try (var scope = cm.beginTask(input, false, "Lutz Mode")) {

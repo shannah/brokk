@@ -4,7 +4,7 @@ import static java.util.Objects.requireNonNullElse;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
 import ai.brokk.IContextManager;
-import ai.brokk.ModelSpec;
+import ai.brokk.Service;
 import ai.brokk.TaskEntry;
 import ai.brokk.TaskMeta;
 import ai.brokk.TaskType;
@@ -68,14 +68,17 @@ public class DtoMapper {
 
         var taskHistory = dto.tasks().stream()
                 .map(taskRefDto -> {
-                    // Build TaskMeta if present and valid (ModelSpec requires non-null name)
+                    // Build TaskMeta if present and valid (ModelConfig requires non-null name)
                     TaskMeta meta = null;
                     boolean anyMetaPresent = taskRefDto.taskType() != null
                             || taskRefDto.primaryModelName() != null
                             || taskRefDto.primaryModelReasoning() != null;
                     if (anyMetaPresent && taskRefDto.primaryModelName() != null) {
                         var type = TaskType.safeParse(taskRefDto.taskType()).orElse(TaskType.NONE);
-                        var pm = new ModelSpec(taskRefDto.primaryModelName(), taskRefDto.primaryModelReasoning());
+                        var reasoning = Service.ReasoningLevel.fromString(
+                                taskRefDto.primaryModelReasoning(), Service.ReasoningLevel.DEFAULT);
+                        var pm = new Service.ModelConfig(
+                                taskRefDto.primaryModelName(), reasoning, Service.ProcessingTier.DEFAULT);
                         meta = new TaskMeta(type, pm);
                         logger.debug(
                                 "Reconstructed TaskMeta for sequence {}: type={}, model={}",

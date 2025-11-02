@@ -2502,7 +2502,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     }
 
     /** Returns the ModelSpec from the last TaskMeta of the context, or null if unavailable. */
-    private @Nullable ModelSpec modelOf(ai.brokk.context.Context ctx) {
+    private @Nullable Service.ModelConfig modelOf(ai.brokk.context.Context ctx) {
         var meta = lastMetaOf(ctx);
         return (meta == null) ? null : meta.primaryModel();
     }
@@ -2513,10 +2513,10 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     }
 
     /** Returns a short, human-friendly model string: "name (reasoning)" or just "name". */
-    private static String summarizeModel(ModelSpec spec) {
+    private static String summarizeModel(Service.ModelConfig spec) {
         var name = spec.name();
-        var rl = spec.reasoningLevel();
-        if (rl != null && !rl.isBlank()) {
+        var rl = spec.reasoning().name();
+        if (!rl.isBlank()) {
             return name + " (" + rl + ")";
         }
         return name;

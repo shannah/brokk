@@ -60,6 +60,22 @@ public class Service implements IExceptionReportingService {
         public ModelConfig(String name) {
             this(name, ReasoningLevel.DEFAULT);
         }
+
+        public static ModelConfig from(StreamingChatModel model, Service svc) {
+            var canonicalName = svc.nameOf(model);
+            var tier = Service.getProcessingTier(model);
+
+            ReasoningLevel reasoning = ReasoningLevel.DEFAULT;
+            if (model instanceof OpenAiStreamingChatModel om) {
+                var params = om.defaultRequestParameters();
+                var effort = params == null ? null : params.reasoningEffort();
+                if (effort != null && !effort.isBlank()) {
+                    reasoning = ReasoningLevel.fromString(effort, ReasoningLevel.DEFAULT);
+                }
+            }
+
+            return new ModelConfig(canonicalName, reasoning, tier);
+        }
     }
 
     public record PriceBand(

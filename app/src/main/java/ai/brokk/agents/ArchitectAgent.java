@@ -6,7 +6,7 @@ import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNul
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.Llm;
-import ai.brokk.ModelSpec;
+import ai.brokk.Service.ModelConfig;
 import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskResult.StopReason;
@@ -157,7 +157,7 @@ public class ArchitectAgent {
         var reason = stopDetails.reason();
         // Update local context with the CodeAgent's resulting context
         var initialContext = context;
-        context = scope.append(result, new TaskMeta(TaskType.CODE, ModelSpec.from(codeModel, cm.getService())));
+        context = scope.append(result, new TaskMeta(TaskType.CODE, ModelConfig.from(codeModel, cm.getService())));
 
         if (result.stopDetails().reason() == StopReason.SUCCESS) {
             var resultString = deferBuild
@@ -199,7 +199,7 @@ public class ArchitectAgent {
         }
         context = scope.append(
                 resultWithMessages(StopReason.SUCCESS, "Architect planned for: " + goal),
-                new TaskMeta(TaskType.ARCHITECT, ModelSpec.from(planningModel, cm.getService())));
+                new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     @Tool(
@@ -294,12 +294,13 @@ public class ArchitectAgent {
         io.llmOutput("**Search Agent** engaged: " + goal, ChatMessageType.AI);
         var searchResult = searchAgent.execute();
         // Synchronize local context with search results before continuing
-        context = scope.append(searchResult, new TaskMeta(TaskType.SEARCH, ModelSpec.from(scanModel, cm.getService())));
+        context =
+                scope.append(searchResult, new TaskMeta(TaskType.SEARCH, ModelConfig.from(scanModel, cm.getService())));
 
         // Run Architect proper
         var archResult = this.execute();
         context = scope.append(
-                archResult, new TaskMeta(TaskType.ARCHITECT, ModelSpec.from(planningModel, cm.getService())));
+                archResult, new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
         return archResult;
     }
 

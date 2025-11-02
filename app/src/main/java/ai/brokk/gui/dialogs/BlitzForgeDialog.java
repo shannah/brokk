@@ -4,7 +4,6 @@ import static ai.brokk.gui.Constants.*;
 import static java.util.Objects.requireNonNull;
 
 import ai.brokk.MainProject;
-import ai.brokk.ModelSpec;
 import ai.brokk.Service;
 import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
@@ -1331,7 +1330,9 @@ public class BlitzForgeDialog extends JDialog {
                         instructions,
                         fContextFilter,
                         contextFilter);
-                scope.append(parallelResult, new TaskMeta(TaskType.BLITZFORGE, ModelSpec.from(perFileModel, service)));
+                scope.append(
+                        parallelResult,
+                        new TaskMeta(TaskType.BLITZFORGE, Service.ModelConfig.from(perFileModel, service)));
 
                 // If the parallel phase was cancelled/interrupted, skip any post-processing (including build).
                 if (parallelResult.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
@@ -1405,7 +1406,9 @@ public class BlitzForgeDialog extends JDialog {
                             "Ask command has been invoked.", "Post-processing", JOptionPane.INFORMATION_MESSAGE);
                     TaskResult postProcessResult =
                             InstructionsPanel.executeAskCommand(cm, perFileModel, agentInstructions);
-                    scope.append(postProcessResult, new TaskMeta(TaskType.ASK, ModelSpec.from(perFileModel, service)));
+                    scope.append(
+                            postProcessResult,
+                            new TaskMeta(TaskType.ASK, Service.ModelConfig.from(perFileModel, service)));
                 } else {
                     mainIo.systemNotify(
                             "Architect has been invoked.", "Post-processing", JOptionPane.INFORMATION_MESSAGE);
@@ -1420,7 +1423,8 @@ public class BlitzForgeDialog extends JDialog {
                             postProcessResult,
                             new TaskMeta(
                                     TaskType.ARCHITECT,
-                                    ModelSpec.from(chrome.getInstructionsPanel().getSelectedModel(), service)));
+                                    Service.ModelConfig.from(
+                                            chrome.getInstructionsPanel().getSelectedModel(), service)));
                 }
             } finally {
                 analyzerWrapper.resume();
