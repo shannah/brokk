@@ -2,10 +2,10 @@ package ai.brokk;
 
 import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
-import com.fasterxml.jackson.annotation.JsonCreator;
-import com.fasterxml.jackson.annotation.JsonProperty;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.exception.ContextTooLargeException;
+import org.jetbrains.annotations.Nullable;
+
 import java.util.List;
 
 /**
@@ -18,7 +18,7 @@ public record TaskResult(
         ContextFragment.TaskFragment output,
         Context context,
         StopDetails stopDetails,
-        @org.jetbrains.annotations.Nullable TaskMeta meta) {
+        @Nullable TaskMeta meta) {
 
     public TaskResult {
         assert !context.containsFrozenFragments();
@@ -32,7 +32,7 @@ public record TaskResult(
             List<ChatMessage> uiMessages,
             Context resultingContext,
             StopDetails stopDetails,
-            @org.jetbrains.annotations.Nullable TaskMeta meta) {
+            @Nullable TaskMeta meta) {
         this(
                 actionDescription,
                 new ContextFragment.TaskFragment(contextManager, uiMessages, actionDescription),
@@ -47,7 +47,7 @@ public record TaskResult(
             List<ChatMessage> uiMessages,
             Context resultingContext,
             StopReason simpleReason,
-            @org.jetbrains.annotations.Nullable TaskMeta meta) {
+            @Nullable TaskMeta meta) {
         this(
                 actionDescription,
                 new ContextFragment.TaskFragment(contextManager, uiMessages, actionDescription),
@@ -110,11 +110,5 @@ public record TaskResult(
     }
 
     public record TaskMeta(TaskType type, Service.ModelConfig primaryModel) {
-        @JsonCreator
-        public TaskMeta(
-                @JsonProperty("type") TaskType type, @JsonProperty("primaryModel") Service.ModelConfig primaryModel) {
-            this.type = type;
-            this.primaryModel = primaryModel;
-        }
     }
 }
