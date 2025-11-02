@@ -2462,7 +2462,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
     }
 
     // Centralized icon mapping for task types; future-proofed for differentiation.
-    private javax.swing.Icon iconFor(TaskType type) {
+    private javax.swing.Icon iconFor(TaskResult.Type type) {
         switch (type) {
             case ARCHITECT -> {
                 return Icons.ARCHITECT;

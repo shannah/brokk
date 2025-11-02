@@ -7,7 +7,6 @@ import ai.brokk.IContextManager;
 import ai.brokk.Service;
 import ai.brokk.TaskEntry;
 import ai.brokk.TaskResult;
-import ai.brokk.TaskType;
 import ai.brokk.analyzer.BrokkFile;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.CodeUnitType;
@@ -74,7 +73,7 @@ public class DtoMapper {
                             || taskRefDto.primaryModelName() != null
                             || taskRefDto.primaryModelReasoning() != null;
                     if (anyMetaPresent && taskRefDto.primaryModelName() != null) {
-                        var type = TaskType.safeParse(taskRefDto.taskType()).orElse(TaskType.NONE);
+                        var type = TaskResult.Type.safeParse(taskRefDto.taskType()).orElse(TaskResult.Type.NONE);
                         var reasoning = Service.ReasoningLevel.fromString(
                                 taskRefDto.primaryModelReasoning(), Service.ReasoningLevel.DEFAULT);
                         var pm = new Service.ModelConfig(

@@ -6,7 +6,6 @@ import static java.util.Objects.requireNonNull;
 import ai.brokk.MainProject;
 import ai.brokk.Service;
 import ai.brokk.TaskResult;
-import ai.brokk.TaskType;
 import ai.brokk.agents.ArchitectAgent;
 import ai.brokk.agents.BlitzForge;
 import ai.brokk.agents.BuildAgent;
@@ -1530,7 +1529,7 @@ public class BlitzForgeDialog extends JDialog {
             if (engineAction == Action.ASK) {
                 var messages = CodePrompts.instance.getSingleFileAskMessages(cm, file, readOnlyMessages, instructions);
                 var llm = cm.getLlm(model, "Ask", true);
-                var meta = new TaskResult.TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, cm.getService()));
+                var meta = new TaskResult.TaskMeta(TaskResult.Type.ASK, Service.ModelConfig.from(model, cm.getService()));
                 llm.setOutput(dialogIo);
                 tr = InstructionsPanel.executeAskCommand(llm, messages, cm, instructions, meta);
             } else {

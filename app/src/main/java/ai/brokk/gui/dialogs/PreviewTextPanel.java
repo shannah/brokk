@@ -7,7 +7,6 @@ import ai.brokk.EditBlock;
 import ai.brokk.IConsoleIO;
 import ai.brokk.Service;
 import ai.brokk.TaskResult;
-import ai.brokk.TaskType;
 import ai.brokk.agents.CodeAgent;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.CodeUnitType;
@@ -1210,7 +1209,7 @@ public class PreviewTextPanel extends JPanel implements ThemeAware, EditorFontSi
                             var svc = cm.getService();
                             var model = svc.quickEditModel();
                             var modelConfig = Service.ModelConfig.from(model, svc);
-                            meta = new TaskResult.TaskMeta(TaskType.CODE, modelConfig);
+                            meta = new TaskResult.TaskMeta(TaskResult.Type.CODE, modelConfig);
                         }
 
                         var saveResult = TaskResult.humanResult(

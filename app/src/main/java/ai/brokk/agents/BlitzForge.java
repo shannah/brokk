@@ -6,7 +6,6 @@ import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Service;
 import ai.brokk.TaskResult;
-import ai.brokk.TaskType;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.context.Context;
 import ai.brokk.prompts.CodePrompts;
@@ -102,7 +101,7 @@ public final class BlitzForge {
             // No files → produce an empty successful TaskResult whose resultingContext is the current top context
             Context resultingCtx = cm.topContext();
             var meta = new TaskResult.TaskMeta(
-                    TaskType.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
+                    TaskResult.Type.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
             var emptyResult = new TaskResult(
                     cm,
                     config.instructions(),
@@ -269,7 +268,7 @@ public final class BlitzForge {
         var resultingCtx = top.addPathFragments(cm.toPathFragments(changedFiles));
 
         var meta = new TaskResult.TaskMeta(
-                TaskType.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
+                TaskResult.Type.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
         var finalResult = new TaskResult(cm, config.instructions(), uiMessages, resultingCtx, sd, meta);
 
         listener.onComplete(finalResult);
@@ -287,7 +286,7 @@ public final class BlitzForge {
     private TaskResult interruptedResult(int processed, Collection<ProjectFile> files) {
         var sd = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED, "User cancelled operation.");
         var meta = new TaskResult.TaskMeta(
-                TaskType.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
+                TaskResult.Type.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
         var tr = new TaskResult(cm, config.instructions(), List.of(), cm.topContext(), sd, meta);
         listener.onComplete(tr);
         logger.debug("Interrupted; processed {} of {}", processed, files.size());

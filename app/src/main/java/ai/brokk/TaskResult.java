@@ -5,6 +5,9 @@ import ai.brokk.context.ContextFragment;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.exception.ContextTooLargeException;
 import java.util.List;
+import java.util.Locale;
+import java.util.Optional;
+
 import org.jetbrains.annotations.Nullable;
 
 /**
@@ -105,5 +108,46 @@ public record TaskResult(
         }
     }
 
-    public record TaskMeta(TaskType type, Service.ModelConfig primaryModel) {}
+    public record TaskMeta(Type type, Service.ModelConfig primaryModel) {}
+
+    public enum Type {
+        NONE,
+        ARCHITECT,
+        CODE,
+        ASK,
+        SEARCH,
+        CONTEXT,
+        MERGE,
+        BLITZFORGE;
+
+        public String displayName() {
+            if (this == SEARCH) {
+                return "Lutz Mode";
+            }
+            var lower = name().toLowerCase(Locale.ROOT);
+            return Character.toUpperCase(lower.charAt(0)) + lower.substring(1);
+        }
+
+        public static Optional<Type> safeParse(String value) {
+            if (value == null) {
+                return Optional.empty();
+            }
+            var s = value.trim();
+            if (s.isEmpty()) {
+                return Optional.empty();
+            }
+
+            for (var t : values()) {
+                if (t.name().equalsIgnoreCase(s)) {
+                    return Optional.of(t);
+                }
+            }
+            for (var t : values()) {
+                if (t.displayName().equalsIgnoreCase(s)) {
+                    return Optional.of(t);
+                }
+            }
+            return Optional.empty();
+        }
+    }
 }

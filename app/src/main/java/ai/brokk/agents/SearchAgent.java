@@ -6,7 +6,6 @@ import ai.brokk.IContextManager;
 import ai.brokk.Llm;
 import ai.brokk.Service;
 import ai.brokk.TaskResult;
-import ai.brokk.TaskType;
 import ai.brokk.analyzer.Language;
 import ai.brokk.analyzer.Languages;
 import ai.brokk.analyzer.ProjectFile;
@@ -760,7 +759,7 @@ public class SearchAgent {
 
         var recommendation = contextAgent.getRecommendations(context);
 
-        var meta = new TaskResult.TaskMeta(TaskType.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
+        var meta = new TaskResult.TaskMeta(TaskResult.Type.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
         var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal, meta);
 
         var md = recommendation.metadata();
@@ -1060,6 +1059,6 @@ public class SearchAgent {
     }
 
     private TaskResult.TaskMeta taskMeta() {
-        return new TaskResult.TaskMeta(TaskType.SEARCH, Service.ModelConfig.from(model, cm.getService()));
+        return new TaskResult.TaskMeta(TaskResult.Type.SEARCH, Service.ModelConfig.from(model, cm.getService()));
     }
 }

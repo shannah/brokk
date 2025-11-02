@@ -4,7 +4,6 @@ import static ai.brokk.gui.Constants.*;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import ai.brokk.*;
 import ai.brokk.Brokk;
 import ai.brokk.Completions;
 import ai.brokk.ContextManager;
@@ -1408,7 +1407,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
      */
     public static TaskResult executeAskCommand(IContextManager cm, StreamingChatModel model, String question) {
         var svc = cm.getService();
-        var meta = new TaskResult.TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, svc));
+        var meta = new TaskResult.TaskMeta(TaskResult.Type.ASK, Service.ModelConfig.from(model, svc));
 
         List<ChatMessage> messages;
         try {
@@ -1722,7 +1721,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         cm.liveContext(),
                         new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED),
                         new TaskResult.TaskMeta(
-                                TaskType.SEARCH, Service.ModelConfig.from(modelToUse, cm.getService())));
+                                TaskResult.Type.SEARCH, Service.ModelConfig.from(modelToUse, cm.getService())));
             }
             return agent.execute();
         });

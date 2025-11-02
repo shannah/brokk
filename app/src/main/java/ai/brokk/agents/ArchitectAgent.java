@@ -9,7 +9,6 @@ import ai.brokk.Llm;
 import ai.brokk.Service.ModelConfig;
 import ai.brokk.TaskResult;
 import ai.brokk.TaskResult.StopReason;
-import ai.brokk.TaskType;
 import ai.brokk.context.Context;
 import ai.brokk.gui.Chrome;
 import ai.brokk.prompts.ArchitectPrompts;
@@ -643,7 +642,7 @@ public class ArchitectAgent {
                 io.getLlmRawMessages(),
                 context,
                 new TaskResult.StopDetails(StopReason.SUCCESS),
-                new TaskResult.TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
+                new TaskResult.TaskMeta(TaskResult.Type.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     private TaskResult resultWithMessages(StopReason reason, String message) {
@@ -654,7 +653,7 @@ public class ArchitectAgent {
                 io.getLlmRawMessages(),
                 context,
                 new TaskResult.StopDetails(reason),
-                new TaskResult.TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
+                new TaskResult.TaskMeta(TaskResult.Type.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     private TaskResult resultWithMessages(StopReason reason) {
