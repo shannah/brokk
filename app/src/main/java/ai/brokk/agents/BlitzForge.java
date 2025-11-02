@@ -5,7 +5,9 @@ import static java.util.Objects.requireNonNull;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Service;
+import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
+import ai.brokk.TaskType;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.context.Context;
 import ai.brokk.prompts.CodePrompts;
@@ -69,7 +71,7 @@ public final class BlitzForge {
     /** Configuration for a BlitzForge run. */
     public record RunConfig(
             String instructions,
-            @Nullable StreamingChatModel model,
+            StreamingChatModel model,
             Supplier<String> perFileContext,
             Supplier<String> sharedContext,
             String contextFilter,
@@ -100,12 +102,15 @@ public final class BlitzForge {
         if (files.isEmpty()) {
             // No files → produce an empty successful TaskResult whose resultingContext is the current top context
             Context resultingCtx = cm.topContext();
+            var meta = new TaskMeta(
+                    TaskType.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
             var emptyResult = new TaskResult(
                     cm,
                     config.instructions(),
                     List.of(),
                     resultingCtx,
-                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
+                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS),
+                    meta);
             listener.onComplete(emptyResult);
             return emptyResult;
         }
@@ -119,12 +124,12 @@ public final class BlitzForge {
 
         // Prepare executor
         final ExecutorService executor;
-        if (config.model() != null) {
-            executor = AdaptiveExecutor.create(service, requireNonNull(config.model()), files.size());
-        } else {
-            // Fallback simple fixed pool
+        if (config.model() instanceof Service.UnavailableStreamingModel) {
+            // Fallback simple fixed pool for tests
             int pool = Math.min(Math.max(1, files.size()), Runtime.getRuntime().availableProcessors());
             executor = Executors.newFixedThreadPool(pool);
+        } else {
+            executor = AdaptiveExecutor.create(service, requireNonNull(config.model()), files.size());
         }
 
         int processedCount = 0;
@@ -264,7 +269,8 @@ public final class BlitzForge {
         var top = cm.topContext();
         var resultingCtx = top.addPathFragments(cm.toPathFragments(changedFiles));
 
-        var finalResult = new TaskResult(cm, config.instructions(), uiMessages, resultingCtx, sd);
+        var meta = new TaskMeta(TaskType.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
+        var finalResult = new TaskResult(cm, config.instructions(), uiMessages, resultingCtx, sd, meta);
 
         listener.onComplete(finalResult);
         return finalResult;
@@ -280,7 +286,8 @@ public final class BlitzForge {
 
     private TaskResult interruptedResult(int processed, Collection<ProjectFile> files) {
         var sd = new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED, "User cancelled operation.");
-        var tr = new TaskResult(cm, config.instructions(), List.of(), cm.topContext(), sd);
+        var meta = new TaskMeta(TaskType.BLITZFORGE, Service.ModelConfig.from(requireNonNull(config.model()), service));
+        var tr = new TaskResult(cm, config.instructions(), List.of(), cm.topContext(), sd, meta);
         listener.onComplete(tr);
         logger.debug("Interrupted; processed {} of {}", processed, files.size());
         return tr;

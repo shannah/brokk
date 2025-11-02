@@ -5,9 +5,11 @@ import static java.util.Objects.requireNonNull;
 import ai.brokk.ContextManager;
 import ai.brokk.EditBlock;
 import ai.brokk.IConsoleIO;
+import ai.brokk.Service;
+import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
+import ai.brokk.TaskType;
 import ai.brokk.agents.CodeAgent;
-import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.CodeUnit;
 import ai.brokk.analyzer.CodeUnitType;
 import ai.brokk.analyzer.IAnalyzer;
@@ -1201,11 +1203,21 @@ public class PreviewTextPanel extends JPanel implements ThemeAware, EditorFontSi
                         messagesForHistory.add(Messages.customSystem("```" + diffText + "```"));
                         // Build resulting Context by adding the saved file if it is not already editable
                         var ctx = cm.liveContext().addPathFragments(cm.toPathFragments(List.of(file)));
+
+                        // Determine TaskMeta only if there was LLM activity in quick edits.
+                        TaskMeta meta = null;
+                        boolean llmInvolved = quickEditMessages.stream().anyMatch(m -> m instanceof AiMessage);
+                        if (llmInvolved) {
+                            var svc = cm.getService();
+                            var model = svc.quickEditModel();
+                            var modelConfig = Service.ModelConfig.from(model, svc);
+                            meta = new TaskMeta(TaskType.CODE, modelConfig);
+                        }
+
                         var saveResult = new TaskResult(
-                                cm, actionDescription, messagesForHistory, ctx, TaskResult.StopReason.SUCCESS);
+                                cm, actionDescription, messagesForHistory, ctx, TaskResult.StopReason.SUCCESS, meta);
                         try (var scope = cm.beginTask("File changed saved", false)) {
-                            // Local non-LLM save
-                            scope.append(saveResult, null);
+                            scope.append(saveResult);
                         }
                         logger.debug("Added history entry for changes in: {}", file);
                     } catch (Exception e) {

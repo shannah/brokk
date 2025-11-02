@@ -1157,12 +1157,12 @@ public class BrokkDiffPanel extends JPanel implements ThemeAware, EditorFontSize
             var resultingCtx = top.addPathFragments(contextManager.toPathFragments(changedFiles));
 
             var result = new TaskResult(
-                    contextManager, actionDescription, messages, resultingCtx, TaskResult.StopReason.SUCCESS);
+                    contextManager, actionDescription, messages, resultingCtx, TaskResult.StopReason.SUCCESS, null);
 
             // Add a single history entry for the whole batch
             try (var scope = contextManager.beginTask(actionDescription, false)) {
                 // This is a local save operation (non-LLM). For now we record no TaskMeta.
-                scope.append(result, null);
+                scope.append(result);
             }
             logger.info("Saved changes to {} file(s): {}", fileCount, actionDescription);
 

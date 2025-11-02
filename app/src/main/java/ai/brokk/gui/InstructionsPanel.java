@@ -1416,15 +1416,20 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     "Ask: " + question,
                     cm.getIo().getLlmRawMessages(),
                     cm.liveContext(),
-                    new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
+                    new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED),
+                    null);
         }
         var llm = cm.getLlm(new Llm.Options(model, "Answer: " + question).withEcho());
 
-        return executeAskCommand(llm, messages, cm, question);
+        // Build TaskMeta for this Ask action using the selected model
+        var svc = cm.getService();
+        TaskMeta meta = new TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, svc));
+
+        return executeAskCommand(llm, messages, cm, question, meta);
     }
 
     public static TaskResult executeAskCommand(
-            Llm llm, List<ChatMessage> messages, IContextManager cm, String question) {
+            Llm llm, List<ChatMessage> messages, IContextManager cm, String question, TaskMeta meta) {
         // Build and send the request to the LLM
         TaskResult.StopDetails stop = null;
         Llm.StreamingResult response = null;
@@ -1447,7 +1452,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 "Ask: " + question,
                 List.copyOf(cm.getIo().getLlmRawMessages()),
                 resultingCtx, // Ask never changes files; use current live context
-                stop);
+                stop,
+                meta);
     }
 
     // --- Action Handlers ---
@@ -1715,7 +1721,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         "Search: " + query,
                         cm.getIo().getLlmRawMessages(),
                         cm.liveContext(),
-                        new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
+                        new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED),
+                        new TaskMeta(TaskType.SEARCH, Service.ModelConfig.from(modelToUse, cm.getService())));
             }
             return agent.execute();
         });
@@ -1747,23 +1754,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             try {
                 chrome.showOutputSpinner(spinnerText);
 
-                // Derive TaskMeta (type + primary model) for this action
-                var svc = cm.getService();
-                var selectedModel = getSelectedModel();
-                TaskType taskType =
-                        switch (action) {
-                            case ACTION_ARCHITECT -> TaskType.ARCHITECT;
-                            case ACTION_CODE -> TaskType.CODE;
-                            case ACTION_ASK -> TaskType.ASK;
-                            case ACTION_SEARCH -> TaskType.SEARCH;
-                            default -> TaskType.NONE;
-                        };
-                var primary = Service.ModelConfig.from(selectedModel, svc);
-                var meta = new TaskMeta(taskType, primary);
-
                 try (var scope = cm.beginTask(input, false)) {
                     var result = task.call();
-                    scope.append(result, meta);
+                    scope.append(result);
                     if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
                         populateInstructionsArea(input);
                     }
@@ -1786,23 +1779,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             try {
                 chrome.showOutputSpinner(spinnerText);
 
-                // Derive TaskMeta (type + primary model) for this action
-                var svc = cm.getService();
-                var selectedModel = getSelectedModel();
-                TaskType taskType =
-                        switch (action) {
-                            case ACTION_ARCHITECT -> TaskType.ARCHITECT;
-                            case ACTION_CODE -> TaskType.CODE;
-                            case ACTION_ASK -> TaskType.ASK;
-                            case ACTION_SEARCH -> TaskType.SEARCH;
-                            default -> TaskType.NONE;
-                        };
-                var primary = Service.ModelConfig.from(selectedModel, svc);
-                var meta = new TaskMeta(taskType, primary);
-
                 try (var scope = cm.beginTask(input, false, "Lutz Mode")) {
                     var result = task.apply(scope);
-                    scope.append(result, meta);
+                    scope.append(result);
                     if (result.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
                         populateInstructionsArea(input);
                     }

@@ -2173,10 +2173,9 @@ public class ContextManager implements IContextManager, AutoCloseable {
          * If meta is provided and the TaskResult does not already carry metadata, the metadata is attached before
          * creating the TaskEntry to ensure persistence in history.
          *
-         * @param result The TaskResult to append.
-         * @param meta Optional TaskMeta to attach if the TaskResult has none.
+         * @param result   The TaskResult to append.
          */
-        public Context append(TaskResult result, @Nullable TaskMeta meta) {
+        public Context append(TaskResult result) {
             assert !closed : "TaskScope already closed";
 
             // If interrupted before any LLM output, skip
@@ -2193,13 +2192,8 @@ public class ContextManager implements IContextManager, AutoCloseable {
                 return result.context();
             }
 
-            final TaskResult toAppend = (meta != null && result.meta() == null)
-                    ? new TaskResult(
-                            result.actionDescription(), result.output(), result.context(), result.stopDetails(), meta)
-                    : result;
-
-            var action = toAppend.actionDescription();
-            logger.debug("Adding session result to history. Action: '{}', Reason: {}", action, toAppend.stopDetails());
+            var action = result.actionDescription();
+            logger.debug("Adding session result to history. Action: '{}', Reason: {}", action, result.stopDetails());
 
             var actionFuture = summarizeTaskForConversation(action).thenApply(r -> {
                 io.postSummarize();
@@ -2208,10 +2202,10 @@ public class ContextManager implements IContextManager, AutoCloseable {
 
             // push context
             var updatedContext = pushContext(currentLiveCtx -> {
-                var updated = toAppend.context().withGroup(groupId, groupLabel);
-                TaskEntry entry = updated.createTaskEntry(toAppend);
+                var updated = result.context().withGroup(groupId, groupLabel);
+                TaskEntry entry = updated.createTaskEntry(result);
                 TaskEntry finalEntry = compressResults ? compressHistory(entry) : entry;
-                return updated.addHistoryEntry(finalEntry, toAppend.output(), actionFuture)
+                return updated.addHistoryEntry(finalEntry, result.output(), actionFuture)
                         .withGroup(groupId, groupLabel);
             });
 

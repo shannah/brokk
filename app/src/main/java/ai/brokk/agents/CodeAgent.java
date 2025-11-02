@@ -7,7 +7,10 @@ import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
 import ai.brokk.Llm;
 import ai.brokk.Llm.StreamingResult;
+import ai.brokk.Service;
+import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
+import ai.brokk.TaskType;
 import ai.brokk.analyzer.Languages;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.context.Context;
@@ -368,11 +371,11 @@ public class CodeAgent {
         // Prepare messages for TaskEntry log: filter raw messages and keep S/R blocks verbatim
         var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages());
 
+        // Populate TaskMeta because this task engaged an LLM
+        var meta = new TaskMeta(TaskType.CODE, Service.ModelConfig.from(model, contextManager.getService()));
+
         var tr = new TaskResult(
-                "Code: " + finalActionDescription,
-                new ContextFragment.TaskFragment(contextManager, finalMessages, userInput),
-                context,
-                stopDetails);
+                contextManager, "Code: " + finalActionDescription, finalMessages, context, stopDetails, meta);
         logger.debug("Task result: {}", tr);
         return tr;
     }
@@ -548,9 +551,10 @@ public class CodeAgent {
             stopDetails = new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS);
         }
 
-        // Return TaskResult containing conversation and resulting context
+        // Return TaskResult containing conversation and resulting context (populate TaskMeta since an LLM was used)
+        var quickMeta = new TaskMeta(TaskType.CODE, Service.ModelConfig.from(model, contextManager.getService()));
         return new TaskResult(
-                contextManager, "Quick Edit: " + file.getFileName(), pendingHistory, context, stopDetails);
+                contextManager, "Quick Edit: " + file.getFileName(), pendingHistory, context, stopDetails, quickMeta);
     }
 
     /**

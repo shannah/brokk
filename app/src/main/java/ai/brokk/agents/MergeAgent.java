@@ -6,7 +6,10 @@ import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNul
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
 import ai.brokk.IContextManager;
+import ai.brokk.Service;
+import ai.brokk.TaskMeta;
 import ai.brokk.TaskResult;
+import ai.brokk.TaskType;
 import ai.brokk.analyzer.ProjectFile;
 import ai.brokk.context.Context;
 import ai.brokk.context.ContextFragment;
@@ -34,6 +37,7 @@ import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
 import org.eclipse.jgit.revwalk.RevWalk;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
+import org.jetbrains.annotations.NotNull;
 import org.jetbrains.annotations.Nullable;
 
 /* Added imports for referenced helpers/agents. These are typically in the same package;
@@ -303,7 +307,8 @@ public class MergeAgent {
                     "Merge",
                     cm.getIo().getLlmRawMessages(),
                     ctx,
-                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS));
+                    new TaskResult.StopDetails(TaskResult.StopReason.SUCCESS),
+                    taskMeta());
         }
 
         // We tried auto-editing files that are mentioned in the build failure, the trouble is that you
@@ -345,6 +350,10 @@ public class MergeAgent {
                 "ArchitectAgent execution completed. Returning annotations with stop reason: {}",
                 architectResult.stopDetails().reason());
         return architectResult;
+    }
+
+    private @NotNull TaskMeta taskMeta() {
+        return new TaskMeta(TaskType.MERGE, Service.ModelConfig.from(planningModel, cm.getService()));
     }
 
     private AnnotationResult annotate() {
@@ -717,7 +726,8 @@ public class MergeAgent {
                 "Merge",
                 List.of(new AiMessage(message)),
                 resultingCtx,
-                new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED));
+                new TaskResult.StopDetails(TaskResult.StopReason.INTERRUPTED),
+                taskMeta());
     }
 
     /** Controls how (and whether) non-text conflicts are resolved automatically. */

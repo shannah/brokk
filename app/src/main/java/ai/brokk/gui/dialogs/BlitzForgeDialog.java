@@ -1330,9 +1330,7 @@ public class BlitzForgeDialog extends JDialog {
                         instructions,
                         fContextFilter,
                         contextFilter);
-                scope.append(
-                        parallelResult,
-                        new TaskMeta(TaskType.BLITZFORGE, Service.ModelConfig.from(perFileModel, service)));
+                scope.append(parallelResult);
 
                 // If the parallel phase was cancelled/interrupted, skip any post-processing (including build).
                 if (parallelResult.stopDetails().reason() == TaskResult.StopReason.INTERRUPTED) {
@@ -1406,9 +1404,7 @@ public class BlitzForgeDialog extends JDialog {
                             "Ask command has been invoked.", "Post-processing", JOptionPane.INFORMATION_MESSAGE);
                     TaskResult postProcessResult =
                             InstructionsPanel.executeAskCommand(cm, perFileModel, agentInstructions);
-                    scope.append(
-                            postProcessResult,
-                            new TaskMeta(TaskType.ASK, Service.ModelConfig.from(perFileModel, service)));
+                    scope.append(postProcessResult);
                 } else {
                     mainIo.systemNotify(
                             "Architect has been invoked.", "Post-processing", JOptionPane.INFORMATION_MESSAGE);
@@ -1419,12 +1415,7 @@ public class BlitzForgeDialog extends JDialog {
                             agentInstructions,
                             scope);
                     TaskResult postProcessResult = agent.executeWithSearch();
-                    scope.append(
-                            postProcessResult,
-                            new TaskMeta(
-                                    TaskType.ARCHITECT,
-                                    Service.ModelConfig.from(
-                                            chrome.getInstructionsPanel().getSelectedModel(), service)));
+                    scope.append(postProcessResult);
                 }
             } finally {
                 analyzerWrapper.resume();
@@ -1540,8 +1531,9 @@ public class BlitzForgeDialog extends JDialog {
             if (engineAction == Action.ASK) {
                 var messages = CodePrompts.instance.getSingleFileAskMessages(cm, file, readOnlyMessages, instructions);
                 var llm = cm.getLlm(model, "Ask", true);
+                var meta = new TaskMeta(TaskType.ASK, Service.ModelConfig.from(model, cm.getService()));
                 llm.setOutput(dialogIo);
-                tr = InstructionsPanel.executeAskCommand(llm, messages, cm, instructions);
+                tr = InstructionsPanel.executeAskCommand(llm, messages, cm, instructions, meta);
             } else {
                 var agent = new CodeAgent(cm, model, dialogIo);
                 tr = agent.runSingleFileEdit(file, instructions, readOnlyMessages);

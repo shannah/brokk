@@ -22,53 +22,6 @@ public record TaskResult(
         assert !context.containsFrozenFragments();
     }
 
-    // Backward-compatible overload for existing call-sites
-    public TaskResult(
-            String actionDescription,
-            ai.brokk.context.ContextFragment.TaskFragment output,
-            ai.brokk.context.Context context,
-            StopDetails stopDetails) {
-        this(actionDescription, output, context, stopDetails, null);
-    }
-
-    public TaskResult(
-            IContextManager contextManager,
-            String actionDescription,
-            List<ChatMessage> uiMessages,
-            Context resultingContext,
-            StopDetails stopDetails) {
-        this(
-                actionDescription,
-                new ContextFragment.TaskFragment(contextManager, uiMessages, actionDescription),
-                resultingContext,
-                stopDetails,
-                null);
-    }
-
-    public TaskResult(
-            IContextManager contextManager,
-            String actionDescription,
-            List<ChatMessage> uiMessages,
-            Context resultingContext,
-            StopReason simpleReason) {
-        this(
-                actionDescription,
-                new ContextFragment.TaskFragment(contextManager, uiMessages, actionDescription),
-                resultingContext,
-                new StopDetails(simpleReason),
-                null);
-    }
-
-    /** Creates a new TaskResult by replacing the messages in an existing one while preserving the resulting context. */
-    public TaskResult(TaskResult base, List<ChatMessage> newMessages, IContextManager contextManager) {
-        this(
-                base.actionDescription(),
-                new ContextFragment.TaskFragment(contextManager, newMessages, base.actionDescription()),
-                base.context(),
-                base.stopDetails(),
-                null);
-    }
-
     // Overloads that accept optional TaskMeta for callers that can supply metadata
 
     public TaskResult(

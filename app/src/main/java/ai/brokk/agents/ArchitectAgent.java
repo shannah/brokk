@@ -157,7 +157,7 @@ public class ArchitectAgent {
         var reason = stopDetails.reason();
         // Update local context with the CodeAgent's resulting context
         var initialContext = context;
-        context = scope.append(result, new TaskMeta(TaskType.CODE, ModelConfig.from(codeModel, cm.getService())));
+        context = scope.append(result);
 
         if (result.stopDetails().reason() == StopReason.SUCCESS) {
             var resultString = deferBuild
@@ -197,9 +197,7 @@ public class ArchitectAgent {
         if (messages.isEmpty()) {
             return;
         }
-        context = scope.append(
-                resultWithMessages(StopReason.SUCCESS, "Architect planned for: " + goal),
-                new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
+        context = scope.append(resultWithMessages(StopReason.SUCCESS, "Architect planned for: " + goal));
     }
 
     @Tool(
@@ -294,13 +292,11 @@ public class ArchitectAgent {
         io.llmOutput("**Search Agent** engaged: " + goal, ChatMessageType.AI);
         var searchResult = searchAgent.execute();
         // Synchronize local context with search results before continuing
-        context =
-                scope.append(searchResult, new TaskMeta(TaskType.SEARCH, ModelConfig.from(scanModel, cm.getService())));
+        context = scope.append(searchResult);
 
         // Run Architect proper
         var archResult = this.execute();
-        context = scope.append(
-                archResult, new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
+        context = scope.append(archResult);
         return archResult;
     }
 
@@ -647,12 +643,19 @@ public class ArchitectAgent {
                 "Architect finished work for: " + goal,
                 io.getLlmRawMessages(),
                 context,
-                new TaskResult.StopDetails(StopReason.SUCCESS));
+                new TaskResult.StopDetails(StopReason.SUCCESS),
+                new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     private TaskResult resultWithMessages(StopReason reason, String message) {
         // include the messages we exchanged with the LLM for any planning steps since we ran a sub-agent
-        return new TaskResult(cm, message, io.getLlmRawMessages(), context, new TaskResult.StopDetails(reason));
+        return new TaskResult(
+                cm,
+                message,
+                io.getLlmRawMessages(),
+                context,
+                new TaskResult.StopDetails(reason),
+                new TaskMeta(TaskType.ARCHITECT, ModelConfig.from(planningModel, cm.getService())));
     }
 
     private TaskResult resultWithMessages(StopReason reason) {
