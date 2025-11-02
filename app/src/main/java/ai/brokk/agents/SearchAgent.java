@@ -746,9 +746,10 @@ public class SearchAgent {
 
     /**
      * Scan initial context using ContextAgent and add recommendations to the workspace.
+     * Returns a TaskResult that the caller should append to scope.
      * Callers should invoke this before calling execute() if they want the initial context scan.
      */
-    public void scanInitialContext(StreamingChatModel model) throws InterruptedException {
+    public TaskResult scanInitialContext(StreamingChatModel model) throws InterruptedException {
         // Prune initial workspace when not empty
         performInitialPruningTurn(model);
 
@@ -758,17 +759,14 @@ public class SearchAgent {
         io.llmOutput("\n**Brokk Context Engine** analyzing repository context…\n", ChatMessageType.AI, true, false);
 
         var recommendation = contextAgent.getRecommendations(context);
-
-        var meta = new TaskResult.TaskMeta(TaskResult.Type.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
-        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal, meta);
-
         var md = recommendation.metadata();
+
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
             // create a history entry
-            context = scope.append(contextAgentResult);
+            var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
             metrics.recordContextScan(0, false, Set.of(), md);
-            return;
+            return contextAgentResult;
         }
 
         var totalTokens = contextAgent.calculateFragmentTokens(recommendation.fragments());
@@ -791,18 +789,20 @@ public class SearchAgent {
                     ChatMessageType.AI);
         }
 
-        // create a history entry
-        context = scope.append(contextAgentResult);
+        // create a history entry and return it
+        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
 
         // Track metrics
         Set<ProjectFile> filesAfterScan = getWorkspaceFileSet();
         Set<ProjectFile> filesAdded = new HashSet<>(filesAfterScan);
         filesAdded.removeAll(filesBeforeScan);
         metrics.recordContextScan(filesAdded.size(), false, toRelativePaths(filesAdded), md);
+
+        return contextAgentResult;
     }
 
-    public void scanInitialContext() throws InterruptedException {
-        scanInitialContext(cm.getService().getScanModel());
+    public TaskResult scanInitialContext() throws InterruptedException {
+        return scanInitialContext(cm.getService().getScanModel());
     }
 
     public void addToWorkspace(ContextAgent.RecommendationResult recommendationResult) {

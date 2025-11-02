@@ -1560,7 +1560,7 @@ public class ContextManager implements IContextManager, AutoCloseable {
         TaskResult result;
         try (var scope = beginTask(prompt, false, "Task")) {
             var agent = new ArchitectAgent(this, planningModel, codeModel, prompt, scope);
-            result = agent.executeWithSearch();
+            result = agent.executeWithScan();
         } finally {
             // mirror panel behavior
             checkBalanceAndNotify();

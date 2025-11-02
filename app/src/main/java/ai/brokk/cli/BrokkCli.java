@@ -381,7 +381,8 @@ public final class BrokkCli implements Callable<Integer> {
                 var agent = new SearchAgent(
                         cm.liveContext(), searchWorkspace, searchModel, EnumSet.of(Terminal.WORKSPACE), scope);
                 if (!disableContextScan) {
-                    agent.scanInitialContext(searchModel);
+                    var scanResult = agent.scanInitialContext(searchModel);
+                    scope.append(scanResult);
                 }
                 searchResult = agent.execute();
                 scope.append(searchResult);

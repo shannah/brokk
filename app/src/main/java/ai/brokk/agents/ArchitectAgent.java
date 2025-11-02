@@ -278,19 +278,13 @@ public class ArchitectAgent {
      *
      * <p>Returns the search result if it fails, otherwise returns the Architect result.
      */
-    public TaskResult executeWithSearch() throws InterruptedException {
+    public TaskResult executeWithScan() throws InterruptedException {
         // ContextAgent Scan
         var scanModel = cm.getService().getScanModel();
         var searchAgent =
                 new SearchAgent(context, goal, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), this.scope);
-        searchAgent.scanInitialContext();
-
-        // Hardcode a Search first using the scan model (fast, token-friendly).
-        // No errors here are fatal; this hardcoded search is intended as an optimization to save the architect a turn.
-        io.llmOutput("**Search Agent** engaged: " + goal, ChatMessageType.AI);
-        var searchResult = searchAgent.execute();
-        // Synchronize local context with search results before continuing
-        context = scope.append(searchResult);
+        var scanResult = searchAgent.scanInitialContext();
+        context = scope.append(scanResult);
 
         // Run Architect proper
         var archResult = this.execute();
