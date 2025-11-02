@@ -297,7 +297,9 @@ public class ContextSerializationTest {
             // Accept null or default-like meta (NONE + null model)
             if (actualMeta != null) {
                 assertEquals(
-                        TaskResult.Type.NONE, actualMeta.type(), "When expected meta is null, actual type should be NONE");
+                        TaskResult.Type.NONE,
+                        actualMeta.type(),
+                        "When expected meta is null, actual type should be NONE");
                 assertNull(actualMeta.primaryModel(), "When expected meta is null, actual primaryModel should be null");
             }
         } else {

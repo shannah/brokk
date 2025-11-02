@@ -7,7 +7,6 @@ import dev.langchain4j.exception.ContextTooLargeException;
 import java.util.List;
 import java.util.Locale;
 import java.util.Optional;
-
 import org.jetbrains.annotations.Nullable;
 
 /**

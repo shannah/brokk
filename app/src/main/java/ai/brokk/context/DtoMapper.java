@@ -73,7 +73,8 @@ public class DtoMapper {
                             || taskRefDto.primaryModelName() != null
                             || taskRefDto.primaryModelReasoning() != null;
                     if (anyMetaPresent && taskRefDto.primaryModelName() != null) {
-                        var type = TaskResult.Type.safeParse(taskRefDto.taskType()).orElse(TaskResult.Type.NONE);
+                        var type =
+                                TaskResult.Type.safeParse(taskRefDto.taskType()).orElse(TaskResult.Type.NONE);
                         var reasoning = Service.ReasoningLevel.fromString(
                                 taskRefDto.primaryModelReasoning(), Service.ReasoningLevel.DEFAULT);
                         var pm = new Service.ModelConfig(

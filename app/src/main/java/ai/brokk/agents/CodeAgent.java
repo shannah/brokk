@@ -370,7 +370,8 @@ public class CodeAgent {
         var finalMessages = prepareMessagesForTaskEntryLog(io.getLlmRawMessages());
 
         // Populate TaskMeta because this task engaged an LLM
-        var meta = new TaskResult.TaskMeta(TaskResult.Type.CODE, Service.ModelConfig.from(model, contextManager.getService()));
+        var meta = new TaskResult.TaskMeta(
+                TaskResult.Type.CODE, Service.ModelConfig.from(model, contextManager.getService()));
 
         var tr = new TaskResult(
                 contextManager, "Code: " + finalActionDescription, finalMessages, context, stopDetails, meta);
@@ -550,8 +551,8 @@ public class CodeAgent {
         }
 
         // Return TaskResult containing conversation and resulting context (populate TaskMeta since an LLM was used)
-        var quickMeta =
-                new TaskResult.TaskMeta(TaskResult.Type.CODE, Service.ModelConfig.from(model, contextManager.getService()));
+        var quickMeta = new TaskResult.TaskMeta(
+                TaskResult.Type.CODE, Service.ModelConfig.from(model, contextManager.getService()));
         return new TaskResult(
                 contextManager, "Quick Edit: " + file.getFileName(), pendingHistory, context, stopDetails, quickMeta);
     }
