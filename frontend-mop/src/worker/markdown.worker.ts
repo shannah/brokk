@@ -1,7 +1,9 @@
 import {initProcessor, parseMarkdown} from './processor';
-import type {ErrorMsg, InboundToWorker, OutboundFromWorker, ResultMsg, WorkerLogMsg,} from './shared';
+import type {ErrorMsg, InboundToWorker, OutboundFromWorker, ResultMsg} from './shared';
 import {currentExpandIds} from './expand-state';
-import {workerLogger} from '../lib/logging';
+import {createWorkerLogger} from '../lib/logging';
+
+const workerLogger = createWorkerLogger('markdown-worker');
 
 // Global error handlers for uncaught errors and promise rejections
 self.onerror = (event) => {
@@ -25,7 +27,7 @@ self.onunhandledrejection = (event) => {
     event.preventDefault();
 };
 
-workerLogger.info('[markdown-worker] Worker Startup: markdown.worker.ts loaded');
+workerLogger.info('Worker Startup: markdown.worker.ts loaded');
 initProcessor();
 
 let buffer = '';
@@ -38,19 +40,19 @@ self.onmessage = (ev: MessageEvent<InboundToWorker>) => {
     const m: InboundToWorker = ev.data;
     switch (m.type) {
         case 'parse':
-            workerLogger.debug('[md-worker] parse', m.seq, m.updateBuffer, m.text);
+            workerLogger.debug('parse', m.seq, m.updateBuffer, m.text);
             if (m.updateBuffer) {
                 buffer = m.text;
                 seq = m.seq;
             }
             // Capture current epoch for this run; only clear-state advances the epoch
-            const epochForThisRun = beginRun(m.updateBuffer);
+            const epochForThisRun = beginRun();
             // Yield to allow immediate superseding messages to bump the epoch; skip if stale
             void safeParseAndPostEpoch(m.seq, m.text, m.fast, epochForThisRun);
             break;
 
         case 'chunk':
-            workerLogger.debug('[md-worker] chunk', m.seq, m.text);
+            workerLogger.debug('chunk', m.seq, m.text);
             buffer += m.text;
             seq = m.seq;
             if (!busy) {
@@ -60,7 +62,7 @@ self.onmessage = (ev: MessageEvent<InboundToWorker>) => {
             break;
 
         case 'clear-state':
-            workerLogger.debug('[md-worker] clear-state', seq, m.flushBeforeClear);
+            workerLogger.debug('clear-state', seq, m.flushBeforeClear);
             if (m.flushBeforeClear && buffer.length > 0) {
                 // Intentionally flush before bumping the epoch to honor explicit flush requests
                 safeParseAndPost(seq, buffer);
@@ -91,7 +93,7 @@ async function parseAndPost(): Promise<void> {
     await new Promise(r => setTimeout(r, 5));
 
     if (seqForThisRun !== seq) {
-    workerLogger.debug('[md-worker] cancel guard: seqForThisRun !== seq', seqForThisRun, seq);
+    workerLogger.debug('cancel guard: seqForThisRun !== seq', seqForThisRun, seq);
         return;
     }
 
@@ -142,7 +144,7 @@ async function safeParseAndPostEpoch(
 
     // If another clear/parse superseded this run, skip starting the heavy parse
     if (epochForThisRun !== runEpoch) {
-        workerLogger.debug('[md-worker] stale parse skipped before start', seq, epochForThisRun, runEpoch);
+        workerLogger.debug('stale parse skipped before start', seq, epochForThisRun, runEpoch);
         return;
     }
 
@@ -171,5 +173,5 @@ function unhandledError(...args: unknown[]) {
             return String(arg);
         })
         .join(' ');
-    post(<WorkerLogMsg>{type: 'worker-log', level: 'error', message});
+    workerLogger.error(message);
 }

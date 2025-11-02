@@ -15,10 +15,13 @@ import type {OutboundFromWorker, ShikiLangsReadyMsg} from './shared';
 import {ensureLang} from './shiki/ensure-langs';
 import {shikiPluginPromise} from './shiki/shiki-plugin';
 import { resetForBubble } from '../lib/edit-block/id-generator';
+import { createWorkerLogger } from '../lib/logging';
 
 function post(msg: OutboundFromWorker) {
     self.postMessage(msg);
 }
+
+const workerLog = createWorkerLogger('md-processor');
 
 export function createBaseProcessor(): Processor {
     // Core processor without Shiki; consumers add rehype plugins on top.
@@ -43,7 +46,7 @@ export let highlighter: HighlighterCore | null = null;
 
 export function initProcessor() {
     // Asynchronously initialize Shiki and create a new processor with it.
-    console.log('[shiki] loading lib...');
+    workerLog.debug('[shiki] loading lib...');
     shikiPluginPromise
         .then(({rehypePlugin}) => {
             const [pluginFn, shikiHighlighter, opts] = rehypePlugin as any;
@@ -55,11 +58,11 @@ export function initProcessor() {
                 .use(rehypeToolCalls)
                 .use(rehypeEditDiff, shikiHighlighter);
             currentProcessor = shikiProcessor;
-            console.log('[shiki] loaded!');
+            workerLog.debug('[shiki] loaded!');
             post(<ShikiLangsReadyMsg>{type: 'shiki-langs-ready'});
         })
         .catch(e => {
-            console.error('[md-worker] Shiki init failed', e);
+            workerLog.error('Shiki init failed', e);
         });
 }
 
@@ -77,7 +80,9 @@ function detectCodeFenceLangs(tree: Root): Set<string> {
     });
 
     const diffLangs = (tree as any).data?.detectedDiffLangs as Set<string> | undefined;
-    console.log('[md-worker] detected langs', detectedLangs, diffLangs);
+    const detectedArr = Array.from(detectedLangs);
+    const diffArr = diffLangs ? Array.from(diffLangs) : undefined;
+    workerLog.debug('detected langs', detectedArr, diffArr);
     diffLangs?.forEach(l => detectedLangs.add(l));
     return detectedLangs;
 }
@@ -91,7 +96,7 @@ export function parseMarkdown(seq: number, src: string, fast = false): HastRoot 
         resetForBubble(seq);
         tree = proc.runSync(proc.parse(src)) as HastRoot;
     } catch (e) {
-        console.error('[md-worker] parse failed', e);
+        workerLog.error('parse failed', e);
         throw e;
     }
     if (!fast && highlighter) {
