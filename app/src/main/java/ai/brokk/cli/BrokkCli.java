@@ -590,7 +590,8 @@ public final class BrokkCli implements Callable<Integer> {
                             planModel,
                             EnumSet.of(Terminal.ANSWER),
                             scope);
-                    agent.scanInitialContext();
+                    var tr = agent.scanInitialContext();
+                    context = scope.append(tr);
                     result = agent.execute();
                     context = scope.append(result);
                 } else if (build) {
@@ -641,7 +642,8 @@ public final class BrokkCli implements Callable<Integer> {
                             planModel,
                             EnumSet.of(Terminal.TASK_LIST),
                             scope);
-                    agent.scanInitialContext();
+                    var tr = agent.scanInitialContext();
+                    context = scope.append(tr);
                     result = agent.execute();
                     context = scope.append(result);
 

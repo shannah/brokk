@@ -1711,7 +1711,8 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                     EnumSet.of(SearchAgent.Terminal.ANSWER, SearchAgent.Terminal.TASK_LIST),
                     scope);
             try {
-                agent.scanInitialContext();
+                var tr = agent.scanInitialContext();
+                scope.append(tr);
             } catch (InterruptedException e) {
                 Thread.currentThread().interrupt();
                 return new TaskResult(

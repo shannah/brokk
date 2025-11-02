@@ -760,11 +760,11 @@ public class SearchAgent {
 
         var recommendation = contextAgent.getRecommendations(context);
         var md = recommendation.metadata();
+        var meta = new TaskResult.TaskMeta(TaskResult.Type.CONTEXT, Service.ModelConfig.from(model, cm.getService()));
 
         if (!recommendation.success() || recommendation.fragments().isEmpty()) {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
-            // create a history entry
-            var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
+            var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal, meta);
             metrics.recordContextScan(0, false, Set.of(), md);
             return contextAgentResult;
         }
@@ -790,7 +790,7 @@ public class SearchAgent {
         }
 
         // create a history entry and return it
-        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal);
+        var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal, meta);
 
         // Track metrics
         Set<ProjectFile> filesAfterScan = getWorkspaceFileSet();
