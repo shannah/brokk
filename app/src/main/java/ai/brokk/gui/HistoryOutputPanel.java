@@ -2386,14 +2386,10 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                     String taskType = null;
                     if (titleHint.contains(InstructionsPanel.ACTION_CODE)) {
                         taskType = InstructionsPanel.ACTION_CODE;
-                    } else if (titleHint.contains(InstructionsPanel.ACTION_ARCHITECT)) {
-                        taskType = InstructionsPanel.ACTION_ARCHITECT;
                     } else if (titleHint.contains(InstructionsPanel.ACTION_SEARCH)) {
                         taskType = InstructionsPanel.ACTION_SEARCH;
                     } else if (titleHint.contains(InstructionsPanel.ACTION_ASK)) {
                         taskType = InstructionsPanel.ACTION_ASK;
-                    } else if (titleHint.contains(InstructionsPanel.ACTION_RUN)) {
-                        taskType = InstructionsPanel.ACTION_RUN;
                     }
                     if (taskType != null) {
                         windowTitle = String.format("Output (%s in progress)", taskType);
@@ -2568,9 +2564,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
                     if (comp instanceof JLabel lbl) {
                         if (ctx.isAiResult() && meta != null) {
                             var chosen = iconFor(meta.type());
-                            if (chosen != null) {
-                                lbl.setIcon(chosen);
-                            }
+                            lbl.setIcon(chosen);
                         } else if (!ctx.isAiResult()) {
                             // Ensure non-AI rows have no type icon override
                             lbl.setIcon(null);
