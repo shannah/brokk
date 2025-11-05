@@ -3,14 +3,12 @@ package ai.brokk.context;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
-import ai.brokk.*;
 import ai.brokk.AnalyzerUtil;
 import ai.brokk.AnalyzerUtil.CodeWithSource;
 import ai.brokk.ContextManager;
 import ai.brokk.IContextManager;
 import ai.brokk.IProject;
 import ai.brokk.TaskEntry;
-import ai.brokk.analyzer.*;
 import ai.brokk.analyzer.BrokkFile;
 import ai.brokk.analyzer.CallGraphProvider;
 import ai.brokk.analyzer.CallSite;
@@ -40,6 +38,8 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Collectors;
 import java.util.stream.Stream;
 import javax.imageio.ImageIO;
+import org.apache.logging.log4j.LogManager;
+import org.apache.logging.log4j.Logger;
 import org.fife.ui.rsyntaxtextarea.FileTypeUtil;
 import org.fife.ui.rsyntaxtextarea.SyntaxConstants;
 import org.jetbrains.annotations.Nullable;
@@ -1307,6 +1307,7 @@ public interface ContextFragment {
 
     /** Dynamic fragment that wraps a single CodeUnit and renders the full source */
     class CodeFragment extends VirtualFragment { // Dynamic, uses nextId
+        private static final Logger logger = LogManager.getLogger(CodeFragment.class);
         private final CodeUnit unit;
 
         public CodeFragment(IContextManager contextManager, CodeUnit unit) {
@@ -1375,7 +1376,10 @@ public interface ContextFragment {
 
         @Override
         public Set<CodeUnit> sources() {
-            return unit.classUnit().map(Set::of).orElseThrow();
+            return unit.classUnit().map(Set::of).orElseGet(() -> {
+                logger.warn("No class unit available for: {}", unit.fqName());
+                return Set.of();
+            });
         }
 
         @Override
