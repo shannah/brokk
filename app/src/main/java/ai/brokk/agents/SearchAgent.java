@@ -50,6 +50,8 @@ import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.jetbrains.annotations.Nullable;
 
+import static java.util.Objects.requireNonNull;
+
 /**
  * SearchAgent: - Uses tools to both answer questions AND curate Workspace context for follow-on coding. - Starts by
  * calling ContextAgent to add recommended fragments to the Workspace. - Adds every learning step to Context history (no
@@ -102,7 +104,10 @@ public class SearchAgent {
         this.io = cm.getIo();
         this.llm = cm.getLlm(new Llm.Options(model, "Search: " + goal).withEcho());
         this.llm.setOutput(io);
-        this.summarizer = cm.getLlm(cm.getService().quickModel(), "Summarizer: " + goal);
+        var summarizeConfig = new Service.ModelConfig(cm.getService().nameOf(cm.getService().getScanModel()),
+                                                 Service.ReasoningLevel.DISABLE);
+        var summarizeModel = requireNonNull(cm.getService().getModel(summarizeConfig));
+        this.summarizer = cm.getLlm(summarizeModel, "Summarizer: " + goal);
 
         this.beastMode = false;
         this.allowedTerminals = Set.copyOf(allowedTerminals);
