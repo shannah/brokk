@@ -35,7 +35,7 @@ public final class AutoPlayGateDialog extends JDialog {
         CANCEL
     }
 
-    private AutoPlayGateDialog(Window owner, Set<String> incompleteTasks) {
+    private AutoPlayGateDialog(@Nullable Window owner, Set<String> incompleteTasks) {
         super(owner, "Incomplete Tasks", Dialog.ModalityType.APPLICATION_MODAL);
         this.incompleteTasks = incompleteTasks;
         buildUI();
