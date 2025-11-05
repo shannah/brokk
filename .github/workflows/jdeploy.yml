@@ -55,7 +55,7 @@ jobs:
           jq '.jdeploy.jar = "${{ steps.jar.outputs.jar_file }}"' package.json > package.tmp.json && mv package.tmp.json package.json
       
       - name: Build App Installer Bundles
-        uses: shannah/jdeploy@update-client4j-launchers-19053740091
+        uses: shannah/jdeploy@feature/github-direct-download
         with:
           github_token: ${{ github.token }}
           jdeploy_version: '5.4.2-dev.0'
