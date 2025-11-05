@@ -225,7 +225,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
                 IAnalyzer result = prev.update();
                 long duration = System.currentTimeMillis() - startTime;
                 logger.info(
-                        "Library ingestion: {} analyzer refresh completed in {}ms", getLanguageDescription(), duration);
+                        "{} overflow analyzer refresh completed in {}ms", getLanguageDescription(), duration);
                 return result;
             });
             return; // No need to process individual files after full rebuild
@@ -233,7 +233,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
 
         // 2) Filter for analyzer-relevant files
         var trackedFiles = project.getRepo().getTrackedFiles();
-        var projectLanguages = project.getAnalyzerLanguages();
+        var projectLanguages = requireNonNull(currentAnalyzer).languages();
 
         // Only consider tracked files that match our analyzer's language extensions
         var relevantFiles = batch.files.stream()
@@ -267,7 +267,7 @@ public class AnalyzerWrapper implements IWatchService.Listener, IAnalyzerWrapper
             IAnalyzer result = prev.update(relevantFiles);
             long duration = System.currentTimeMillis() - startTime;
             logger.info(
-                    "Library ingestion: {} analyzer processed {} files in {}ms",
+                    "{} analyzer update processed {} files in {}ms",
                     getLanguageDescription(),
                     relevantFiles.size(),
                     duration);
