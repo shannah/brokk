@@ -1470,11 +1470,9 @@ public interface ContextFragment {
 
         @Override
         public Set<CodeUnit> sources() {
+            // FIXME this is broken, needs to include the actual call sites as well
             IAnalyzer analyzer = getAnalyzer();
-            return analyzer.getDefinition(methodName)
-                    .flatMap(CodeUnit::classUnit) // Get the containing class CodeUnit
-                    .map(Set::of)
-                    .orElse(Set.of());
+            return analyzer.getDefinition(methodName).map(Set::of).orElse(Set.of());
         }
 
         @Override
