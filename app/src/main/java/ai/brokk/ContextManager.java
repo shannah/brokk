@@ -2070,8 +2070,16 @@ public class ContextManager implements IContextManager, AutoCloseable {
                     return null;
                 }
                 project.saveStyleGuide(styleGuide);
+
+                String savedFileName;
+                Path agentsPath = project.getMasterRootPathForConfig().resolve(AbstractProject.STYLE_GUIDE_FILE);
+                if (Files.exists(agentsPath)) {
+                    savedFileName = "AGENTS.md";
+                } else {
+                    savedFileName = ".brokk/style.md";
+                }
                 io.showNotification(
-                        IConsoleIO.NotificationRole.INFO, "Style guide generated and saved to .brokk/style.md");
+                        IConsoleIO.NotificationRole.INFO, "Style guide generated and saved to " + savedFileName);
             } catch (Exception e) {
                 logger.error("Error generating style guide", e);
             }
