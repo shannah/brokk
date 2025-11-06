@@ -120,8 +120,16 @@ if $DEBUG_ENABLED && ! $jdwp_specified; then
 fi
 
 # Launch BrokkCli with the JVM flags first, then classpath, then app args
-exec java \
+# Try the first class name; if it fails, try the fallback
+java \
      "${EFFECTIVE_JVM_ARGS[@]}" \
      -cp "$CLASSPATH" \
      ai.brokk.cli.BrokkCli \
+     "${APP_ARGS[@]-}" && exit 0
+
+# Fallback to alternative class name
+exec java \
+     "${EFFECTIVE_JVM_ARGS[@]}" \
+     -cp "$CLASSPATH" \
+     io.github.jbellis.brokk.cli.BrokkCli \
      "${APP_ARGS[@]-}"
