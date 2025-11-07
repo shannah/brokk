@@ -20,10 +20,8 @@ public abstract class ArchitectPrompts extends CodePrompts {
         // Collect project-backed file paths from current context (nearest-first resolution uses parent dirs).
         var masterRoot = cm.getProject().getMasterRootPathForConfig();
         var projectFilePaths = ctx.fileFragments()
-                .map(f -> (ContextFragment.PathFragment) f)
-                .map(ContextFragment.PathFragment::file)
-                .filter(bf -> bf instanceof ProjectFile)
-                .map(bf -> ((ProjectFile) bf).getRelPath())
+                .flatMap(cf -> cf.files().stream())
+                .map(bf -> bf.getRelPath())
                 .map(masterRoot::resolve)
                 .collect(Collectors.toSet());
 
