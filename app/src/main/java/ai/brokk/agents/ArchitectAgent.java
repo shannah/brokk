@@ -234,8 +234,7 @@ public class ArchitectAgent {
         io.llmOutput("**Search Agent** engaged: " + query, ChatMessageType.AI);
         var searchAgent =
                 new SearchAgent(context, query, planningModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), scope);
-        var tr = searchAgent.scanInitialContext();
-        context = scope.append(tr);
+        searchAgent.scanInitialContext();
         var result = searchAgent.execute();
         // DO NOT set this.context here, it is not threadsafe; the main agent loop will update it via the threadlocal
         threadlocalSearchResult.set(result);
@@ -283,8 +282,7 @@ public class ArchitectAgent {
         var scanModel = cm.getService().getScanModel();
         var searchAgent =
                 new SearchAgent(context, goal, scanModel, EnumSet.of(SearchAgent.Terminal.WORKSPACE), this.scope);
-        var scanResult = searchAgent.scanInitialContext();
-        context = scope.append(scanResult);
+        searchAgent.scanInitialContext();
 
         // Run Architect proper
         var archResult = this.execute();

@@ -74,6 +74,7 @@ public class SearchAgent {
 
     private final IContextManager cm;
     private final StreamingChatModel model;
+    private final ContextManager.TaskScope scope;
     private final Llm llm;
     private final Llm summarizer;
     private final IConsoleIO io;
@@ -100,6 +101,7 @@ public class SearchAgent {
         this.goal = goal;
         this.cm = initialContext.getContextManager();
         this.model = model;
+        this.scope = scope;
 
         this.io = cm.getIo();
         this.llm = cm.getLlm(new Llm.Options(model, "Search: " + goal).withEcho());
@@ -753,7 +755,7 @@ public class SearchAgent {
      * Returns a TaskResult that the caller should append to scope.
      * Callers should invoke this before calling execute() if they want the initial context scan.
      */
-    public TaskResult scanInitialContext(StreamingChatModel model) throws InterruptedException {
+    public void scanInitialContext(StreamingChatModel model) throws InterruptedException {
         // Prune initial workspace when not empty
         performInitialPruningTurn(model);
 
@@ -770,7 +772,7 @@ public class SearchAgent {
             io.llmOutput("\n\nNo additional context insights found\n", ChatMessageType.CUSTOM);
             var contextAgentResult = createResult("Brokk Context Agent: " + goal, goal, meta);
             metrics.recordContextScan(0, false, Set.of(), md);
-            return contextAgentResult;
+            context = scope.append(contextAgentResult);
         }
 
         var totalTokens = contextAgent.calculateFragmentTokens(recommendation.fragments());
@@ -802,12 +804,11 @@ public class SearchAgent {
         Set<ProjectFile> filesAdded = new HashSet<>(filesAfterScan);
         filesAdded.removeAll(filesBeforeScan);
         metrics.recordContextScan(filesAdded.size(), false, toRelativePaths(filesAdded), md);
-
-        return contextAgentResult;
+        context = scope.append(contextAgentResult);
     }
 
-    public TaskResult scanInitialContext() throws InterruptedException {
-        return scanInitialContext(cm.getService().getScanModel());
+    public void scanInitialContext() throws InterruptedException {
+        scanInitialContext(cm.getService().getScanModel());
     }
 
     public void addToWorkspace(ContextAgent.RecommendationResult recommendationResult) {
