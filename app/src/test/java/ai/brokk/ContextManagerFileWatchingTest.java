@@ -58,13 +58,35 @@ class ContextManagerFileWatchingTest {
 
     @AfterEach
     void tearDown() throws Exception {
+        // Close resources in proper order to prevent cleanup issues (see #1585)
+        // 1. Close ContextManager first to stop file watchers and background tasks
+        // 2. Close SessionManager to release file handles
+        // 3. Allow time for background threads to fully terminate
+
+        if (contextManager != null) {
+            try {
+                contextManager.close();
+            } catch (Exception e) {
+                // Log but don't fail the test during cleanup
+                System.err.println("Warning: Failed to close ContextManager: " + e.getMessage());
+            }
+        }
+
         // Close the SessionManager to release file handles on Windows.
         // MainProject creates a SessionManager which scans the .brokk/sessions directory
         // and opens zip files. On Windows, these file handles prevent @TempDir cleanup
         // even though the threads are daemon. Explicitly closing ensures proper cleanup.
         if (project != null) {
-            project.getSessionManager().close();
+            try {
+                project.getSessionManager().close();
+            } catch (Exception e) {
+                System.err.println("Warning: Failed to close SessionManager: " + e.getMessage());
+            }
         }
+
+        // Give background threads time to finish cleanup, especially on macOS
+        // where file system operations may be slower
+        Thread.sleep(100);
     }
 
     /**
@@ -150,6 +172,9 @@ class ContextManagerFileWatchingTest {
         // Wait for async task to complete
         assertTrue(testIO.gitRepoUpdateLatch.await(5, TimeUnit.SECONDS), "updateGitRepo should be called");
         assertEquals(1, testIO.gitRepoUpdateCount.get(), "updateGitRepo should be called exactly once");
+
+        // Give background tasks time to fully complete before tearDown
+        Thread.sleep(100);
     }
 
     @Test
@@ -177,6 +202,9 @@ class ContextManagerFileWatchingTest {
         assertTrue(
                 testIO.commitPanelUpdateCount.get() >= 1,
                 "updateCommitPanel should be called for tracked file changes");
+
+        // Give background tasks time to fully complete before tearDown
+        Thread.sleep(100);
     }
 
     @Test
@@ -204,6 +232,9 @@ class ContextManagerFileWatchingTest {
         assertTrue(
                 testIO.commitPanelUpdateCount.get() >= 1,
                 "updateCommitPanel should be called for tracked file changes");
+
+        // Give background tasks time to fully complete before tearDown
+        Thread.sleep(100);
     }
 
     @Test
@@ -223,6 +254,9 @@ class ContextManagerFileWatchingTest {
         assertTrue(
                 testIO.commitPanelUpdateLatch.await(5, TimeUnit.SECONDS),
                 "updateCommitPanel should be called even with empty set");
+
+        // Give background tasks time to fully complete before tearDown
+        Thread.sleep(100);
     }
 
     @Test
@@ -277,6 +311,9 @@ class ContextManagerFileWatchingTest {
         assertTrue(
                 testIO.commitPanelUpdateLatch.await(5, TimeUnit.SECONDS),
                 "Tracked file change should trigger updateCommitPanel");
+
+        // Give background tasks time to fully complete before tearDown
+        Thread.sleep(100);
     }
 
     @Test
