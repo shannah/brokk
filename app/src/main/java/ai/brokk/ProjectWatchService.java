@@ -40,6 +40,7 @@ public class ProjectWatchService implements IWatchService {
 
     private volatile boolean running = true;
     private volatile int pauseCount = 0;
+    private volatile boolean shouldDrainOnResume = false;
 
     /**
      * Create a ProjectWatchService with multiple listeners.
@@ -129,6 +130,12 @@ public class ProjectWatchService implements IWatchService {
                 // Wait if paused
                 while (pauseCount > 0) {
                     Thread.onSpinWait();
+                }
+
+                // If we just resumed, drain any queued events
+                if (shouldDrainOnResume) {
+                    shouldDrainOnResume = false;
+                    drainQueuedEvents(watchService);
                 }
 
                 // Choose a short or long poll depending on focus
@@ -366,6 +373,11 @@ public class ProjectWatchService implements IWatchService {
         logger.debug("Resuming file watcher");
         if (pauseCount > 0) {
             pauseCount--;
+            if (pauseCount == 0) {
+                // Signal that we should drain any queued events after exiting pause
+                shouldDrainOnResume = true;
+                logger.debug("Will drain queued events after resume");
+            }
         }
     }
 
@@ -390,6 +402,35 @@ public class ProjectWatchService implements IWatchService {
     public synchronized void close() {
         running = false;
         pauseCount = 0; // Ensure any waiting thread is woken up to exit
+    }
+
+    /**
+     * Drains any events that were queued during a pause period.
+     * This ensures that file system events that occurred while paused are processed after resume.
+     */
+    private void drainQueuedEvents(WatchService watchService) throws InterruptedException {
+        logger.debug("Draining queued events after resume");
+
+        // Give the file system a brief moment to ensure events are queued
+        Thread.sleep(100);
+
+        // Collect all immediately available events (poll with zero timeout)
+        var batch = new EventBatch();
+        WatchKey key;
+        int eventCount = 0;
+
+        while ((key = watchService.poll()) != null) {
+            collectEventsFromKey(key, watchService, batch);
+            eventCount++;
+        }
+
+        // Notify listeners if we found any events
+        if (!batch.files.isEmpty() || batch.isOverflowed) {
+            logger.debug("Drained {} watch keys with {} file events", eventCount, batch.files.size());
+            notifyFilesChanged(batch);
+        } else {
+            logger.debug("No queued events found after resume");
+        }
     }
 
     /**

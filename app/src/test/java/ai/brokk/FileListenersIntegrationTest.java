@@ -12,6 +12,7 @@ import java.util.List;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.AfterEach;
 import org.junit.jupiter.api.Test;
@@ -163,6 +164,61 @@ class FileListenersIntegrationTest {
     }
 
     /**
+     * Test that external pause/resume (e.g., by ContextManager) doesn't break the analyzer.
+     * This test verifies that events created during pause are properly processed after resume.
+     *
+     * Run manually with:
+     * ./gradlew test --tests FileListenersIntegrationTest.testExternalPauseResumeDoesNotBreakAnalyzer
+     */
+    @Test
+    void testExternalPauseResumeDoesNotBreakAnalyzer() throws Exception {
+        // Setup
+        var projectRoot = tempDir.resolve("project");
+        Files.createDirectories(projectRoot);
+        Files.writeString(projectRoot.resolve("Test.java"), "public class Test {}");
+        var project = new TestProject(projectRoot, Languages.JAVA);
+
+        // Create watch service and AnalyzerWrapper
+        watchService = new ProjectWatchService(projectRoot, null, List.of());
+        // Pass null for analyzerListener to avoid git repo access in tests
+        analyzerWrapper = new AnalyzerWrapper(project, null, watchService);
+
+        // Add external listener with improved synchronization
+        var externalListener = new TestExternalListenerWithResumeFlag();
+        watchService.addListener(externalListener);
+
+        // Start watching
+        watchService.start(java.util.concurrent.CompletableFuture.completedFuture(null));
+        Thread.sleep(500);
+
+        // External component pauses via getWatchService()
+        analyzerWrapper.getWatchService().pause();
+        assertTrue(analyzerWrapper.getWatchService().isPaused(), "Should be paused");
+
+        // Create a file while paused
+        Files.writeString(projectRoot.resolve("Paused.java"), "public class Paused {}");
+
+        // Wait to ensure file system has registered the change
+        Thread.sleep(1000);
+
+        // Verify still paused and no events received yet
+        assertTrue(analyzerWrapper.getWatchService().isPaused(), "Should still be paused");
+        assertFalse(externalListener.receivedEventAfterResume.get(), "Should not have received event while paused");
+
+        // External component resumes
+        externalListener.markResumed();
+        analyzerWrapper.getWatchService().resume();
+        assertFalse(analyzerWrapper.getWatchService().isPaused(), "Should not be paused");
+
+        // Events should now be processed (the draining mechanism should deliver them)
+        assertTrue(
+                externalListener.eventAfterResumeLatch.await(5, TimeUnit.SECONDS),
+                "Events should be processed after resume");
+
+        assertTrue(externalListener.receivedEventAfterResume.get(), "Should have received event after resume");
+    }
+
+    /**
      * Test that multiple components can access watch service via getWatchService().
      */
     @Test
@@ -213,6 +269,30 @@ class FileListenersIntegrationTest {
         public void onFilesChanged(EventBatch batch) {
             filesChangedCount.incrementAndGet();
             filesChangedLatch.countDown();
+        }
+
+        @Override
+        public void onNoFilesChangedDuringPollInterval() {}
+    }
+
+    /**
+     * Test listener that tracks whether events were received after resume.
+     */
+    private static class TestExternalListenerWithResumeFlag implements Listener {
+        private final AtomicBoolean resumeOccurred = new AtomicBoolean(false);
+        private final AtomicBoolean receivedEventAfterResume = new AtomicBoolean(false);
+        private final CountDownLatch eventAfterResumeLatch = new CountDownLatch(1);
+
+        void markResumed() {
+            resumeOccurred.set(true);
+        }
+
+        @Override
+        public void onFilesChanged(EventBatch batch) {
+            if (resumeOccurred.get() && !batch.files.isEmpty()) {
+                receivedEventAfterResume.set(true);
+                eventAfterResumeLatch.countDown();
+            }
         }
 
         @Override

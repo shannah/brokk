@@ -206,6 +206,98 @@ class ProjectWatchServiceTest {
     }
 
     /**
+     * Test that events created during pause are delivered after resume (event draining).
+     * This is a focused unit test for the draining mechanism added to fix issue #1618.
+     */
+    @Test
+    void testPauseResumeDrainsQueuedEvents() throws Exception {
+        TestListener listener = new TestListener("DrainListener");
+        watchService = new ProjectWatchService(tempDir, null, List.of(listener));
+        watchService.start(CompletableFuture.completedFuture(null));
+
+        // Give watcher time to initialize
+        Thread.sleep(500);
+
+        // Pause the watch service
+        watchService.pause();
+        assertTrue(watchService.isPaused(), "Watch service should be paused");
+
+        // Create a file while paused
+        Path testFile = tempDir.resolve("paused-test.txt");
+        Files.writeString(testFile, "content during pause");
+
+        // Wait to ensure file system event has been generated
+        Thread.sleep(500);
+
+        // Listener should not have received event yet (still paused)
+        int countBeforeResume = listener.filesChangedCount.get();
+
+        // Resume and wait for draining
+        watchService.resume();
+        assertFalse(watchService.isPaused(), "Watch service should not be paused");
+
+        // The draining mechanism should deliver the queued event
+        assertTrue(
+                listener.filesChangedLatch.await(5, TimeUnit.SECONDS),
+                "Listener should receive queued event after resume via draining");
+
+        // Verify the listener received the event
+        assertTrue(
+                listener.filesChangedCount.get() > countBeforeResume,
+                "Listener should have received at least one event after resume");
+
+        // Verify the batch contains the file we created
+        assertNotNull(listener.lastBatch, "Listener should have received a batch");
+        assertFalse(listener.lastBatch.files.isEmpty(), "Batch should contain files");
+        assertTrue(
+                listener.lastBatch.files.stream()
+                        .anyMatch(pf -> pf.getRelPath().toString().equals("paused-test.txt")),
+                "Batch should contain the file created during pause");
+    }
+
+    /**
+     * Test that multiple pause/resume cycles work correctly with event draining.
+     */
+    @Test
+    void testMultiplePauseResumeCycles() throws Exception {
+        TestListener listener = new TestListener("CycleListener");
+        watchService = new ProjectWatchService(tempDir, null, List.of(listener));
+        watchService.start(CompletableFuture.completedFuture(null));
+
+        Thread.sleep(500);
+
+        // First cycle
+        watchService.pause();
+        Files.writeString(tempDir.resolve("cycle1.txt"), "first cycle");
+        Thread.sleep(500);
+        watchService.resume();
+        Thread.sleep(500); // Wait for draining
+
+        // Second cycle
+        watchService.pause();
+        Files.writeString(tempDir.resolve("cycle2.txt"), "second cycle");
+        Thread.sleep(500);
+        watchService.resume();
+        Thread.sleep(500); // Wait for draining
+
+        // Third cycle
+        watchService.pause();
+        Files.writeString(tempDir.resolve("cycle3.txt"), "third cycle");
+        Thread.sleep(500);
+        watchService.resume();
+
+        // Wait for all events to be processed
+        Thread.sleep(1000);
+
+        // Listener should have received at least one event (proving mechanism works)
+        // We can't guarantee all 3 due to file system timing, but should get at least one
+        assertTrue(
+                listener.filesChangedCount.get() >= 1,
+                "Listener should have received events from pause/resume cycles, got: "
+                        + listener.filesChangedCount.get());
+    }
+
+    /**
      * Test that empty listener list doesn't cause errors.
      */
     @Test
