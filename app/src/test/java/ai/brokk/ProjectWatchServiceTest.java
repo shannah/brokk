@@ -212,7 +212,7 @@ class ProjectWatchServiceTest {
     @Test
     void testPauseResumeDrainsQueuedEvents() throws Exception {
         TestListener listener = new TestListener("DrainListener");
-        watchService = new ProjectWatchService(tempDir, null, List.of(listener));
+        watchService = new ProjectWatchService(tempDir, null, null, List.of(listener));
         watchService.start(CompletableFuture.completedFuture(null));
 
         // Give watcher time to initialize
@@ -261,7 +261,7 @@ class ProjectWatchServiceTest {
     @Test
     void testMultiplePauseResumeCycles() throws Exception {
         TestListener listener = new TestListener("CycleListener");
-        watchService = new ProjectWatchService(tempDir, null, List.of(listener));
+        watchService = new ProjectWatchService(tempDir, null, null, List.of(listener));
         watchService.start(CompletableFuture.completedFuture(null));
 
         Thread.sleep(500);

@@ -179,7 +179,7 @@ class FileListenersIntegrationTest {
         var project = new TestProject(projectRoot, Languages.JAVA);
 
         // Create watch service and AnalyzerWrapper
-        watchService = new ProjectWatchService(projectRoot, null, List.of());
+        watchService = new ProjectWatchService(projectRoot, null, null, List.of());
         // Pass null for analyzerListener to avoid git repo access in tests
         analyzerWrapper = new AnalyzerWrapper(project, null, watchService);
 
