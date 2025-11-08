@@ -58,4 +58,4 @@ jobs:
         uses: shannah/jdeploy@feature/github-direct-download
         with:
           github_token: ${{ github.token }}
-          jdeploy_version: '5.4.2-dev.3'
+          jdeploy_version: '5.4.2-dev.4'
