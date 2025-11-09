@@ -12,6 +12,7 @@ import java.nio.file.attribute.BasicFileAttributes;
 import java.util.Collection;
 import java.util.HashSet;
 import java.util.Set;
+import javax.annotation.Nullable;
 import org.apache.logging.log4j.LogManager;
 import org.apache.logging.log4j.Logger;
 import org.eclipse.jgit.api.errors.GitAPIException;
@@ -20,6 +21,8 @@ import org.eclipse.jgit.api.errors.GitAPIException;
 public class LocalFileRepo implements IGitRepo {
     private static final Logger logger = LogManager.getLogger(LocalFileRepo.class);
     private final Path root;
+
+    @Nullable
     private Set<ProjectFile> trackedFilesCache;
 
     public LocalFileRepo(Path root) {
