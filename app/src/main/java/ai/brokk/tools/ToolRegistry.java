@@ -78,41 +78,13 @@ public class ToolRegistry {
             Map.entry("addMethodsToWorkspace", "Adding method sources to workspace"),
             Map.entry("dropWorkspaceFragments", "Removing from workspace"),
             Map.entry("recommendContext", "Recommending context"),
-            Map.entry("createTaskList", "Creating task list"));
+            Map.entry("createTaskList", "Creating task list"),
+            Map.entry("callCodeAgent", "Calling code agent"),
+            Map.entry("performedInitialReview", "Performed initial review"));
 
     /** Returns a human-readable headline for the given tool. Falls back to the tool name if there is no mapping. */
     private static String headlineFor(String toolName) {
         return HEADLINES.getOrDefault(toolName, toolName);
-    }
-
-    /** Helper to render a simple YAML block from a validated invocation. */
-    private static String toYaml(ValidatedInvocation vi) {
-        var named = new LinkedHashMap<String, Object>();
-        var params = vi.method().getParameters();
-        var values = vi.parameters();
-        assert params.length == values.size();
-        for (int i = 0; i < params.length; i++) {
-            named.put(params[i].getName(), values.get(i));
-        }
-        var args = (Map<String, Object>) named;
-
-        var sb = new StringBuilder();
-        for (var entry : args.entrySet()) {
-            var key = entry.getKey();
-            var value = entry.getValue();
-            if (value instanceof Collection<?> list) {
-                sb.append(key).append(":\n");
-                for (var item : list) {
-                    sb.append("  - ").append(item).append("\n");
-                }
-            } else if (value instanceof String s && s.contains("\n")) {
-                sb.append(key).append(": |\n");
-                s.lines().forEach(line -> sb.append("  ").append(line).append("\n"));
-            } else {
-                sb.append(key).append(": ").append(value).append("\n");
-            }
-        }
-        return sb.toString();
     }
 
     /** Creates a new root ToolRegistry and self-registers internal tools. */
@@ -385,21 +357,23 @@ public class ToolRegistry {
         try {
             var vi = validateTool(request);
             var headline = headlineFor(request.name());
-
-            // Omit args block entirely for zero-parameter tools
-            var noArgs = vi.method().getParameterCount() == 0;
-            var argsYaml = noArgs ? "" : toYaml(vi);
-            return """
-                   `%s`
-                   ````yaml
-                   %s
-                   ````
-                   """
-                    .formatted(headline, argsYaml);
+            return ExplanationRenderer.renderExplanation(headline, buildArgsMap(vi));
         } catch (ToolValidationException e) {
             logger.debug("Could not generate explanation for tool request '{}': {}", request.name(), e.getMessage());
             return "Skip invalid tool request.";
         }
+    }
+
+    /** Helper to build a map of parameter names to values from a ValidatedInvocation. */
+    private static Map<String, Object> buildArgsMap(ValidatedInvocation vi) {
+        var named = new LinkedHashMap<String, Object>();
+        var params = vi.method().getParameters();
+        var values = vi.parameters();
+        assert params.length == values.size();
+        for (int i = 0; i < params.length; i++) {
+            named.put(params[i].getName(), values.get(i));
+        }
+        return named;
     }
 
     /** Deduplication helper producing one signature unit per element of the single list param. */

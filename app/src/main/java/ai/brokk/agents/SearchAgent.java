@@ -19,6 +19,7 @@ import ai.brokk.metrics.SearchMetrics;
 import ai.brokk.prompts.ArchitectPrompts;
 import ai.brokk.prompts.CodePrompts;
 import ai.brokk.prompts.McpPrompts;
+import ai.brokk.tools.ExplanationRenderer;
 import ai.brokk.tools.ToolExecutionResult;
 import ai.brokk.tools.ToolRegistry;
 import ai.brokk.tools.WorkspaceTools;
@@ -43,6 +44,7 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
@@ -836,6 +838,35 @@ public class SearchAgent {
         if (!skeletonFragments.isEmpty()) {
             context = context.addVirtualFragments(skeletonFragments);
         }
+
+        // Emit pseudo-tool explanation for UX parity
+        emitContextAddedExplanation(pathFragments, skeletonFragments);
+    }
+
+    private void emitContextAddedExplanation(
+            List<ContextFragment.ProjectPathFragment> pathFragments,
+            List<ContextFragment.SummaryFragment> skeletonFragments) {
+        var details = new LinkedHashMap<String, Object>();
+        details.put("fragmentCount", pathFragments.size() + skeletonFragments.size());
+
+        if (!pathFragments.isEmpty()) {
+            var paths = pathFragments.stream()
+                    .map(ppf -> ppf.file().toString())
+                    .sorted()
+                    .toList();
+            details.put("pathFragments", paths);
+        }
+
+        if (!skeletonFragments.isEmpty()) {
+            var skeletonNames = skeletonFragments.stream()
+                    .map(ContextFragment::description)
+                    .sorted()
+                    .toList();
+            details.put("skeletonFragments", skeletonNames);
+        }
+
+        var explanation = ExplanationRenderer.renderExplanation("Adding context to workspace", details);
+        io.llmOutput(explanation, ChatMessageType.AI);
     }
 
     // =======================
