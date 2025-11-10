@@ -1866,7 +1866,7 @@ public class HistoryOutputPanel extends JPanel implements ThemeAware {
      * Must be called on the EDT.
      */
     private void applyPresetIfNeeded(boolean isNewMessage) {
-        if (!isNewMessage || pendingHistory == null) {
+        if (pendingHistory == null) {
             return;
         }
 

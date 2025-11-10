@@ -1023,6 +1023,9 @@ public class Chrome
         // unlucky enough to be interrupted at exactly the wrong time, we retry instead.
         while (true) {
             try {
+                // flush all EDT tasks that were posted before this point (e.g., pending llmOutput appends)
+                SwingUtilities.invokeAndWait(() -> {});
+
                 final CompletableFuture<List<ChatMessage>> future = new CompletableFuture<>();
                 SwingUtilities.invokeAndWait(() -> future.complete(historyOutputPanel.getLlmRawMessages()));
                 return future.get();
