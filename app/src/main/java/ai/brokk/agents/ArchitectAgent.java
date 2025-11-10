@@ -26,7 +26,6 @@ import dev.langchain4j.agent.tool.ToolSpecification;
 import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
@@ -475,9 +474,9 @@ public class ArchitectAgent {
                 if (multipleRequests) {
                     var ignoredMsg =
                             "Ignored 'projectFinished' because other tool calls were present in the same turn.";
-                    var toolResult = ToolExecutionResult.failure(answerReq, ignoredMsg);
+                    var toolResult = ToolExecutionResult.requestError(answerReq, ignoredMsg);
                     // Record the ignored result in the architect message history so planning history reflects this.
-                    architectMessages.add(ToolExecutionResultMessage.from(answerReq, toolResult.resultText()));
+                    architectMessages.add(toolResult.toExecutionResultMessage());
                     logger.info("projectFinished ignored due to other tool calls present: {}", ignoredMsg);
                 } else {
                     logger.debug("LLM decided to projectFinished. We'll finalize and stop");
@@ -490,8 +489,8 @@ public class ArchitectAgent {
             if (abortReq != null) {
                 if (multipleRequests) {
                     var ignoredMsg = "Ignored 'abortProject' because other tool calls were present in the same turn.";
-                    var toolResult = ToolExecutionResult.failure(abortReq, ignoredMsg);
-                    architectMessages.add(ToolExecutionResultMessage.from(abortReq, toolResult.resultText()));
+                    var toolResult = ToolExecutionResult.requestError(abortReq, ignoredMsg);
+                    architectMessages.add(toolResult.toExecutionResultMessage());
                     logger.info("abortProject ignored due to other tool calls present: {}", ignoredMsg);
                 } else {
                     logger.debug("LLM decided to abortProject. We'll finalize and stop");
@@ -507,7 +506,7 @@ public class ArchitectAgent {
                 wst.setContext(context);
                 ToolExecutionResult toolResult = tr.executeTool(req);
                 context = wst.getContext();
-                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
+                architectMessages.add(toolResult.toExecutionResultMessage());
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
 
@@ -542,8 +541,7 @@ public class ArchitectAgent {
                     }
                     var outcome = future.get();
                     context = context.union(outcome.context());
-                    architectMessages.add(ToolExecutionResultMessage.from(
-                            request, outcome.toolResult().resultText()));
+                    architectMessages.add(outcome.toolResult().toExecutionResultMessage());
                     logger.debug(
                             "Collected result for tool '{}' => result: {}",
                             request.name(),
@@ -562,8 +560,8 @@ public class ArchitectAgent {
                             .formatted(Objects.toString(
                                     e.getCause() != null ? e.getCause().getMessage() : "Unknown error",
                                     "Unknown execution error"));
-                    var failure = ToolExecutionResult.failure(request, errorMessage);
-                    architectMessages.add(ToolExecutionResultMessage.from(request, failure.resultText()));
+                    var failure = ToolExecutionResult.requestError(request, errorMessage);
+                    architectMessages.add(failure.toExecutionResultMessage());
                 }
             }
             if (interrupted) {
@@ -579,7 +577,7 @@ public class ArchitectAgent {
                     return resultWithMessages(StopReason.LLM_ERROR);
                 }
 
-                architectMessages.add(ToolExecutionResultMessage.from(req, toolResult.resultText()));
+                architectMessages.add(toolResult.toExecutionResultMessage());
                 logger.debug("Executed tool '{}' => result: {}", req.name(), toolResult.resultText());
             }
 

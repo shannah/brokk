@@ -35,7 +35,6 @@ import dev.langchain4j.data.message.AiMessage;
 import dev.langchain4j.data.message.ChatMessage;
 import dev.langchain4j.data.message.ChatMessageType;
 import dev.langchain4j.data.message.SystemMessage;
-import dev.langchain4j.data.message.ToolExecutionResultMessage;
 import dev.langchain4j.data.message.UserMessage;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import dev.langchain4j.model.chat.request.ToolChoice;
@@ -270,7 +269,11 @@ public class SearchAgent {
                     }
 
                     // Write to visible transcript and to Context history
-                    sessionMessages.add(ToolExecutionResultMessage.from(req, display));
+                    var messageResult = exec;
+                    if (summarize) {
+                        messageResult = ToolExecutionResult.success(req, display);
+                    }
+                    sessionMessages.add(messageResult.toExecutionResultMessage());
 
                     // Track research categories to decide later if finalization is permitted
                     var category = categorizeTool(req.name());
@@ -290,7 +293,7 @@ public class SearchAgent {
                     var termExec = executeTool(termReq, tr, wst);
 
                     var display = termExec.resultText();
-                    sessionMessages.add(ToolExecutionResultMessage.from(termReq, display));
+                    sessionMessages.add(termExec.toExecutionResultMessage());
 
                     if (termExec.status() != ToolExecutionResult.Status.SUCCESS) {
                         return errorResult(
@@ -314,17 +317,12 @@ public class SearchAgent {
         }
     }
 
-    private ToolExecutionResult executeTool(ToolExecutionRequest req, ToolRegistry registry, WorkspaceTools wst) {
-        ToolExecutionResult termExec;
-        try {
-            metrics.recordToolCall(req.name());
-            termExec = registry.executeTool(req);
-            context = wst.getContext();
-        } catch (Exception e) {
-            logger.warn("Tool execution failed for {}: {}", req.name(), e.getMessage(), e);
-            termExec = ToolExecutionResult.failure(req, "Error: " + e.getMessage());
-        }
-        return termExec;
+    private ToolExecutionResult executeTool(ToolExecutionRequest req, ToolRegistry registry, WorkspaceTools wst)
+            throws InterruptedException {
+        metrics.recordToolCall(req.name());
+        var result = registry.executeTool(req);
+        context = wst.getContext();
+        return result;
     }
 
     // =======================
@@ -707,14 +705,10 @@ public class SearchAgent {
         sessionMessages.add(new UserMessage("Review the current workspace. If relevant, prune irrelevant fragments."));
         sessionMessages.add(result.aiMessage());
 
-        // Execute tool requests
+        // Execute tool requests (one shot; we're not responding back with results)
         var ai = ToolRegistry.removeDuplicateToolRequests(result.aiMessage());
         for (var req : ai.toolExecutionRequests()) {
-            try {
-                tr.executeTool(req);
-            } catch (Exception e) {
-                logger.warn("Tool execution failed during initial pruning for {}: {}", req.name(), e.getMessage());
-            }
+            tr.executeTool(req);
         }
         context = wst.getContext();
     }
