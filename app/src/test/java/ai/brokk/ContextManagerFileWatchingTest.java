@@ -53,6 +53,7 @@ class ContextManagerFileWatchingTest {
 
         project = new MainProject(projectRoot);
         contextManager = new ContextManager(project);
+        contextManager.createHeadless();
         testIO = new TestConsoleIO();
     }
 
