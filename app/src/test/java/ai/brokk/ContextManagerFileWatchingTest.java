@@ -66,7 +66,7 @@ class ContextManagerFileWatchingTest {
                 contextManager.close();
             } catch (Exception e) {
                 // Log but don't fail the test during cleanup
-                System.err.println("Warning: Failed to close ContextManager: " + e.getMessage());
+                e.printStackTrace();
             }
         }
     }
