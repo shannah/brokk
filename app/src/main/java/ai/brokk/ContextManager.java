@@ -772,39 +772,6 @@ public class ContextManager implements IContextManager, AutoCloseable {
         });
     }
 
-    /** Returns the configured Code model, falling back to the system model if unavailable. */
-    public StreamingChatModel getCodeModel() {
-        var config = project.getCodeModelConfig();
-        return getModelOrDefault(config, "Code");
-    }
-
-    public StreamingChatModel getModelOrDefault(Service.ModelConfig config, String modelTypeName) {
-        StreamingChatModel model = serviceProvider.get().getModel(config);
-        if (model != null) {
-            return model;
-        }
-
-        Service.ModelConfig config1 = new Service.ModelConfig(Service.GPT_5_MINI, Service.ReasoningLevel.DEFAULT);
-        model = serviceProvider.get().getModel(config1);
-        if (model != null) {
-            io.showNotification(
-                    IConsoleIO.NotificationRole.INFO,
-                    String.format(
-                            "Configured model '%s' for %s tasks is unavailable. Using fallback '%s'.",
-                            config.name(), modelTypeName, Service.GPT_5_MINI));
-            return model;
-        }
-
-        var quickModel = serviceProvider.get().quickModel();
-        String quickModelName = serviceProvider.get().nameOf(quickModel);
-        io.showNotification(
-                IConsoleIO.NotificationRole.INFO,
-                String.format(
-                        "Configured model '%s' for %s tasks is unavailable. Preferred fallbacks also failed. Using system model '%s'.",
-                        config.name(), modelTypeName, quickModelName));
-        return quickModel;
-    }
-
     /**
      * "Exclusive actions" are short-lived, local actions that prevent new LLM actions from being started while they
      * run; only one will run at a time. These will NOT be wired up to cancellation mechanics.
