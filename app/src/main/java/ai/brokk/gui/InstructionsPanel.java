@@ -4,6 +4,7 @@ import static ai.brokk.gui.Constants.*;
 import static java.util.Objects.requireNonNull;
 import static org.checkerframework.checker.nullness.util.NullnessUtil.castNonNull;
 
+import ai.brokk.AbstractService;
 import ai.brokk.Completions;
 import ai.brokk.ContextManager;
 import ai.brokk.IConsoleIO;
@@ -1014,7 +1015,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             int successRate,
             boolean isTested) {}
     /** Calculate cost estimate mirroring WorkspacePanel for only the model currently selected in InstructionsPanel. */
-    private String calculateCostEstimate(Service.ModelConfig config, int inputTokens, Service service) {
+    private String calculateCostEstimate(Service.ModelConfig config, int inputTokens, AbstractService service) {
         var pricing = service.getModelPricing(config.name());
         if (pricing.bands().isEmpty()) {
             return "";

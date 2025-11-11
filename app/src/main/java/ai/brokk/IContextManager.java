@@ -190,7 +190,7 @@ public interface IContextManager {
         return getProject().getRepo();
     }
 
-    default Service getService() {
+    default AbstractService getService() {
         throw new UnsupportedOperationException();
     }
 
