@@ -1,6 +1,6 @@
 package ai.brokk.util;
 
-import ai.brokk.Service;
+import ai.brokk.AbstractService;
 import dev.langchain4j.model.chat.StreamingChatModel;
 import java.util.concurrent.Callable;
 import java.util.concurrent.ExecutorService;
@@ -13,7 +13,7 @@ import java.util.concurrent.TimeUnit;
 import org.jetbrains.annotations.Nullable;
 
 public final class AdaptiveExecutor {
-    public static ExecutorService create(Service service, StreamingChatModel model, int taskCount) {
+    public static ExecutorService create(AbstractService service, StreamingChatModel model, int taskCount) {
         @Nullable Integer maxConcurrentRequests = service.getMaxConcurrentRequests(model);
         @Nullable Integer tokensPerMinute = service.getTokensPerMinute(model);
 

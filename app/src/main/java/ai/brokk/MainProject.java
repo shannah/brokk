@@ -1,6 +1,6 @@
 package ai.brokk;
 
-import ai.brokk.Service.ModelConfig;
+import ai.brokk.AbstractService.ModelConfig;
 import ai.brokk.agents.BuildAgent;
 import ai.brokk.analyzer.Language;
 import ai.brokk.analyzer.Languages;
