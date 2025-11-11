@@ -59,27 +59,13 @@ class ContextManagerFileWatchingTest {
     @AfterEach
     void tearDown() throws Exception {
         // Close resources in proper order to prevent cleanup issues (see #1585)
-        // 1. Close ContextManager first to stop file watchers and background tasks
-        // 2. Close SessionManager to release file handles
-
+        // ContextManager.close() internally calls project.close(), which then closes the SessionManager
         if (contextManager != null) {
             try {
                 contextManager.close();
             } catch (Exception e) {
                 // Log but don't fail the test during cleanup
                 System.err.println("Warning: Failed to close ContextManager: " + e.getMessage());
-            }
-        }
-
-        // Close the SessionManager to release file handles on Windows.
-        // MainProject creates a SessionManager which scans the .brokk/sessions directory
-        // and opens zip files. On Windows, these file handles prevent @TempDir cleanup
-        // even though the threads are daemon. Explicitly closing ensures proper cleanup.
-        if (project != null) {
-            try {
-                project.getSessionManager().close();
-            } catch (Exception e) {
-                System.err.println("Warning: Failed to close SessionManager: " + e.getMessage());
             }
         }
     }
