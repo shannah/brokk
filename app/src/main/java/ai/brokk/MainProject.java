@@ -620,12 +620,6 @@ public final class MainProject extends AbstractProject {
             issuesProviderCache = IssueProvider.none();
         }
 
-        // Save the default so it's persisted
-        setIssuesProvider(issuesProviderCache);
-        logger.info(
-                "Defaulted issue provider to {} for project {}",
-                issuesProviderCache.type(),
-                getRoot().getFileName());
         return issuesProviderCache;
     }
 
