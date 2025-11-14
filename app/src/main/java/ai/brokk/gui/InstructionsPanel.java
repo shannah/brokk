@@ -87,7 +87,7 @@ import org.jetbrains.annotations.Nullable;
  */
 public class InstructionsPanel extends JPanel implements IContextManager.ContextListener {
     private static final Logger logger = LogManager.getLogger(InstructionsPanel.class);
-
+    private static final String POWER_RANKING_TITLE = "Brokk Power Ranking";
     public static final String ACTION_CODE = "Code";
     public static final String ACTION_ASK = "Ask";
     public static final String ACTION_SEARCH = "Lutz Mode";
@@ -120,6 +120,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
             """
                     .stripIndent();
 
+    private static final ImageIcon BROKK_ICON_16 = loadBrokkIcon();
+
+    private static ImageIcon loadBrokkIcon() {
+        var iconUrl = InstructionsPanel.class.getResource("/brokk-icon.png");
+        if (iconUrl != null) {
+            var baseIcon = new ImageIcon(iconUrl);
+            var scaledImage = baseIcon.getImage().getScaledInstance(16, 16, Image.SCALE_SMOOTH);
+            return new ImageIcon(scaledImage);
+        }
+        // fall back to blank
+        return new ImageIcon();
+    }
+
     private final Chrome chrome;
     private final JTextArea instructionsArea;
     private final VoiceInputButton micButton;
@@ -132,6 +145,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
     private final ModeBadge modeBadge;
     private final ContextManager contextManager;
     private WorkspaceItemsChipPanel workspaceItemsChipPanel;
+    private JLabel brokkRankingLabel;
     private final JPanel centerPanel;
     private ContextAreaContainer contextAreaContainer;
     private @Nullable JComponent inputLayeredPane;
@@ -324,7 +338,7 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.secondaryActionButtonBg = UIManager.getColor("Button.background");
 
         // Create split action button with dropdown
-        actionButton = new ActionSplitButton(() -> isActionRunning(), ACTION_SEARCH); // Default to Search
+        actionButton = new ActionSplitButton(this::isActionRunning, ACTION_SEARCH); // Default to Search
 
         actionButton.setOpaque(false);
         actionButton.setContentAreaFilled(false);
@@ -342,6 +356,14 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         this.modeBadge = new ModeBadge();
         modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
         modeBadge.setFocusable(false);
+
+        // Initialize Brokk Power Ranking indicator
+        this.brokkRankingLabel = new JLabel(POWER_RANKING_TITLE + ": Unknown");
+        this.brokkRankingLabel.setBorder(BorderFactory.createEmptyBorder(0, 6, 0, 6));
+        this.brokkRankingLabel.setFocusable(false);
+        this.brokkRankingLabel.setOpaque(false);
+        this.brokkRankingLabel.setAlignmentY(Component.CENTER_ALIGNMENT);
+        this.brokkRankingLabel.setIcon(BROKK_ICON_16);
 
         // Initialize mode indicator
         refreshModeIndicator();
@@ -685,15 +707,19 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         topBarPanel.add(leftCluster);
 
         // Centered mode badge with symmetric spacing:
-        // glue (flex) + modeBadge + glue (flex) + right filler matching left cluster width
+        // glue (flex) + modeBadge + glue (flex) + rightCluster
         topBarPanel.add(Box.createHorizontalGlue());
         modeBadge.setAlignmentY(Component.CENTER_ALIGNMENT);
         topBarPanel.add(modeBadge);
         topBarPanel.add(Box.createHorizontalGlue());
 
-        // Right filler to balance left cluster width for true centering
-        int leftWidth = leftCluster.getPreferredSize().width;
-        topBarPanel.add(Box.createRigidArea(new Dimension(leftWidth, 0)));
+        // Right cluster with Brokk Power Ranking indicator
+        var rightCluster = new JPanel();
+        rightCluster.setOpaque(false);
+        rightCluster.setLayout(new BoxLayout(rightCluster, BoxLayout.X_AXIS));
+        brokkRankingLabel.setAlignmentY(Component.CENTER_ALIGNMENT);
+        rightCluster.add(brokkRankingLabel);
+        topBarPanel.add(rightCluster);
 
         return topBarPanel;
     }
@@ -998,11 +1024,6 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                 })
                 .thenAccept(stat -> SwingUtilities.invokeLater(() -> {
                     try {
-                        if (stat == null) {
-                            tokenUsageBar.setVisible(false);
-                            contextAreaContainer.setWarningLevel(TokenUsageBar.WarningLevel.NONE);
-                            return;
-                        }
                         // make metadata available to TokenUsageBar for tooltip/warning rendering
                         tokenUsageBar.setWarningMetadata(stat.successRate, stat.isTested, stat.config);
                         // Update max and unfilled-portion tooltip; fragment breakdown is supplied via contextChanged
@@ -1022,6 +1043,15 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
                         contextAreaContainer.setToolTipText(sharedTooltip);
                         modelSelector.getComponent().setToolTipText(sharedTooltip);
                         tokenUsageBar.setVisible(true);
+
+                        // Update Brokk Power Ranking indicator
+                        if (stat.successRate == -1) {
+                            brokkRankingLabel.setText(POWER_RANKING_TITLE + ": Unknown");
+                        } else {
+                            brokkRankingLabel.setText(POWER_RANKING_TITLE + ": " + stat.successRate + "%");
+                        }
+                        brokkRankingLabel.setToolTipText(buildBrokkRankingOnlyTooltip(stat.successRate));
+                        brokkRankingLabel.setVisible(true);
                     } catch (Exception ex) {
                         logger.debug("Failed to update token usage bar", ex);
                         tokenUsageBar.setVisible(false);
@@ -1058,6 +1088,25 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
     }
 
+    private static String buildBrokkRankingOnlyTooltip(int successRate) {
+        StringBuilder body = new StringBuilder();
+        body.append("<div><b>");
+        body.append(POWER_RANKING_TITLE);
+        body.append("</b></div>");
+        if (successRate == -1) {
+            body.append("<div style='margin-top: 4px;'>Success rate: <b>Unknown</b></div>");
+            body.append("<div style='margin-top: 2px; font-size: 0.9em; color: #666;'>")
+                    .append("Untested model reasoning combination.</div>");
+        } else {
+            body.append("<div style='margin-top: 4px;'>Success rate at this token count: <b>")
+                    .append(successRate)
+                    .append("%</b></div>");
+            body.append("<div style='margin-top: 2px; font-size: 0.9em; color: #666;'>")
+                    .append("Based on benchmark data for model performance across token ranges.</div>");
+        }
+        return wrapTooltipHtml(body.toString(), 420);
+    }
+
     // Tooltip helpers for TokenUsageBar (HTML-wrapped, similar to chip tooltips)
     private static String buildTokenUsageTooltip(
             String modelName,
@@ -1089,8 +1138,9 @@ public class InstructionsPanel extends JPanel implements IContextManager.Context
         }
 
         body.append("<hr style='border:0;border-top:1px solid #ccc;margin:8px 0;'/>");
-        body.append("<div><b><a href='https://brokk.ai/power-ranking' style='color: #1F6FEB; text-decoration: none;'>")
-                .append("Brokk Power Ranking</a></b></div>");
+        body.append("<div><b>");
+        body.append(POWER_RANKING_TITLE);
+        body.append("</b></div>");
         if (successRate == -1) {
             body.append("<div style='margin-top: 4px;'>Success rate: <b>Unknown</b></div>");
             body.append("<div style='margin-top: 2px; font-size: 0.9em; color: #666;'>")
