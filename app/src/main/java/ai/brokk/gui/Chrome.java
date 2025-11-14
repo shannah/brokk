@@ -746,6 +746,7 @@ public class Chrome
         // Apply Advanced Mode visibility at startup so default (easy mode) hides advanced UI
         try {
             applyAdvancedModeVisibility();
+            instructionsPanel.applyAdvancedModeForInstructions(GlobalUiSettings.isAdvancedMode());
         } catch (Exception ex) {
             logger.debug("applyAdvancedModeVisibility at startup failed (non-fatal)", ex);
         }
@@ -1271,23 +1272,29 @@ public class Chrome
             }
         });
 
-        // Cmd/Ctrl+M => toggle Code/Answer mode (configurable)
-        KeyStroke toggleModeKeyStroke = GlobalUiSettings.getKeybinding(
-                "instructions.toggleMode", KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
-        bindKey(rootPane, toggleModeKeyStroke, "toggleCodeAnswer");
-        rootPane.getActionMap().put("toggleCodeAnswer", new AbstractAction() {
-            @Override
-            public void actionPerformed(ActionEvent e) {
-                SwingUtilities.invokeLater(() -> {
+        // Cmd/Ctrl+M => toggle Code/Answer mode (configurable; only in Advanced Mode)
+        if (GlobalUiSettings.isAdvancedMode()) {
+            KeyStroke toggleModeKeyStroke = GlobalUiSettings.getKeybinding(
+                    "instructions.toggleMode", KeyboardShortcutUtil.createPlatformShortcut(KeyEvent.VK_M));
+            bindKey(rootPane, toggleModeKeyStroke, "toggleCodeAnswer");
+            rootPane.getActionMap().put("toggleCodeAnswer", new AbstractAction() {
+                @Override
+                public void actionPerformed(ActionEvent e) {
+                    // Defensive guard: protects against race conditions during live mode switching.
+                    // Even though this binding is only registered in Advanced Mode, refreshKeybindings()
+                    // might have a timing window where the old binding is still active after switching to EZ mode.
+                    if (!GlobalUiSettings.isAdvancedMode()) {
+                        return;
+                    }
                     try {
                         instructionsPanel.toggleCodeAnswerMode();
                         showNotification(NotificationRole.INFO, "Toggled Code/Ask mode");
                     } catch (Exception ex) {
                         logger.warn("Error toggling Code/Answer mode via shortcut", ex);
                     }
-                });
-            }
-        });
+                }
+            });
+        }
 
         // Open Settings (configurable; default Cmd/Ctrl+,)
         KeyStroke openSettingsKeyStroke = GlobalUiSettings.getKeybinding(
@@ -1522,8 +1529,18 @@ public class Chrome
     }
 
     /**
-     * Re-registers global keyboard shortcuts from current GlobalUiSettings.
+     * Applies advanced mode to the instructions panel with consistent error handling.
+     * Centralized helper to avoid duplication and ensure uniform logging.
      */
+    private void applyAdvancedModeToInstructionsSafely(boolean advanced) {
+        try {
+            instructionsPanel.applyAdvancedModeForInstructions(advanced);
+        } catch (Exception ex) {
+            logger.warn("Failed to apply advanced mode to instructions panel", ex);
+        }
+    }
+
+    /** Re-registers global keyboard shortcuts from current GlobalUiSettings. */
     public void refreshKeybindings() {
         // Unregister and re-register by rebuilding the maps for the keys we manage
         var rootPane = frame.getRootPane();
@@ -3100,11 +3117,17 @@ public class Chrome
     /**
      * Hook to apply Advanced Mode UI visibility without restart.
      * Shows/hides tabs that are considered "advanced": Pull Requests, Issues, Log, Worktrees.
+     * Centralizes calls to update Instructions panel mode UI and refresh keybindings to avoid duplication.
      * Safe to call from any thread.
      */
     public void applyAdvancedModeVisibility() {
         Runnable r = () -> {
             boolean advanced = GlobalUiSettings.isAdvancedMode();
+
+            // Apply advanced mode to instructions panel (hide mode badge, disable dropdown in EZ mode)
+            // Centralized here to avoid duplication in settings dialog and elsewhere
+            applyAdvancedModeToInstructionsSafely(advanced);
+
             // Ensure the small header above the right tab stack is updated immediately.
             try {
                 if (rightTabbedHeader != null) {
@@ -3306,6 +3329,14 @@ public class Chrome
                 }
             } catch (Exception ex) {
                 logger.debug("Failed to update rightTabbedHeader visibility", ex);
+            }
+
+            // Refresh keybindings once after all UI updates to update toggle-mode shortcut
+            // Centralized here to ensure consistency and avoid duplicate calls
+            try {
+                refreshKeybindings();
+            } catch (Exception ex) {
+                logger.debug("Failed to refresh keybindings after advanced-mode toggle", ex);
             }
         };
 
